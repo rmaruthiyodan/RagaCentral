@@ -1,0 +1,22 @@
+services:
+  sruti:
+    build: .
+    container_name: sruti
+    ports:
+      - "8787:8787"
+    volumes:
+      # Recordings and the database. Delete this volume and you delete the library.
+      - sruti-data:/app/.wrangler
+    environment:
+      # Lets you sign in without Google while trying things out.
+      # Set to "false" once you've added real Google credentials below.
+      DEV_LOGIN: "${DEV_LOGIN:-true}"
+      SESSION_SECRET: "${SESSION_SECRET:-local-development-only-change-me}"
+      # Optional — fill these in .env to use real Google sign-in.
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      BOOTSTRAP_TEACHER_EMAIL: "${BOOTSTRAP_TEACHER_EMAIL:-teacher@example.com}"
+    restart: unless-stopped
+
+volumes:
+  sruti-data:

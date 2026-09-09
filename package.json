@@ -1,0 +1,26 @@
+{
+  "name": "sruti",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute sruti --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute sruti --remote --file=./schema.sql",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "hono": "^4.13.7",
+    "lamejs": "^1.2.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260907.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.129.0"
+  },
+  "private": true,
+  "type": "module"
+}

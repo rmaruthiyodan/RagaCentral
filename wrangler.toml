@@ -1,0 +1,29 @@
+name = "sruti"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static files (CSS, client JS, the MP3 encoder) are served free and unmetered.
+assets = { directory = "./public", binding = "ASSETS" }
+
+# Song metadata, students, notes. A few megabytes at most.
+[[d1_databases]]
+binding = "DB"
+database_name = "sruti"
+database_id = "PUT_YOUR_D1_DATABASE_ID_HERE"
+
+# Audio, video and note screenshots. 10 GB free, downloads free forever.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "sruti-media"
+
+[vars]
+# The Google account that becomes the first teacher on its first sign-in.
+# Everyone else who signs in waits for approval.
+BOOTSTRAP_TEACHER_EMAIL = "teacher@example.com"
+SITE_NAME = "RP Sajeev Music"
+
+# Secrets — set these with `npx wrangler secret put <NAME>`, never in this file:
+#   GOOGLE_CLIENT_ID
+#   GOOGLE_CLIENT_SECRET
+#   SESSION_SECRET      (any long random string)
