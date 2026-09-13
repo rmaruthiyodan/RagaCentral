@@ -103,7 +103,11 @@ a{color:var(--blue)}
 .toc a:hover{color:var(--ink);border-left-color:var(--blue)}
 @media (max-width:1039px){ .toc{display:none} }
 
-main{padding-top:38px;max-width:76ch}
+/* min-width:0 because <main> is a grid item, and a grid item's default
+   min-width:auto lets a wide child push it: the tables carry
+   min-width:520px, which leaked out through .tw and made the whole
+   page scroll sideways on a phone. The table still scrolls inside .tw. */
+main{padding-top:38px;max-width:76ch;min-width:0}
 section{margin-bottom:56px;scroll-margin-top:20px}
 h2{
   font-family:var(--f-display);font-weight:600;font-size:1.62rem;letter-spacing:-.015em;
@@ -144,6 +148,11 @@ td .n{font-family:var(--f-mono);font-size:13px}
 /* ---------- figures ---------- */
 figure{margin:0 0 22px;border:1px solid var(--line);background:var(--surface);padding:22px 20px 14px}
 figure svg{display:block;width:100%;height:auto;max-width:100%;color:var(--ink-2)}
+/* The accent inside a diagram has to follow the theme. It was hard-coded
+   #2C4A7C, which is the light-mode blue: on the dark ground the
+   highlighted boxes all but vanished. */
+figure svg .hl{fill:var(--blue)}
+figure svg .hl-s{stroke:var(--blue)}
 figcaption{
   font-size:13px;color:var(--ink-3);margin-top:12px;padding-top:11px;
   border-top:1px solid var(--line);max-width:64ch;
@@ -310,6 +319,7 @@ footer{
     <a href="#time">Time and the schedule</a>
     <a href="#upgrade">Upgrading a database</a>
     <a href="#media">The media pipeline</a>
+    <a href="#backup">Keeping it</a>
     <a href="#system">The interface system</a>
     <a href="#themes">Theme options</a>
     <a href="#decisions">Decisions and why</a>
@@ -379,11 +389,11 @@ footer{
           <text x="74" y="130" text-anchor="middle" font-size="13" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">Browser</text>
           <text x="74" y="148" text-anchor="middle" font-size="11" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">cookie</text>
 
-          <rect x="248" y="88" width="164" height="94" fill="none" stroke="#2C4A7C" stroke-width="1.8"/>
-          <text x="330" y="118" text-anchor="middle" font-size="13" fill="#2C4A7C" font-family="Source Sans 3, sans-serif" font-weight="600">Worker</text>
-          <text x="330" y="137" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">verify HMAC</text>
-          <text x="330" y="154" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">studentMaySee()</text>
-          <text x="330" y="171" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">render HTML</text>
+          <rect class="hl-s" x="248" y="88" width="164" height="94" fill="none" stroke-width="1.8"/>
+          <text class="hl" x="330" y="118" text-anchor="middle" font-size="13" font-family="Source Sans 3, sans-serif" font-weight="600">Worker</text>
+          <text class="hl" x="330" y="137" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace">verify HMAC</text>
+          <text class="hl" x="330" y="154" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace">studentMaySee()</text>
+          <text class="hl" x="330" y="171" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace">render HTML</text>
 
           <rect x="536" y="30" width="176" height="58" fill="none" stroke="currentColor" stroke-width="1.2"/>
           <text x="624" y="54" text-anchor="middle" font-size="13" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">D1 (SQLite)</text>
@@ -402,11 +412,11 @@ footer{
           <line x1="412" y1="112" x2="534" y2="70" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar1)"/>
           <text x="474" y="82" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace">reads</text>
 
-          <line x1="412" y1="160" x2="534" y2="214" stroke="#2C4A7C" stroke-width="1.6" marker-end="url(#ar1)"/>
-          <text x="470" y="200" text-anchor="middle" font-size="10.5" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">streams, 206 Range</text>
+          <line class="hl-s" x1="412" y1="160" x2="534" y2="214" stroke-width="1.6" marker-end="url(#ar1)"/>
+          <text class="hl" x="470" y="200" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace">streams, 206 Range</text>
 
-          <line x1="534" y1="240" x2="412" y2="182" stroke="#2C4A7C" stroke-width="1.6" stroke-dasharray="4 3"/>
-          <text x="330" y="214" text-anchor="middle" font-size="10.5" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">only after the check passes</text>
+          <line class="hl-s" x1="534" y1="240" x2="412" y2="182" stroke-width="1.6" stroke-dasharray="4 3"/>
+          <text class="hl" x="330" y="214" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace">only after the check passes</text>
 
           <text x="8" y="290" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".7">Media never leaves R2 by a public URL — every byte passes the Worker.</text>
         </svg>
@@ -463,7 +473,7 @@ footer{
       </p>
 
       <figure>
-        <svg viewBox="0 0 720 232" role="img" aria-label="A recording marked shared reaches every assigned student; a recording marked chosen reaches only the students named in the share table, and the others see a locked card">
+        <svg viewBox="0 0 720 244" role="img" aria-label="A recording marked shared reaches every assigned student; a recording marked chosen reaches only the students named in the share table, and the others see a locked card">
           <defs>
             <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
@@ -473,13 +483,13 @@ footer{
           <text x="83" y="48" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">Recording</text>
           <text x="83" y="66" text-anchor="middle" font-size="11" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".8">'shared'</text>
 
-          <rect x="8" y="148" width="150" height="52" fill="none" stroke="#2C4A7C" stroke-width="1.6"/>
-          <text x="83" y="170" text-anchor="middle" font-size="12.5" fill="#2C4A7C" font-family="Source Sans 3, sans-serif" font-weight="600">Recording</text>
-          <text x="83" y="188" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">'chosen'</text>
+          <rect class="hl-s" x="8" y="148" width="150" height="52" fill="none" stroke-width="1.6"/>
+          <text class="hl" x="83" y="170" text-anchor="middle" font-size="12.5" font-family="Source Sans 3, sans-serif" font-weight="600">Recording</text>
+          <text class="hl" x="83" y="188" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace">'chosen'</text>
 
-          <rect x="286" y="148" width="152" height="52" fill="none" stroke="#2C4A7C" stroke-width="1.2" stroke-dasharray="4 3"/>
-          <text x="362" y="170" text-anchor="middle" font-size="12" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">recording_shares</text>
-          <text x="362" y="188" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace" opacity=".8">2 rows</text>
+          <rect class="hl-s" x="286" y="148" width="152" height="52" fill="none" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text class="hl" x="362" y="170" text-anchor="middle" font-size="12" font-family="IBM Plex Mono, monospace">recording_shares</text>
+          <text class="hl" x="362" y="188" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace" opacity=".8">2 rows</text>
 
           <rect x="566" y="14" width="146" height="34" fill="none" stroke="currentColor" stroke-width="1.2"/>
           <text x="639" y="36" text-anchor="middle" font-size="12" fill="currentColor" font-family="Source Sans 3, sans-serif">Anjali · plays</text>
@@ -494,10 +504,10 @@ footer{
           <line x1="158" y1="60" x2="564" y2="77" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
           <text x="360" y="42" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace">everyone assigned the song</text>
 
-          <line x1="158" y1="174" x2="284" y2="174" stroke="#2C4A7C" stroke-width="1.4" marker-end="url(#ar2)"/>
-          <line x1="438" y1="164" x2="564" y2="149" stroke="#2C4A7C" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line class="hl-s" x1="158" y1="174" x2="284" y2="174" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line class="hl-s" x1="438" y1="164" x2="564" y2="149" stroke-width="1.4" marker-end="url(#ar2)"/>
           <line x1="438" y1="184" x2="564" y2="195" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
-          <text x="500" y="216" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".8">not listed → 403 on /media</text>
+          <text x="500" y="230" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".8">not listed → 403 on /media</text>
         </svg>
         <figcaption>
           Locking a recording that was shared does not silently strip it from everyone: the other
@@ -625,6 +635,149 @@ footer{
           refuses anything over 90&nbsp;MB with a clear message.</li>
         <li>Playback asks R2 for byte ranges, so seeking in a 90-minute file doesn't download it.</li>
       </ul>
+    </section>
+
+
+    <section id="backup">
+      <span class="eyebrow">Keeping it</span>
+      <h2>The dump is the manifest</h2>
+      <p class="lede">
+        Two stores fail in different ways, so the backup has to answer both — and the
+        interesting part is not that it copies things, but that the database decides what gets
+        copied.
+      </p>
+      <p>
+        D1's <strong>Time Travel</strong> is always on, costs nothing, and restores the database
+        to any moment in the last seven days on the free plan. It is the right first answer to
+        "I deleted the wrong student", and no answer at all to a deleted database or a lost
+        account. R2 has no versioning to fall back on. So there is a weekly job, and it writes
+        outside Cloudflare.
+      </p>
+      <p>
+        It does <em>not</em> run inside the Worker. The free plan allows 10&nbsp;ms of CPU and 50
+        subrequests per invocation, cron triggers included; serialising a few megabytes of rows
+        spends the first and twelve table reads plus the writes crowd the second. That design
+        works at twenty students and fails intermittently at eighty — the worst possible failure
+        curve for a backup. And a copy held inside the account it protects does not answer the
+        failure that matters.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 720 250" role="img" aria-label="D1 is exported to a dump; the dump is stored in Google Drive and also yields the list of R2 keys, which drives fetching only the recordings the backup does not already hold">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <rect x="8" y="24" width="124" height="50" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="70" y="46" text-anchor="middle" font-size="13" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">D1</text>
+          <text x="70" y="63" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">12 tables</text>
+
+          <rect class="hl-s" x="212" y="16" width="140" height="66" fill="none" stroke-width="1.8"/>
+          <text class="hl" x="282" y="40" text-anchor="middle" font-size="13" font-family="Source Sans 3, sans-serif" font-weight="600">the dump</text>
+          <text class="hl" x="282" y="57" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace">rows &gt; 0 or stop</text>
+          <text class="hl" x="282" y="73" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace">.sql.gz</text>
+
+          <rect x="556" y="16" width="156" height="50" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="634" y="37" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">Drive / database</text>
+          <text x="634" y="54" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">newest 12 weeks</text>
+
+          <rect class="hl-s" x="212" y="132" width="140" height="46" fill="none" stroke-width="1.4" stroke-dasharray="4 3"/>
+          <text class="hl" x="282" y="152" text-anchor="middle" font-size="12" font-family="IBM Plex Mono, monospace">every r2_key</text>
+          <text class="hl" x="282" y="169" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace" opacity=".85">minus what Drive has</text>
+
+          <rect x="404" y="132" width="110" height="46" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="459" y="153" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">R2</text>
+          <text x="459" y="170" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">signed GET</text>
+
+          <rect x="556" y="128" width="156" height="50" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="634" y="149" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">Drive / media</text>
+          <text x="634" y="166" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">never deleted from</text>
+
+          <line x1="132" y1="49" x2="210" y2="49" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar3)"/>
+          <text x="171" y="40" text-anchor="middle" font-size="10" fill="currentColor" font-family="IBM Plex Mono, monospace">export</text>
+
+          <line x1="352" y1="41" x2="554" y2="41" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar3)"/>
+          <text x="453" y="32" text-anchor="middle" font-size="10" fill="currentColor" font-family="IBM Plex Mono, monospace">gzip</text>
+
+          <line class="hl-s" x1="282" y1="82" x2="282" y2="130" stroke-width="1.6" marker-end="url(#ar3)"/>
+          <text class="hl" x="292" y="110" font-size="10" font-family="IBM Plex Mono, monospace">read back out</text>
+
+          <line class="hl-s" x1="352" y1="155" x2="402" y2="155" stroke-width="1.4" marker-end="url(#ar3)"/>
+          <line x1="514" y1="155" x2="554" y2="155" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar3)"/>
+          <text x="459" y="196" text-anchor="middle" font-size="10" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".8">only the week&#39;s new takes</text>
+
+          <text x="8" y="232" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".7">A file no row points at is never copied. A row whose file is gone fails the run.</text>
+        </svg>
+        <figcaption>
+          The list of recordings to back up is read out of the dump that was just taken, not out
+          of the bucket. Everything interesting about this design follows from that one arrow
+          pointing downwards.
+        </figcaption>
+      </figure>
+
+      <h3>What the manifest buys</h3>
+      <ul>
+        <li><strong>It is incremental without keeping any state.</strong> The first run seeds the
+          library; every later run fetches the week&#39;s new takes, because the keys already on
+          disk are simply skipped.</li>
+        <li><strong>An orphan is never mistaken for data.</strong> A file no row references —
+          usually an upload that failed after the bytes were written — is not copied, because
+          nothing will ever ask for it again.</li>
+        <li><strong>A missing file is found here, not in a lesson.</strong> A key the database
+          expects and R2 does not have is silent data loss until a student presses play. The
+          backup reports it and fails the run.</li>
+        <li><strong>It copies forward and never back.</strong> A recording deleted from R2 stays
+          in the backup. No code path in the program deletes a media file.</li>
+      </ul>
+
+      <h4>Reaching R2</h4>
+      <p>
+        R2 speaks S3, which means SigV4-signed HTTPS. The choices were the AWS SDK — tens of
+        megabytes for four verbs — rclone, which is a binary to install on a Mac with no
+        Homebrew, or <code>aws4fetch</code>: 88&nbsp;KB, no dependencies of its own. The third,
+        and <code>scripts/lib/r2.mjs</code> is HEAD, GET, PUT and LIST over it in about 180
+        lines.
+      </p>
+      <p>
+        The token is an <strong>R2 API token</strong>, which is not the Cloudflare token wrangler
+        uses; they are not interchangeable, and the error when you confuse them is a bare 403. It
+        is scoped <strong>Object Read only</strong>: the thing that runs unattended every week
+        cannot damage the bucket it is protecting. Restoring needs a separate write token, which
+        is the point of the read-only one.
+      </p>
+
+      <h3>Four refusals</h3>
+      <p>
+        Each is a way this class of program fails quietly, turned into a stop.
+      </p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>It stops when</th><th>Because</th></tr></thead>
+          <tbody>
+            <tr><td>the Drive folder<br>isn&#39;t there</td><td>Writing into a folder Drive isn&#39;t syncing produces a backup that exists only on that Mac — the exact failure the whole thing exists to prevent.</td></tr>
+            <tr><td>the export<br>came back empty</td><td>An empty dump is the failure that looks like success. It stops <em>before</em> copying, so this week&#39;s bad dump never replaces last week&#39;s good one.</td></tr>
+            <tr><td>the media would<br>exceed the quota</td><td>Free Google Drive is 15&nbsp;GB, shared with Gmail. A full Drive doesn&#39;t just stop the recordings — Drive stops syncing everything, dumps included. It copies no media and says by how much.</td></tr>
+            <tr><td>a download<br>is interrupted</td><td>Files land as <code>.part</code> and are renamed only once complete, so a half file can never be mistaken next week for a whole one.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Getting it back</h3>
+      <ol class="steps">
+        <li><b>Time Travel first, if it is inside a week</b><span><code>wrangler d1 time-travel restore</code>. No files involved, nothing to download.</span></li>
+        <li><b>The database</b><span><code>restore.mjs</code> makes you type the database name, drops in reverse order under <code>PRAGMA defer_foreign_keys</code>, applies the dump, <strong>re-creates the indexes — they are not in the dump</strong> — and compares every table&#39;s row count against the backup.</span></li>
+        <li><b>The recordings</b><span><code>restore-media.mjs</code> does nothing without <code>--yes</code>, and leaves alone any object R2 already has. Restoring into a half-good bucket is the common case, and overwriting the good half with an older copy turns a partial loss into a total one.</span></li>
+        <li><b>Then play something</b><span>A recording plays only if its bytes came back under the right key. That is the step that actually tests the media backup, and it is the last step of the quarterly drill.</span></li>
+      </ol>
+      <div class="note">
+        <b>The drill is not optional, and it has already paid for itself.</b> Restoring into a
+        deliberately damaged database failed with <code>no such table: main.users</code> —
+        dropping tables in creation order leaves a child&#39;s foreign key pointing at a dropped
+        parent. That bug would otherwise have been found during a real loss, which is the one
+        moment it must not be.
+      </div>
     </section>
 
     <section id="system">
