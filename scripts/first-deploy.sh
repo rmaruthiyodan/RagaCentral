@@ -71,7 +71,9 @@ setup_d1() {
     ok "sruti already exists"
   else
     note "creating it…"
-    wr d1 create sruti >/dev/null
+    # If listing failed for any reason the database may still exist, and
+    # creating it again is an error rather than a no-op. Tolerate that.
+    wr d1 create sruti >/dev/null 2>&1 || true
     id=$(wr d1 list --json 2>/dev/null \
          | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
              try{const r=JSON.parse(s).find(d=>d.name==="sruti");if(r)process.stdout.write(r.uuid)}catch{}
@@ -154,11 +156,13 @@ set_session_secret() {
   ok "generated and stored — it was never printed or written to a file"
 }
 
-# --remote asks "are you sure" before touching the live database.
-# The flag that skips it is --skip-confirmation (-y), not --yes.
+# --remote asks "are you sure" before touching the live database. The flag
+# that answers it is --yes (-y). Verified against the d1 execute definition
+# in wrangler itself, not by grepping the bundle for the word "confirmation"
+# — several other commands have a --skip-confirmation and this one does not.
 apply_schema() {
   say "Database schema — four steps, and the order matters"
-  local d1="d1 execute sruti --remote --skip-confirmation"
+  local d1="d1 execute sruti --remote --yes"
   wr $d1 --file=./schema.sql   >/dev/null; ok "1/4 tables"
   node scripts/sync-schema.mjs --remote >/dev/null; ok "2/4 any missing columns"
   wr $d1 --file=./indexes.sql  >/dev/null; ok "3/4 indexes"
