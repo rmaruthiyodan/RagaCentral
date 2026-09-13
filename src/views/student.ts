@@ -11,8 +11,9 @@ import { page, avatar, inlineTitle } from './layout';
 import { resumeCard, lessonLog } from './sessions';
 import { monthCalendar, zoneOptions } from './schedule';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
-import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
+import { prettyIst, prettyIstDate, WEEKDAYS, inZone, monthLabel, type Occurrence } from '../tz';
 import type { User, Section, SessionRow, ClassSlot, AssignedRow } from '../types';
+import { t, setLang } from '../i18n';
 
 export type StudentTab = 'overview' | 'songs' | 'lessons' | 'schedule' | 'settings';
 
@@ -31,12 +32,12 @@ export interface TabCounts {
 }
 
 function shell(student: User, tab: StudentTab, counts: TabCounts, body: string): string {
-  const t = (id: StudentTab, href: string, label: string, badge?: number) =>
+  const stab = (id: StudentTab, href: string, label: string, badge?: number) =>
     `<a class="stab${tab === id ? ' is-on' : ''}" href="${esc(href)}">${esc(label)}${
       badge ? ` <span class="stab-n">${badge}</span>` : ''
     }</a>`;
 
-  return `<a class="crumb" href="/t">← Students</a>
+  return `<a class="crumb" href="/t">← ${t('Students')}</a>
 <div class="student-head">
   ${avatar(student)}
   <div class="sh-who">
@@ -46,33 +47,37 @@ function shell(student: User, tab: StudentTab, counts: TabCounts, body: string):
         ? ` · ${
             waLink(student.phone)
               ? `<a class="wa" href="${esc(waLink(student.phone)!)}" target="_blank" rel="noopener"
-                   title="Open WhatsApp">${esc(student.phone)}</a>`
+                   title="${esc(t('Open WhatsApp'))}">${esc(student.phone)}</a>`
               : esc(student.phone)
           }`
         : ''
     }</p>
   </div>
   <span class="pill ${STATUS_CLASS[student.status] ?? 'p-warn'}">${esc(
-    STATUS_LABEL[student.status] ?? student.status,
+    t(STATUS_LABEL[student.status] ?? student.status),
   )}</span>
 </div>
 
 ${
   student.status !== 'active'
     ? `<div class="flash" style="border-left-color:var(--warn);background:var(--warn-soft);color:var(--warn)">
-     ${esc(STATUS_LABEL[student.status] ?? student.status)}${
+     ${esc(t(STATUS_LABEL[student.status] ?? student.status))}${
        student.status_note ? ` — ${esc(student.status_note)}` : ''
-     }${student.status_changed_at ? ` · since ${esc(fmtDate(student.status_changed_at))}` : ''}
+     }${
+       student.status_changed_at
+         ? ` · ${t('since %s', esc(fmtDate(student.status_changed_at)))}`
+         : ''
+     }
    </div>`
     : ''
 }
 
 <nav class="stabs">
-  ${t('overview', `/t/s/${student.id}`, 'Overview')}
-  ${t('songs', `/t/s/${student.id}/songs`, 'Songs', counts.songs)}
-  ${t('lessons', `/t/s/${student.id}/lessons`, 'Past classes', counts.lessons)}
-  ${t('schedule', `/t/s/${student.id}/schedule`, 'Schedule')}
-  ${t('settings', `/t/s/${student.id}/settings`, 'Settings')}
+  ${stab('overview', `/t/s/${student.id}`, t('Overview'))}
+  ${stab('songs', `/t/s/${student.id}/songs`, t('Songs'), counts.songs)}
+  ${stab('lessons', `/t/s/${student.id}/lessons`, t('Past classes'), counts.lessons)}
+  ${stab('schedule', `/t/s/${student.id}/schedule`, t('Schedule'))}
+  ${stab('settings', `/t/s/${student.id}/settings`, t('Settings'))}
 </nav>
 
 ${body}`;
@@ -94,6 +99,7 @@ export function overviewTab(
   siteName: string,
   msg?: string,
 ): string {
+  setLang(user.lang);
   const next = d.upcoming[0];
   const tz = student.time_zone;
 
@@ -112,7 +118,7 @@ ${resumeCard(d.sessions[0] ?? null, {
 
 ${
   next
-    ? `<div class="section-head"><h2>Next class</h2></div>
+    ? `<div class="section-head"><h2>${t('Next class')}</h2></div>
   <div class="rows" style="margin-bottom:6px">
     <div class="row">
       <div class="row-main">
@@ -122,17 +128,17 @@ ${
             tz
               ? (() => {
                   const l = inZone(next.instant, tz);
-                  return `<span>${esc(l.time)} ${esc(l.weekday)} their time</span>`;
+                  return `<span>${t('%s %s their time', esc(l.time), esc(l.weekday))}</span>`;
                 })()
-              : '<span class="local-unknown">their time zone is not set</span>'
+              : `<span class="local-unknown">${t('their time zone is not set')}</span>`
           }
-          <span>${next.slot.duration_min} minutes</span>
-          ${next.moved ? '<span>rescheduled</span>' : ''}
+          <span>${t('%s minutes', next.slot.duration_min)}</span>
+          ${next.moved ? `<span>${t('rescheduled')}</span>` : ''}
         </div>
       </div>
       <div class="row-actions">
         <a class="btn btn-sm btn-primary"
-           href="/t/class/${esc(next.slot.id)}/${esc(next.originalDate)}">Open this class</a>
+           href="/t/class/${esc(next.slot.id)}/${esc(next.originalDate)}">${t('Open this class')}</a>
       </div>
     </div>
   </div>`
@@ -140,8 +146,8 @@ ${
 }
 
 <div class="section-head">
-  <div><h2>Learning now</h2></div>
-  <a class="btn btn-sm" href="/t/s/${esc(student.id)}/songs">All songs</a>
+  <div><h2>${t('Learning now')}</h2></div>
+  <a class="btn btn-sm" href="/t/s/${esc(student.id)}/songs">${t('All songs')}</a>
 </div>
 ${
   d.learning.length
@@ -152,22 +158,30 @@ ${
       <div class="row-main">
         <div class="row-title">${inlineTitle(a.title, a.title_ml)}</div>
         <div class="row-meta">
-          ${a.raga ? `<span>Raga ${esc(a.raga)}</span>` : ''}
-          <span class="num">${a.rec_count} ${a.rec_count === 1 ? 'recording' : 'recordings'}</span>
-          ${a.note_count ? `<span class="num">${a.note_count} ${a.note_count === 1 ? 'note' : 'notes'}</span>` : ''}
+          ${a.raga ? `<span>${t('Raga %s', esc(a.raga))}</span>` : ''}
+          <span class="num">${
+            a.rec_count === 1 ? t('%s recording', a.rec_count) : t('%s recordings', a.rec_count)
+          }</span>
+          ${
+            a.note_count
+              ? `<span class="num">${
+                  a.note_count === 1 ? t('%s note', a.note_count) : t('%s notes', a.note_count)
+                }</span>`
+              : ''
+          }
         </div>
       </div>
-      <div class="row-actions"><span class="btn btn-sm">Open</span></div>
+      <div class="row-actions"><span class="btn btn-sm">${t('Open')}</span></div>
     </a>`,
         )
         .join('')}</div>`
-    : `<div class="empty">Nothing assigned yet.
-       <a href="/t/s/${esc(student.id)}/songs">Assign a song</a>.</div>`
+    : `<div class="empty">${t('Nothing assigned yet.')}
+       <a href="/t/s/${esc(student.id)}/songs">${t('Assign a song')}</a>.</div>`
 }
 
 <div class="section-head">
-  <div><h2>Recent classes</h2></div>
-  <a class="btn btn-sm" href="/t/s/${esc(student.id)}/lessons">All ${counts.lessons} past classes</a>
+  <div><h2>${t('Recent classes')}</h2></div>
+  <a class="btn btn-sm" href="/t/s/${esc(student.id)}/lessons">${t('All %s past classes', counts.lessons)}</a>
 </div>
 ${
   d.sessions.length
@@ -179,18 +193,20 @@ ${
         <div class="row-title">${esc(fmtDate(s.held_on))}
           ${
             s.status === 'ongoing'
-              ? '<span class="pill p-brass">ongoing</span>'
-              : '<span class="pill p-good">completed</span>'
+              ? `<span class="pill p-brass">${t('ongoing')}</span>`
+              : `<span class="pill p-good">${t('completed')}</span>`
           }</div>
         <div class="row-meta">${
-          s.left_off ? `<span>${esc(s.left_off.slice(0, 110))}</span>` : '<span>no stopping point noted</span>'
+          s.left_off
+            ? `<span>${esc(s.left_off.slice(0, 110))}</span>`
+            : `<span>${t('no stopping point noted')}</span>`
         }</div>
       </div>
-      <div class="row-actions"><span class="btn btn-sm">Read</span></div>
+      <div class="row-actions"><span class="btn btn-sm">${t('Read')}</span></div>
     </a>`,
         )
         .join('')}</div>`
-    : '<div class="empty">No classes logged yet.</div>'
+    : `<div class="empty">${t('No classes logged yet.')}</div>`
 }`,
     ),
     { title: student.name, user, siteName, nav: 'students' },
@@ -210,6 +226,7 @@ export function songsTab(
   siteName: string,
   msg?: string,
 ): string {
+  setLang(user.lang);
   const inProgress = assigned.filter((a) => !a.completed_at);
   const finished = assigned.filter((a) => a.completed_at);
   const assignedIds = new Set(assigned.map((a) => a.id));
@@ -218,7 +235,7 @@ export function songsTab(
   const opts = (() => {
     const byGroup = new Map<string, string[]>();
     for (const s of available) {
-      const g = s.group_name ?? 'Ungrouped';
+      const g = s.group_name ?? t('Ungrouped');
       if (!byGroup.has(g)) byGroup.set(g, []);
       byGroup.get(g)!.push(
         `<option value="${esc(s.id)}">${esc(s.title)}${s.raga ? ` — ${esc(s.raga)}` : ''}</option>`,
@@ -233,31 +250,41 @@ export function songsTab(
   <div class="row-main">
     <a href="/t/s/${esc(student.id)}/${esc(a.id)}" style="text-decoration:none;color:inherit">
       <div class="row-title">${inlineTitle(a.title, a.title_ml)}${
-        a.completed_at ? ' <span class="pill p-good">finished</span>' : ''
+        a.completed_at ? ` <span class="pill p-good">${t('finished')}</span>` : ''
       }</div>
       <div class="row-meta">
         ${a.group_name ? `<span>${esc(a.group_name)}</span>` : ''}
-        ${a.raga ? `<span>Raga ${esc(a.raga)}</span>` : ''}
-        <span class="num">${a.rec_count} ${a.rec_count === 1 ? 'recording' : 'recordings'}</span>
-        ${a.note_count ? `<span class="num">${a.note_count} ${a.note_count === 1 ? 'note' : 'notes'}</span>` : ''}
-        ${a.completed_at ? `<span>finished ${esc(fmtDate(a.completed_at))}</span>` : ''}
+        ${a.raga ? `<span>${t('Raga %s', esc(a.raga))}</span>` : ''}
+        <span class="num">${
+          a.rec_count === 1 ? t('%s recording', a.rec_count) : t('%s recordings', a.rec_count)
+        }</span>
+        ${
+          a.note_count
+            ? `<span class="num">${
+                a.note_count === 1 ? t('%s note', a.note_count) : t('%s notes', a.note_count)
+              }</span>`
+            : ''
+        }
+        ${a.completed_at ? `<span>${t('finished %s', esc(fmtDate(a.completed_at)))}</span>` : ''}
       </div>
     </a>
   </div>
   <div class="row-actions">
     <a class="btn btn-sm${a.completed_at ? '' : ' btn-primary'}"
-       href="/t/s/${esc(student.id)}/${esc(a.id)}">Open</a>
+       href="/t/s/${esc(student.id)}/${esc(a.id)}">${t('Open')}</a>
     <form method="post" action="/t/s/${esc(student.id)}/complete-song">
       <input type="hidden" name="section_id" value="${esc(a.id)}">
       <input type="hidden" name="back" value="/t/s/${esc(student.id)}/songs">
       ${a.completed_at ? '<input type="hidden" name="undo" value="1">' : ''}
-      <button class="btn btn-sm" type="submit">${a.completed_at ? 'Reopen' : 'Mark finished'}</button>
+      <button class="btn btn-sm" type="submit">${
+        a.completed_at ? t('Reopen') : t('Mark finished')
+      }</button>
     </form>
     <form method="post" action="/t/s/${esc(student.id)}/unassign"
-          onsubmit="return confirm('Remove this song from their list? Recordings are kept.')">
+          onsubmit="return confirm('${t('Remove this song from their list? Recordings are kept.')}')">
       <input type="hidden" name="section_id" value="${esc(a.id)}">
       <input type="hidden" name="back" value="/t/s/${esc(student.id)}/songs">
-      <button class="btn btn-sm btn-quiet" type="submit">Remove</button>
+      <button class="btn btn-sm btn-quiet" type="submit">${t('Remove')}</button>
     </form>
   </div>
 </div>`;
@@ -269,22 +296,22 @@ export function songsTab(
       counts,
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 
-<div class="section-head"><h2>Learning now</h2></div>
+<div class="section-head"><h2>${t('Learning now')}</h2></div>
 ${
   inProgress.length
     ? `<div class="rows">${inProgress.map(row).join('')}</div>`
-    : '<div class="empty">Nothing in progress.</div>'
+    : `<div class="empty">${t('Nothing in progress.')}</div>`
 }
 
 ${
   finished.length
-    ? `<div class="section-head"><div><h2>Finished</h2>
-       <p class="lede">Recordings stay available to practise.</p></div></div>
+    ? `<div class="section-head"><div><h2>${t('Finished')}</h2>
+       <p class="lede">${t('Recordings stay available to practise.')}</p></div></div>
      <div class="rows">${finished.map(row).join('')}</div>`
     : ''
 }
 
-<div class="section-head"><h2>Assign another song</h2></div>
+<div class="section-head"><h2>${t('Assign another song')}</h2></div>
 <div class="card">
   ${
     available.length
@@ -292,17 +319,17 @@ ${
         style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
       <input type="hidden" name="back" value="/t/s/${esc(student.id)}/songs">
       <div class="field" style="flex:1;min-width:240px;margin-bottom:0">
-        <label for="assign-sel">From the catalogue</label>
+        <label for="assign-sel">${t('From the catalogue')}</label>
         <select id="assign-sel" name="section_id" required>${opts}</select>
       </div>
-      <button class="btn btn-primary" type="submit">Assign</button>
+      <button class="btn btn-primary" type="submit">${t('Assign')}</button>
     </form>`
-      : `<p class="hint" style="margin:0">Every song in the catalogue is already assigned.
-         <a href="/t/catalogue">Add a new one</a>.</p>`
+      : `<p class="hint" style="margin:0">${t('Every song in the catalogue is already assigned.')}
+         <a href="/t/catalogue">${t('Add a new one')}</a>.</p>`
   }
 </div>`,
     ),
-    { title: `${student.name} · Songs`, user, siteName, nav: 'students' },
+    { title: t('%s · Songs', student.name), user, siteName, nav: 'students' },
   );
 }
 
@@ -322,12 +349,11 @@ export function lessonsTab(
     prevMonth: string;
     nextMonth: string;
     dictate?: boolean;
-    monthLabelPrev: string;
-    monthLabelNext: string;
   },
   siteName: string,
   msg?: string,
 ): string {
+  setLang(user.lang);
   return page(
     shell(
       student,
@@ -336,12 +362,12 @@ export function lessonsTab(
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 
 <div class="section-head">
-  <div><h2>Class calendar</h2>
-    <p class="lede">Every class that happened, was missed, or was cancelled.</p></div>
+  <div><h2>${t('Class calendar')}</h2>
+    <p class="lede">${t('Every class that happened, was missed, or was cancelled.')}</p></div>
 </div>
 <div class="btn-row" style="margin-bottom:10px">
-  <a class="btn btn-sm" href="?month=${esc(d.prevMonth)}">← ${esc(d.monthLabelPrev)}</a>
-  <a class="btn btn-sm" href="?month=${esc(d.nextMonth)}">${esc(d.monthLabelNext)} →</a>
+  <a class="btn btn-sm" href="?month=${esc(d.prevMonth)}">← ${esc(monthLabel(d.prevMonth, 'short'))}</a>
+  <a class="btn btn-sm" href="?month=${esc(d.nextMonth)}">${esc(monthLabel(d.nextMonth, 'short'))} →</a>
 </div>
 ${monthCalendar(d.month, d.monthOccs, {
   dayHref: (date, list) => {
@@ -355,7 +381,7 @@ ${monthCalendar(d.month, d.monthOccs, {
 ${lessonLog(d.sessions, { isTeacher: true, studentId: student.id, assigned: d.assigned, dictate: d.dictate })}`,
     ),
     {
-      title: `${student.name} · Past classes`,
+      title: t('%s · Past classes', student.name),
       user,
       siteName,
       nav: 'students',
@@ -376,6 +402,7 @@ export function scheduleTab(
   siteName: string,
   msg?: string,
 ): string {
+  setLang(user.lang);
   const tz = student.time_zone;
   const onHold = student.status !== 'active';
 
@@ -387,18 +414,22 @@ export function scheduleTab(
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 ${
   onHold
-    ? `<div class="flash err">${esc(student.name.split(' ')[0])} is
-       <b>${esc(student.status)}</b>, so these classes are off the calendar &mdash; nothing is
-       deleted, and they come back the moment the status is set to active again.
-       <a href="/t/s/${esc(student.id)}/settings">Change status</a></div>`
+    ? `<div class="flash err">${t(
+        '%s is %s, so these classes are off the calendar &mdash; nothing is deleted, and they come back the moment the status is set to active again.',
+        esc(student.name.split(' ')[0]),
+        `<b>${esc(student.status)}</b>`,
+      )}
+       <a href="/t/s/${esc(student.id)}/settings">${t('Change status')}</a></div>`
     : ''
 }
 
 <div class="section-head">
-  <div><h2>Weekly slots</h2>
-    <p class="lede">Set in Indian time. What ${esc(student.name.split(' ')[0])} sees shifts with
-      their own daylight saving.</p></div>
-  <a class="btn btn-sm" href="/t/schedule/slots">Add or change slots</a>
+  <div><h2>${t('Weekly slots')}</h2>
+    <p class="lede">${t(
+      'Set in Indian time. What %s sees shifts with their own daylight saving.',
+      esc(student.name.split(' ')[0]),
+    )}</p></div>
+  <a class="btn btn-sm" href="/t/schedule/slots">${t('Add or change slots')}</a>
 </div>
 ${
   d.slots.length
@@ -408,21 +439,21 @@ ${
       <div class="row-main">
         <div class="row-title">${
           s.kind === 'weekly'
-            ? `Every ${esc(WEEKDAYS[s.weekday ?? 0])}`
-            : `Once on ${esc(prettyIstDate(s.on_date ?? ''))}`
+            ? t('Every %s', esc(WEEKDAYS[s.weekday ?? 0]))
+            : t('Once on %s', esc(prettyIstDate(s.on_date ?? '')))
         }${s.label ? ` <span class="slot-label">${esc(s.label)}</span>` : ''}</div>
         <div class="row-meta">
           <span class="num">${esc(prettyIst(s.time_ist))} IST</span>
-          <span>${s.duration_min} minutes</span>
+          <span>${t('%s minutes', s.duration_min)}</span>
         </div>
       </div>
     </div>`,
         )
         .join('')}</div>`
-    : '<div class="empty">No slots set up yet.</div>'
+    : `<div class="empty">${t('No slots set up yet.')}</div>`
 }
 
-<div class="section-head"><h2>Next classes</h2></div>
+<div class="section-head"><h2>${t('Next classes')}</h2></div>
 ${
   d.upcoming.length
     ? `<div class="rows">${d.upcoming
@@ -433,21 +464,21 @@ ${
         <div class="row-main">
           <div class="row-title">${esc(prettyIstDate(o.date))} · ${esc(prettyIst(o.time))} IST</div>
           <div class="row-meta">
-            ${l ? `<span>${esc(l.time)} ${esc(l.weekday)} their time</span>` : ''}
-            ${o.moved ? '<span>rescheduled</span>' : ''}
+            ${l ? `<span>${t('%s %s their time', esc(l.time), esc(l.weekday))}</span>` : ''}
+            ${o.moved ? `<span>${t('rescheduled')}</span>` : ''}
             ${o.slot.label ? `<span>${esc(o.slot.label)}</span>` : ''}
           </div>
         </div>
         <div class="row-actions">
-          <a class="btn btn-sm" href="/t/class/${esc(o.slot.id)}/${esc(o.originalDate)}">Open</a>
+          <a class="btn btn-sm" href="/t/class/${esc(o.slot.id)}/${esc(o.originalDate)}">${t('Open')}</a>
         </div>
       </div>`;
         })
         .join('')}</div>`
-    : '<div class="empty">Nothing coming up.</div>'
+    : `<div class="empty">${t('Nothing coming up.')}</div>`
 }`,
     ),
-    { title: `${student.name} · Schedule`, user, siteName, nav: 'students' },
+    { title: t('%s · Schedule', student.name), user, siteName, nav: 'students' },
   );
 }
 
@@ -462,6 +493,7 @@ export function settingsTab(
   siteName: string,
   msg?: string,
 ): string {
+  setLang(user.lang);
   return page(
     shell(
       student,
@@ -471,67 +503,71 @@ export function settingsTab(
 
 <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
   <div class="card">
-    <h3>Details</h3>
+    <h3>${t('Details')}</h3>
     <form method="post" action="/t/students/${esc(student.id)}/details" style="margin-top:12px">
-      <div class="field"><label for="sd-name">Name</label>
+      <div class="field"><label for="sd-name">${t('Name')}</label>
         <input id="sd-name" name="name" type="text" value="${esc(student.name)}" required></div>
-      <div class="field"><label for="sd-loc">Where they are</label>
+      <div class="field"><label for="sd-loc">${t('Where they are')}</label>
         <input id="sd-loc" name="location" type="text" value="${esc(student.location ?? '')}"
                placeholder="Dubai, UAE"></div>
-      <div class="field"><label for="sd-phone">WhatsApp number</label>
+      <div class="field"><label for="sd-phone">${t('WhatsApp number')}</label>
         <input id="sd-phone" name="phone" type="tel" inputmode="tel" value="${esc(student.phone ?? '')}"
                placeholder="+91 98470 12345">
-        <p class="hint">With the country code, so the link opens the right chat from anywhere.</p></div>
+        <p class="hint">${t('With the country code, so the link opens the right chat from anywhere.')}</p></div>
       <div class="field">
-        <label for="sd-tz">Time zone</label>
+        <label for="sd-tz">${t('Time zone')}</label>
         <select id="sd-tz" name="time_zone">
-          <option value="">— not set —</option>
+          <option value="">${t('— not set —')}</option>
           ${zoneOptions(student.time_zone)}
         </select>
-        <p class="hint">Filled in automatically the first time they open the site. Change it only
-          if that's wrong, or if they've moved.</p>
+        <p class="hint">${t(
+          "Filled in automatically the first time they open the site. Change it only if that's wrong, or if they've moved.",
+        )}</p>
       </div>
-      <button class="btn btn-primary" type="submit">Save details</button>
+      <button class="btn btn-primary" type="submit">${t('Save details')}</button>
     </form>
   </div>
 
   <div class="card">
-    <h3>Status</h3>
+    <h3>${t('Status')}</h3>
     <form method="post" action="/t/students/${esc(student.id)}/status" style="margin-top:12px">
       <input type="hidden" name="back" value="/t/s/${esc(student.id)}/settings">
       <div class="field">
-        <label for="sd-status">Currently</label>
+        <label for="sd-status">${t('Currently')}</label>
         <select id="sd-status" name="status">
           ${['active', 'paused', 'graduated', 'ended']
             .map(
               (v) =>
-                `<option value="${v}"${v === student.status ? ' selected' : ''}>${esc(STATUS_LABEL[v])}</option>`,
+                `<option value="${v}"${v === student.status ? ' selected' : ''}>${esc(t(STATUS_LABEL[v]))}</option>`,
             )
             .join('')}
         </select>
       </div>
       <div class="field">
-        <label for="sd-note">Note <span class="opt">— optional</span></label>
+        <label for="sd-note">${t('Note')} <span class="opt">${t('— optional')}</span></label>
         <input id="sd-note" name="status_note" type="text" value="${esc(student.status_note ?? '')}"
-               placeholder="Back after exams in June">
+               placeholder="${esc(t('Back after exams in June'))}">
       </div>
-      <button class="btn" type="submit">Update status</button>
-      <p class="hint">Nothing is deleted. Their recordings, lesson history and schedule stay, and
-        they can be made active again at any time.</p>
+      <button class="btn" type="submit">${t('Update status')}</button>
+      <p class="hint">${t(
+        'Nothing is deleted. Their recordings, lesson history and schedule stay, and they can be made active again at any time.',
+      )}</p>
     </form>
   </div>
 </div>
 
-<div class="section-head"><h2>Account</h2></div>
+<div class="section-head"><h2>${t('Account')}</h2></div>
 <div class="card">
   <div class="row-meta" style="margin:0">
     <span>${esc(student.email)}</span>
-    <span>joined ${esc(fmtDate(student.created_at))}</span>
-    <span>${student.google_sub ? 'has signed in with Google' : 'has not signed in yet'}</span>
+    <span>${t('joined %s', esc(fmtDate(student.created_at)))}</span>
+    <span>${
+      student.google_sub ? t('has signed in with Google') : t('has not signed in yet')
+    }</span>
     ${student.time_zone ? `<span>${esc(student.time_zone.replace(/_/g, ' '))}</span>` : ''}
   </div>
 </div>`,
     ),
-    { title: `${student.name} · Settings`, user, siteName, nav: 'students' },
+    { title: t('%s · Settings', student.name), user, siteName, nav: 'students' },
   );
 }

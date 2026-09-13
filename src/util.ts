@@ -1,3 +1,5 @@
+import { t, lang } from './i18n';
+
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz'; // Crockford-ish, no look-alikes
 
 /** Short, sortable-enough, URL-safe id. */
@@ -38,19 +40,29 @@ export function fmtDuration(sec: number | null | undefined): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * A date the way it is written, in whichever language the page is in.
+ * Malayalam gets Malayalam month names from the browser's own tables;
+ * the numbers stay Western digits, which is what people here read.
+ */
 export function fmtDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString(lang() === 'ml' ? 'ml-IN-u-nu-latn' : 'en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
+/** "5 days ago", "never" — the app's own words, so they translate. */
 export function relativeDate(iso: string | null): string {
-  if (!iso) return 'never';
+  if (!iso) return t('never');
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 30) return `${days} days ago`;
-  if (days < 60) return 'last month';
-  return `${Math.floor(days / 30)} months ago`;
+  if (days <= 0) return t('today');
+  if (days === 1) return t('yesterday');
+  if (days < 30) return t('%s days ago', days);
+  if (days < 60) return t('last month');
+  return t('%s months ago', Math.floor(days / 30));
 }
 
 /** Pick a file extension from a MIME type so downloads land with a sensible name. */

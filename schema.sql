@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone        TEXT,                               -- WhatsApp number, as typed
   palette      TEXT,                               -- brass | indigo | palm | kumkum | night
   theme_mode   TEXT,                               -- auto | light | dark
+  lang         TEXT,                               -- en | ml (the interface; song titles and notes are unaffected)
   status_note  TEXT,                               -- why they paused/ended
   status_changed_at TEXT
 );

@@ -1,3 +1,4 @@
+import { lang } from './i18n';
 /* ==================================================================
  * Time zones
  *
@@ -250,13 +251,34 @@ export function prettyIst(time: string): string {
   return `${h12}:${String(mm).padStart(2, '0')} ${period}`;
 }
 
+/**
+ * The locale the browser's own date tables should be read in.
+ * Malayalam keeps Western digits — nobody here reads Malayalam numerals
+ * off a calendar — so the month and weekday names change and the
+ * numbers do not.
+ */
+function dateLocale(): string {
+  return lang() === 'ml' ? 'ml-IN-u-nu-latn' : 'en-GB';
+}
+
 /** Human date for an IST date string: "Tue 8 Sep". */
 export function prettyIstDate(date: string): string {
   const [y, m, d] = date.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(dateLocale(), {
     timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short',
   }).format(dt);
+}
+
+/**
+ * "September 2026", or "Sep 2026" when short. Call it from a view, not
+ * from a route: the language is only set for the duration of a render.
+ */
+export function monthLabel(ym: string, style: 'long' | 'short' = 'long'): string {
+  const [y, m] = ym.split('-').map(Number);
+  return new Intl.DateTimeFormat(dateLocale(), {
+    timeZone: 'UTC', month: style, year: 'numeric',
+  }).format(new Date(Date.UTC(y, m - 1, 1)));
 }
 
 /**

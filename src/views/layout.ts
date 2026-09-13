@@ -1,4 +1,5 @@
 import { esc } from '../util';
+import { t, lang as currentLang, LANGS } from '../i18n';
 import type { User } from '../types';
 
 interface LayoutOpts {
@@ -57,22 +58,28 @@ export function isMode(v: string): boolean {
  */
 function themePicker(palette: string, mode: string): string {
   const current = PALETTES.find((p) => p.id === palette) ?? PALETTES[0];
+  const here = currentLang();
   return `<details class="themepick">
-  <summary title="Colours" aria-label="Change colours">
+  <summary title="${esc(t('Colours and language'))}" aria-label="${esc(t('Colours and language'))}">
     <span class="tp-dot" style="background:${esc(current.dot)}"></span>
   </summary>
   <div class="tp-menu">
     <form method="post" action="/settings/theme">
-      <div class="tp-h">Colours</div>
+      <div class="tp-h">${esc(t('Language'))}</div>
+      ${LANGS.map(
+        (l) => `<button class="tp-opt${l.id === here ? ' is-on' : ''}"
+          name="lang" value="${esc(l.id)}" type="submit" lang="${esc(l.id)}">${esc(l.nativeName)}</button>`,
+      ).join('')}
+      <div class="tp-h">${esc(t('Colours'))}</div>
       ${PALETTES.map(
         (p) => `<button class="tp-opt${p.id === current.id ? ' is-on' : ''}"
           name="palette" value="${esc(p.id)}" type="submit">
-        <span class="tp-dot" style="background:${esc(p.dot)}"></span>${esc(p.name)}</button>`,
+        <span class="tp-dot" style="background:${esc(p.dot)}"></span>${esc(t(p.name))}</button>`,
       ).join('')}
-      <div class="tp-h">Light or dark</div>
+      <div class="tp-h">${esc(t('Light or dark'))}</div>
       ${MODES.map(
         (m) => `<button class="tp-opt${m.id === mode ? ' is-on' : ''}"
-          name="theme_mode" value="${esc(m.id)}" type="submit">${esc(m.name)}</button>`,
+          name="theme_mode" value="${esc(m.id)}" type="submit">${esc(t(m.name))}</button>`,
       ).join('')}
     </form>
   </div>
@@ -89,12 +96,12 @@ export function page(body: string, o: LayoutOpts): string {
   const nav = u
     ? isTeacher
       ? `<nav class="nav">
-           <a href="/t"${o.nav === 'students' ? ' aria-current="page"' : ''}>Students</a>
-           <a href="/t/schedule/week"${o.nav === 'schedule' ? ' aria-current="page"' : ''}>Schedule</a>
-           <a href="/t/catalogue"${o.nav === 'catalogue' ? ' aria-current="page"' : ''}>Songs</a>
-           <a href="/t/approvals"${o.nav === 'approvals' ? ' aria-current="page"' : ''}>Approvals</a>
+           <a href="/t"${o.nav === 'students' ? ' aria-current="page"' : ''}>${esc(t('Students'))}</a>
+           <a href="/t/schedule/week"${o.nav === 'schedule' ? ' aria-current="page"' : ''}>${esc(t('Schedule'))}</a>
+           <a href="/t/catalogue"${o.nav === 'catalogue' ? ' aria-current="page"' : ''}>${esc(t('Songs'))}</a>
+           <a href="/t/approvals"${o.nav === 'approvals' ? ' aria-current="page"' : ''}>${esc(t('Approvals'))}</a>
          </nav>`
-      : `<nav class="nav"><a href="/me"${o.nav === 'mine' ? ' aria-current="page"' : ''}>My songs</a></nav>`
+      : `<nav class="nav"><a href="/me"${o.nav === 'mine' ? ' aria-current="page"' : ''}>${esc(t('My songs'))}</a></nav>`
     : '<div class="nav"></div>';
 
   const whoami = u
@@ -102,7 +109,7 @@ export function page(body: string, o: LayoutOpts): string {
          ${themePicker(palette, mode)}
          ${u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="" referrerpolicy="no-referrer">` : ''}
          <span class="who-name">${esc(u.name)}</span>
-         <form method="post" action="/auth/logout"><button class="btn btn-sm btn-quiet" type="submit">Sign out</button></form>
+         <form method="post" action="/auth/logout"><button class="btn btn-sm btn-quiet" type="submit">${esc(t('Sign out'))}</button></form>
        </div>`
     : '';
 
@@ -110,7 +117,7 @@ export function page(body: string, o: LayoutOpts): string {
      paint. A class that flips the theme in JavaScript after load gives
      every page a flash of the previous one. */
   return `<!doctype html>
-<html lang="en" data-palette="${esc(palette)}"${mode === 'auto' ? '' : ` data-theme="${esc(mode)}"`}>
+<html lang="${esc(currentLang())}" data-palette="${esc(palette)}"${mode === 'auto' ? '' : ` data-theme="${esc(mode)}"`}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -211,8 +218,8 @@ export function disclosure(o: {
 /** The expand-all / collapse-all pair. Hidden when JavaScript is off. */
 export function discloseAll(label = 'sections'): string {
   return `<div class="disc-all" hidden data-disc-all-bar>
-  <button class="btn btn-sm btn-quiet" type="button" data-disc-all="open">Expand all</button>
-  <button class="btn btn-sm btn-quiet" type="button" data-disc-all="close">Collapse all</button>
+  <button class="btn btn-sm btn-quiet" type="button" data-disc-all="open">${esc(t('Expand all'))}</button>
+  <button class="btn btn-sm btn-quiet" type="button" data-disc-all="close">${esc(t('Collapse all'))}</button>
   <span class="disc-all-note">${esc(label)}</span>
 </div>`;
 }

@@ -36,6 +36,8 @@ export interface User {
   palette: string | null;
   /** auto follows the device; light and dark override it. */
   theme_mode: string | null;
+  /** The interface language, en or ml. Content they typed is untouched. */
+  lang: string | null;
   status_note: string | null;
   status_changed_at: string | null;
 }

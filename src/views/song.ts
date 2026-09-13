@@ -13,6 +13,7 @@ import { page, avatar, titleWithScript, disclosure, discloseAll } from './layout
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import { spoken } from './sessions';
 import type { User, Group, Section, Recording, Note } from '../types';
+import { t, setLang } from '../i18n';
 
 /** Common parts of a Carnatic piece, offered as suggestions rather than a fixed list. */
 export const SONG_PARTS = [
@@ -52,13 +53,13 @@ function partsDatalist(): string {
 
 /** Who this item reaches, as a pill you can read at a glance. */
 function audiencePill(visibility: string, shared: string[], students: SongStudent[]): string {
-  if (visibility === 'shared') return '<span class="pill p-info">everyone</span>';
-  if (!shared.length) return '<span class="pill p-warn">nobody yet</span>';
+  if (visibility === 'shared') return `<span class="pill p-info">${t('everyone')}</span>`;
+  if (!shared.length) return `<span class="pill p-warn">${t('nobody yet')}</span>`;
   if (shared.length === 1) {
     const s = students.find((x) => x.id === shared[0]);
-    return `<span class="pill p-brass">${esc(s ? s.name.split(' ')[0] : '1 student')}</span>`;
+    return `<span class="pill p-brass">${esc(s ? s.name.split(' ')[0] : t('%s student', 1))}</span>`;
   }
-  return `<span class="pill p-brass">${shared.length} students</span>`;
+  return `<span class="pill p-brass">${t('%s students', shared.length)}</span>`;
 }
 
 /**
@@ -81,8 +82,10 @@ function audienceForm(o: {
   const set = new Set(o.shared);
 
   if (!o.students.length) {
-    return `<p class="hint">Nobody is assigned this song yet, so there is no one to choose from.
-      Until then this ${esc(o.noun)} is for everyone learning it.</p>`;
+    return `<p class="hint">${t(
+      'Nobody is assigned this song yet, so there is no one to choose from. Until then this %s is for everyone learning it.',
+      esc(t(o.noun)),
+    )}</p>`;
   }
 
   return `<form method="post" action="${esc(o.action)}" class="audience">
@@ -90,11 +93,11 @@ function audienceForm(o: {
   <div class="aud-choice">
     <label>
       <input type="radio" name="visibility" value="shared"${chosen ? '' : ' checked'}>
-      <span><b>Everyone learning this song</b></span>
+      <span><b>${t('Everyone learning this song')}</b></span>
     </label>
     <label>
       <input type="radio" name="visibility" value="chosen"${chosen ? ' checked' : ''}>
-      <span><b>Only the students I tick</b></span>
+      <span><b>${t('Only the students I tick')}</b></span>
     </label>
   </div>
   <div class="aud-who">
@@ -104,14 +107,14 @@ function audienceForm(o: {
       <input id="${esc(o.idPrefix)}${esc(s.id)}" type="checkbox" name="share_ids" value="${esc(s.id)}"${
         set.has(s.id) ? ' checked' : ''
       }>
-      <span>${esc(s.name)}${s.completed_at ? ' <span class="opt">— finished</span>' : ''}</span>
+      <span>${esc(s.name)}${s.completed_at ? ` <span class="opt">${t('— finished')}</span>` : ''}</span>
     </label>`,
       )
       .join('')}
   </div>
   <div class="btn-row">
-    <button class="btn btn-sm btn-primary" type="submit">Save who it's for</button>
-    <span class="hint" style="margin:0">Ticking nobody leaves it with everyone.</span>
+    <button class="btn btn-sm btn-primary" type="submit">${t("Save who it's for")}</button>
+    <span class="hint" style="margin:0">${t('Ticking nobody leaves it with everyone.')}</span>
   </div>
 </form>`;
 }
@@ -139,53 +142,53 @@ function noteBlock(
       <form method="post" action="/t/notes/${esc(n.id)}/move">
         <input type="hidden" name="dir" value="up">
         <input type="hidden" name="back" value="${esc(o.back)}">
-        <button class="btn btn-sm" type="submit" title="Move up"${idx === 0 ? ' disabled' : ''}>&uarr;</button></form>
+        <button class="btn btn-sm" type="submit" title="${esc(t('Move up'))}"${idx === 0 ? ' disabled' : ''}>&uarr;</button></form>
       <form method="post" action="/t/notes/${esc(n.id)}/move">
         <input type="hidden" name="dir" value="down">
         <input type="hidden" name="back" value="${esc(o.back)}">
-        <button class="btn btn-sm" type="submit" title="Move down"${idx === total - 1 ? ' disabled' : ''}>&darr;</button></form>
+        <button class="btn btn-sm" type="submit" title="${esc(t('Move down'))}"${idx === total - 1 ? ' disabled' : ''}>&darr;</button></form>
     </span>
   </div>
   ${n.title ? `<p class="note-title">${esc(n.title)}</p>` : ''}
   ${n.body_ml ? `<p class="note-body ml">${esc(n.body_ml)}</p>` : ''}
   ${n.body ? `<p class="note-body${n.body_ml ? ' said-en' : ''}">${esc(n.body)}</p>` : ''}
-  ${n.image_key ? `<img class="note-img" src="/img/${esc(n.id)}" alt="Note attachment" loading="lazy">` : ''}
+  ${n.image_key ? `<img class="note-img" src="/img/${esc(n.id)}" alt="${esc(t('Note attachment'))}" loading="lazy">` : ''}
 
   <div class="note-tools">
-    <a class="note-dl" href="/note/${esc(n.id)}/download">Download note</a>
-    ${n.image_key ? `<a class="note-dl" href="/img/${esc(n.id)}?download=1">Download image</a>` : ''}
+    <a class="note-dl" href="/note/${esc(n.id)}/download">${t('Download note')}</a>
+    ${n.image_key ? `<a class="note-dl" href="/img/${esc(n.id)}?download=1">${t('Download image')}</a>` : ''}
     <details class="inline-edit">
-      <summary>Edit</summary>
+      <summary>${t('Edit')}</summary>
       <div class="inline-edit-body">
         <form method="post" action="/t/notes/${esc(n.id)}">
           <input type="hidden" name="back" value="${esc(o.back)}">
           <div class="field">
-            <label for="${p}t">Heading <span class="opt">&mdash; optional</span></label>
+            <label for="${p}t">${t('Heading')} <span class="opt">${t('— optional')}</span></label>
             <input id="${p}t" name="title" type="text" value="${esc(n.title ?? '')}"
-                   placeholder="Anupallavi &mdash; gamaka">
+                   placeholder="${esc(t('Anupallavi — gamaka'))}">
           </div>
           ${spoken({
             id: `${p}b`,
             name: 'body',
-            label: 'Note',
+            label: t('Note'),
             placeholder: '',
             en: n.body ?? '',
             ml: n.body_ml ?? '',
             dictate: Boolean(o.dictate),
           })}
           <div class="btn-row">
-            <button class="btn btn-sm btn-primary" type="submit">Save note</button>
+            <button class="btn btn-sm btn-primary" type="submit">${t('Save note')}</button>
           </div>
         </form>
         <form method="post" action="/notes/${esc(n.id)}/delete" style="margin-top:10px"
-              onsubmit="return confirm('Delete this note?')">
-          <button class="btn btn-sm btn-danger" type="submit">Delete note</button>
+              onsubmit="return confirm('${t('Delete this note?')}')">
+          <button class="btn btn-sm btn-danger" type="submit">${t('Delete note')}</button>
         </form>
       </div>
     </details>
 
     <details class="inline-edit">
-      <summary>Who can see it</summary>
+      <summary>${t('Who can see it')}</summary>
       <div class="inline-edit-body">
         ${audienceForm({
           action: `/t/notes/${n.id}`,
@@ -217,32 +220,32 @@ function noteForm(o: {
   ${o.recordingId ? `<input type="hidden" name="recording_id" value="${esc(o.recordingId)}">` : ''}
   <input type="hidden" name="back" value="${esc(o.back)}">
   <div class="field">
-    <label for="${p}title">Heading <span class="opt">&mdash; optional</span></label>
-    <input id="${p}title" name="title" type="text" placeholder="Anupallavi &mdash; gamaka">
+    <label for="${p}title">${t('Heading')} <span class="opt">${t('— optional')}</span></label>
+    <input id="${p}title" name="title" type="text" placeholder="${esc(t('Anupallavi — gamaka'))}">
   </div>
   ${spoken({
     id: `${p}body`,
     name: 'body',
-    label: 'Note',
-    placeholder: 'The gamaka on the second sangati should be slower than it looks written.',
+    label: t('Note'),
+    placeholder: t('The gamaka on the second sangati should be slower than it looks written.'),
     en: '',
     ml: '',
     dictate: Boolean(o.dictate),
   })}
   <div class="field">
-    <label for="${p}img">Screenshot or notation <span class="opt">&mdash; optional</span></label>
+    <label for="${p}img">${t('Screenshot or notation')} <span class="opt">${t('— optional')}</span></label>
     <input id="${p}img" name="image" type="file" accept="image/*">
   </div>
   ${
     o.students.length
       ? `<details class="inline-edit" style="margin-top:0">
-    <summary>Who can see it &mdash; everyone, unless you say otherwise</summary>
+    <summary>${t('Who can see it — everyone, unless you say otherwise')}</summary>
     <div class="inline-edit-body">
       <div class="aud-choice">
         <label><input type="radio" name="visibility" value="shared" checked>
-          <span><b>Everyone learning this song</b></span></label>
+          <span><b>${t('Everyone learning this song')}</b></span></label>
         <label><input type="radio" name="visibility" value="chosen">
-          <span><b>Only the students I tick</b></span></label>
+          <span><b>${t('Only the students I tick')}</b></span></label>
       </div>
       <div class="aud-who">
         ${o.students
@@ -257,7 +260,7 @@ function noteForm(o: {
   </details>`
       : ''
   }
-  <div class="btn-row"><button class="btn btn-sm btn-primary" type="submit">Save note</button></div>
+  <div class="btn-row"><button class="btn btn-sm btn-primary" type="submit">${t('Save note')}</button></div>
 </form>`;
 }
 
@@ -299,10 +302,10 @@ function recordingBlock(
     <span class="rec-sum">
       <span class="rec-sum-top">
         <span class="rec-title">
-          ${esc(r.title || (r.kind === 'video' ? 'Video clip' : 'Recording'))}
+          ${esc(r.title || (r.kind === 'video' ? t('Video clip') : t('Recording')))}
           ${r.part ? `<span class="part-tag">${esc(r.part)}</span>` : ''}
           ${audiencePill(r.visibility, o.shared, o.students)}
-          ${noteCount ? `<span class="note-count">${noteCount} ${noteCount === 1 ? 'note' : 'notes'}</span>` : ''}
+          ${noteCount ? `<span class="note-count">${noteCount === 1 ? t('%s note', noteCount) : t('%s notes', noteCount)}</span>` : ''}
         </span>
         <span class="rec-meta">
           <span>${esc(fmtDate(r.created_at))}</span>
@@ -314,10 +317,10 @@ function recordingBlock(
     </span>
     <span class="rec-order">
       <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="up"
-        data-keep-open title="Move up within ${esc(r.part || 'this song')}"
+        data-keep-open title="${esc(t('Move up within %s', r.part || t('this song')))}"
         ${idx === 0 ? 'disabled' : ''}>&uarr;</button>
       <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="down"
-        data-keep-open title="Move down within ${esc(r.part || 'this song')}"
+        data-keep-open title="${esc(t('Move down within %s', r.part || t('this song')))}"
         ${idx === total - 1 ? 'disabled' : ''}>&darr;</button>
     </span>
   </summary>
@@ -328,7 +331,7 @@ function recordingBlock(
 
     <div class="controls">
       <div class="ctrl-group">
-        <span class="ctrl-label">Speed</span>
+        <span class="ctrl-label">${t('Speed')}</span>
         <div class="speeds" data-speeds>
           <button type="button" data-rate="0.5">0.5&times;</button>
           <button type="button" data-rate="0.75">0.75&times;</button>
@@ -337,17 +340,17 @@ function recordingBlock(
         </div>
       </div>
       <div class="ctrl-group">
-        <span class="ctrl-label">Loop</span>
-        <button type="button" class="btn btn-sm" data-loop>Set A</button>
+        <span class="ctrl-label">${t('Loop')}</span>
+        <button type="button" class="btn btn-sm" data-loop>${t('Set A')}</button>
         <span class="loop-state" data-loop-state></span>
       </div>
       <div class="ctrl-group" style="margin-left:auto">
-        <a class="btn btn-sm" href="/media/${esc(r.id)}?download=1">Download</a>
+        <a class="btn btn-sm" href="/media/${esc(r.id)}?download=1">${t('Download')}</a>
       </div>
     </div>
 
     <div class="rec-notes">
-      <div class="rec-notes-head">Notes on this recording${
+      <div class="rec-notes-head">${t('Notes on this recording')}${
         noteCount ? ` <span class="num">${noteCount}</span>` : ''
       }</div>
       ${
@@ -362,10 +365,10 @@ function recordingBlock(
                 }),
               )
               .join('')
-          : '<p class="hint" style="margin:0 0 10px">Nothing written about this take yet.</p>'
+          : `<p class="hint" style="margin:0 0 10px">${t('Nothing written about this take yet.')}</p>`
       }
       <details class="inline-edit">
-        <summary>Add a note to this recording</summary>
+        <summary>${t('Add a note to this recording')}</summary>
         <div class="inline-edit-body">
           ${noteForm({
             sectionId: r.section_id,
@@ -381,41 +384,41 @@ function recordingBlock(
 
     <div class="rec-tools">
       <details class="inline-edit">
-        <summary>Edit this recording</summary>
+        <summary>${t('Edit this recording')}</summary>
         <div class="inline-edit-body">
           <form method="post" action="/t/recordings/${esc(r.id)}">
             <input type="hidden" name="back" value="${esc(o.back)}">
             <div class="field-row">
               <div class="field">
-                <label for="${p}t">Name <span class="opt">&mdash; what this take is</span></label>
+                <label for="${p}t">${t('Name')} <span class="opt">${t('— what this take is')}</span></label>
                 <input id="${p}t" name="title" type="text" value="${esc(r.title ?? '')}"
-                       placeholder="Pallavi, slow" required>
+                       placeholder="${esc(t('Pallavi, slow'))}" required>
               </div>
               <div class="field">
-                <label for="${p}p">Part of the song</label>
+                <label for="${p}p">${t('Part of the song')}</label>
                 <input id="${p}p" name="part" type="text" list="song-parts" value="${esc(r.part ?? '')}"
                        placeholder="Pallavi">
               </div>
             </div>
             <div class="field">
-              <label for="${p}d">Description <span class="opt">&mdash; a few lines on what this take shows</span></label>
+              <label for="${p}d">${t('Description')} <span class="opt">${t('— a few lines on what this take shows')}</span></label>
               <textarea id="${p}d" name="description" rows="3"
-                placeholder="Anupallavi at half speed. The gamaka before the arohanam is held longer than the notation suggests.">${esc(r.description ?? '')}</textarea>
+                placeholder="${esc(t('Anupallavi at half speed. The gamaka before the arohanam is held longer than the notation suggests.'))}">${esc(r.description ?? '')}</textarea>
             </div>
             <div class="btn-row">
-              <button class="btn btn-sm btn-primary" type="submit">Save</button>
+              <button class="btn btn-sm btn-primary" type="submit">${t('Save')}</button>
             </div>
           </form>
           <form method="post" action="/t/recordings/${esc(r.id)}/delete" style="margin-top:10px"
-                onsubmit="return confirm('Delete this recording permanently?')">
+                onsubmit="return confirm('${t('Delete this recording permanently?')}')">
             <input type="hidden" name="back" value="${esc(o.back)}">
-            <button class="btn btn-sm btn-danger" type="submit">Delete recording</button>
+            <button class="btn btn-sm btn-danger" type="submit">${t('Delete recording')}</button>
           </form>
         </div>
       </details>
 
       <details class="inline-edit">
-        <summary>Who can hear it</summary>
+        <summary>${t('Who can hear it')}</summary>
         <div class="inline-edit-body">
           ${audienceForm({
             action: `/t/recordings/${r.id}`,
@@ -436,6 +439,7 @@ function recordingBlock(
 /* ------------------------------------------------------------------ */
 
 export function songPage(user: User, d: SongPageData, siteName: string, msg?: string): string {
+  setLang(user.lang);
   const { section, groups, recordings, notes, recShares, noteShares, learning, finished, assignable } = d;
   const everyone = [...learning, ...finished];
   const back = `/t/song/${section.id}`;
@@ -474,31 +478,39 @@ export function songPage(user: User, d: SongPageData, siteName: string, msg?: st
     <div class="row-title"><a href="/t/s/${esc(s.id)}/${esc(section.id)}"
       style="color:inherit;text-decoration:none">${esc(s.name)}</a></div>
     <div class="row-meta">
-      ${s.completed_at ? `<span>finished ${esc(relativeDate(s.completed_at))}</span>` : ''}
-      ${s.rec_count ? `<span class="num">${s.rec_count} private ${s.rec_count === 1 ? 'recording' : 'recordings'}</span>` : ''}
-      ${s.status !== 'active' ? `<span class="pill p-warn">${esc(s.status)}</span>` : ''}
+      ${s.completed_at ? `<span>${t('finished %s', esc(relativeDate(s.completed_at)))}</span>` : ''}
+      ${
+        s.rec_count
+          ? `<span class="num">${
+              s.rec_count === 1
+                ? t('%s private recording', s.rec_count)
+                : t('%s private recordings', s.rec_count)
+            }</span>`
+          : ''
+      }
+      ${s.status !== 'active' ? `<span class="pill p-warn">${esc(t(s.status))}</span>` : ''}
     </div>
   </div>
   <div class="row-actions">
-    <a class="btn btn-sm" href="/t/s/${esc(s.id)}/${esc(section.id)}">Open</a>
+    <a class="btn btn-sm" href="/t/s/${esc(s.id)}/${esc(section.id)}">${t('Open')}</a>
     <form method="post" action="/t/s/${esc(s.id)}/complete-song">
       <input type="hidden" name="section_id" value="${esc(section.id)}">
       ${s.completed_at ? '<input type="hidden" name="undo" value="1">' : ''}
       <input type="hidden" name="back" value="/t/song/${esc(section.id)}">
-      <button class="btn btn-sm btn-quiet" type="submit">${s.completed_at ? 'Reopen' : 'Mark finished'}</button>
+      <button class="btn btn-sm btn-quiet" type="submit">${s.completed_at ? t('Reopen') : t('Mark finished')}</button>
     </form>
   </div>
 </div>`;
 
   return page(
     `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
-<a class="crumb" href="/t/catalogue">← Songs</a>
+<a class="crumb" href="/t/catalogue">← ${t('Songs')}</a>
 <div class="page-head">
   <h1>${titleWithScript(section.title, section.title_ml)}</h1>
   <p class="lede">${[
     section.group_name ? esc(section.group_name) : '',
-    section.raga ? `Raga ${esc(section.raga)}` : '',
-    section.taala ? `Taala ${esc(section.taala)}` : '',
+    section.raga ? t('Raga %s', esc(section.raga)) : '',
+    section.taala ? t('Taala %s', esc(section.taala)) : '',
     section.composer ? esc(section.composer) : '',
   ]
     .filter(Boolean)
@@ -508,30 +520,30 @@ export function songPage(user: User, d: SongPageData, siteName: string, msg?: st
 ${partsDatalist()}
 
 <details class="panel" style="margin-bottom:22px">
-  <summary>Edit song details</summary>
+  <summary>${t('Edit song details')}</summary>
   <div class="panel-body">
     <form method="post" action="/t/sections/${esc(section.id)}">
       <input type="hidden" name="back" value="/t/song/${esc(section.id)}">
       <div class="field">
-        <label for="e-title">Title</label>
+        <label for="e-title">${t('Title')}</label>
         <input id="e-title" name="title" type="text" value="${esc(section.title)}" required>
       </div>
       <div class="field">
-        <label for="e-ml">Title in Malayalam <span class="opt">— optional</span></label>
+        <label for="e-ml">${t('Title in Malayalam')} <span class="opt">${t('— optional')}</span></label>
         <input id="e-ml" name="title_ml" type="text" class="ml" lang="ml" value="${esc(section.title_ml ?? '')}">
       </div>
       <div class="field-row">
-        <div class="field"><label for="e-raga">Raga</label>
+        <div class="field"><label for="e-raga">${t('Raga')}</label>
           <input id="e-raga" name="raga" type="text" value="${esc(section.raga ?? '')}"></div>
-        <div class="field"><label for="e-taala">Taala</label>
+        <div class="field"><label for="e-taala">${t('Taala')}</label>
           <input id="e-taala" name="taala" type="text" value="${esc(section.taala ?? '')}"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label for="e-comp">Composer</label>
+        <div class="field"><label for="e-comp">${t('Composer')}</label>
           <input id="e-comp" name="composer" type="text" value="${esc(section.composer ?? '')}"></div>
-        <div class="field"><label for="e-group">Group</label>
+        <div class="field"><label for="e-group">${t('Group')}</label>
           <select id="e-group" name="group_id">
-            <option value="">— none —</option>
+            <option value="">${t('— none —')}</option>
             ${groups
               .map(
                 (g) =>
@@ -540,22 +552,22 @@ ${partsDatalist()}
               .join('')}
           </select></div>
       </div>
-      <button class="btn btn-primary" type="submit">Save details</button>
+      <button class="btn btn-primary" type="submit">${t('Save details')}</button>
     </form>
     <form method="post" action="/t/sections/${esc(section.id)}/delete" style="margin-top:14px"
-          onsubmit="return confirm('Delete this song and every recording and note filed under it?')">
-      <button class="btn btn-sm btn-danger" type="submit">Delete this song</button>
+          onsubmit="return confirm('${t('Delete this song and every recording and note filed under it?')}')">
+      <button class="btn btn-sm btn-danger" type="submit">${t('Delete this song')}</button>
     </form>
   </div>
 </details>
 
 <div class="section-head">
-  <div><h2>Recordings</h2>
-    <p class="lede">${recordings.length} in total, grouped by the part they cover. Open one to
-      play it, read its notes, and set who it's for.</p></div>
+  <div><h2>${t('Recordings')}</h2>
+    <p class="lede">${t('%s in total, grouped by the part they cover.', recordings.length)}
+      ${t("Open one to play it, read its notes, and set who it's for.")}</p></div>
 </div>
 
-${recordings.length > 1 ? discloseAll('Your browser remembers what you leave open.') : ''}
+${recordings.length > 1 ? discloseAll(t('Your browser remembers what you leave open.')) : ''}
 ${
   recordings.length
     ? partKeys
@@ -565,8 +577,11 @@ ${
             key: `part:${section.id}:${k}`,
             cls: 'disc-part',
             open: true,
-            title: k ? esc(k) : 'No part set',
-            meta: `${list.length} ${list.length === 1 ? 'recording' : 'recordings'}`,
+            title: k ? esc(k) : esc(t('No part set')),
+            meta:
+              list.length === 1
+                ? t('%s recording', list.length)
+                : t('%s recordings', list.length),
             // The first take in a part opens; the rest wait to be asked for.
             body: list
               .map((r, i) =>
@@ -584,8 +599,8 @@ ${
           });
         })
         .join('')
-    : `<div class="empty"><strong>No recordings yet</strong>
-       Add one below and everyone learning this song will have it.</div>`
+    : `<div class="empty"><strong>${t('No recordings yet')}</strong>
+       ${t('Add one below and everyone learning this song will have it.')}</div>`
 }
 
 <!-- Recording is something you go and do, not something you read on the way
@@ -594,25 +609,25 @@ ${
      recorder left open is not a state worth restoring. -->
 <details class="panel addrec">
   <summary>
-    <span class="addrec-t">Add a recording</span>
-    <span class="addrec-s">record in the browser, or drop in files</span>
+    <span class="addrec-t">${t('Add a recording')}</span>
+    <span class="addrec-s">${t('record in the browser, or drop in files')}</span>
   </summary>
   <div class="panel-body">
 
-<p class="lede" style="margin-top:10px">Audio becomes MP3 before it uploads.
-  Every take needs a name &mdash; it's how you'll find it again.</p>
+<p class="lede" style="margin-top:10px">${t('Audio becomes MP3 before it uploads.')}
+  ${t("Every take needs a name — it's how you'll find it again.")}</p>
 
 ${
   everyone.length
     ? `<details class="panel" style="margin-bottom:14px">
-  <summary>Who these are for &mdash; everyone learning this song</summary>
+  <summary>${t('Who these are for — everyone learning this song')}</summary>
   <div class="panel-body">
     <div data-audience>
       <div class="aud-choice">
         <label><input type="radio" name="visibility" value="shared" checked>
-          <span><b>Everyone learning this song</b></span></label>
+          <span><b>${t('Everyone learning this song')}</b></span></label>
         <label><input type="radio" name="visibility" value="chosen">
-          <span><b>Only the students I tick</b></span></label>
+          <span><b>${t('Only the students I tick')}</b></span></label>
       </div>
       <div class="aud-who">
         ${everyone
@@ -623,8 +638,8 @@ ${
           )
           .join('')}
       </div>
-      <p class="hint">This applies to whatever you record or upload next. You can change it on any
-        recording afterwards.</p>
+      <p class="hint">${t('This applies to whatever you record or upload next.')}
+        ${t('You can change it on any recording afterwards.')}</p>
     </div>
   </div>
 </details>`
@@ -632,8 +647,8 @@ ${
 }
 
 <div class="tabs" role="tablist">
-  <button role="tab" aria-selected="true" data-tab="record">Record now</button>
-  <button role="tab" aria-selected="false" data-tab="upload">Upload files</button>
+  <button role="tab" aria-selected="true" data-tab="record">${t('Record now')}</button>
+  <button role="tab" aria-selected="false" data-tab="upload">${t('Upload files')}</button>
 </div>
 
 <div data-panel="record">
@@ -644,33 +659,33 @@ ${
       <div class="level" data-level-wrap hidden><div class="level-fill" data-level></div></div>
     </div>
     <div class="btn-row" style="margin-top:16px">
-      <button class="btn btn-primary" type="button" data-start>Start recording</button>
-      <button class="btn" type="button" data-stop disabled>Stop</button>
+      <button class="btn btn-primary" type="button" data-start>${t('Start recording')}</button>
+      <button class="btn" type="button" data-stop disabled>${t('Stop')}</button>
       <label style="display:flex;align-items:center;gap:7px;margin:0 0 0 6px;font-size:13.5px;font-weight:500;color:var(--ink-2)">
-        <input type="checkbox" data-video style="width:auto"> Record video instead
+        <input type="checkbox" data-video style="width:auto"> ${t('Record video instead')}
       </label>
     </div>
-    <p class="rec-status" data-status>Audio is saved as MP3 so it plays on every phone, including older iPhones.</p>
+    <p class="rec-status" data-status>${t('Audio is saved as MP3 so it plays on every phone, including older iPhones.')}</p>
     <div data-preview hidden style="margin-top:14px;padding-top:16px;border-top:1px solid var(--line)">
       <div data-player></div>
       <div class="field-row" style="margin-top:12px">
         <div class="field">
-          <label for="rec-title">Name this take <span class="req">&mdash; required</span></label>
-          <input id="rec-title" type="text" data-title placeholder="Pallavi, slow" required>
+          <label for="rec-title">${t('Name this take')} <span class="req">${t('— required')}</span></label>
+          <input id="rec-title" type="text" data-title placeholder="${esc(t('Pallavi, slow'))}" required>
         </div>
         <div class="field">
-          <label for="rec-part">Part of the song</label>
+          <label for="rec-part">${t('Part of the song')}</label>
           <input id="rec-part" type="text" data-part list="song-parts" placeholder="Pallavi">
         </div>
       </div>
       <div class="field">
-        <label for="rec-desc">Description <span class="opt">— optional, a few lines</span></label>
+        <label for="rec-desc">${t('Description')} <span class="opt">${t('— optional, a few lines')}</span></label>
         <textarea id="rec-desc" rows="2" data-desc
-          placeholder="Second sangati, slowly. Hold the gamaka longer than written."></textarea>
+          placeholder="${esc(t('Second sangati, slowly. Hold the gamaka longer than written.'))}"></textarea>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" type="button" data-save>Save recording</button>
-        <button class="btn btn-quiet" type="button" data-discard>Discard</button>
+        <button class="btn btn-primary" type="button" data-save>${t('Save recording')}</button>
+        <button class="btn btn-quiet" type="button" data-discard>${t('Discard')}</button>
       </div>
       <div class="progress" data-progress><div class="progress-fill" data-progress-fill></div></div>
     </div>
@@ -679,9 +694,9 @@ ${
 
 <div data-panel="upload" hidden>
   <div class="dropzone" data-drop data-student="" data-section="${esc(section.id)}">
-    <strong>Drop audio or video here</strong>
-    or click to choose files — MP3, M4A, WAV, MP4 and MOV all work.
-    Each one is named after its file; rename it afterwards if that isn't right.
+    <strong>${t('Drop audio or video here')}</strong>
+    ${t('or click to choose files — MP3, M4A, WAV, MP4 and MOV all work.')}
+    ${t("Each one is named after its file; rename it afterwards if that isn't right.")}
     <input type="file" data-file multiple accept="audio/*,video/*" hidden>
   </div>
   <div class="queue" data-queue></div>
@@ -691,9 +706,9 @@ ${
 </details>
 
 <div class="section-head">
-  <div><h2>Notes about the whole song</h2>
-    <p class="lede">Notes that belong to one take live with it, above. These are the ones about
-      the song itself &mdash; everyone learning it sees them unless you pick people.</p></div>
+  <div><h2>${t('Notes about the whole song')}</h2>
+    <p class="lede">${t('Notes that belong to one take live with it, above.')}
+      ${t('These are the ones about the song itself — everyone learning it sees them unless you pick people.')}</p></div>
 </div>
 
 ${
@@ -708,11 +723,11 @@ ${
           }),
         )
         .join('')
-    : '<div class="empty">No notes about the song yet.</div>'
+    : `<div class="empty">${t('No notes about the song yet.')}</div>`
 }
 
 <details class="panel" style="margin-top:14px">
-  <summary>Add a note about the song</summary>
+  <summary>${t('Add a note about the song')}</summary>
   <div class="panel-body">
     ${noteForm({
       sectionId: section.id,
@@ -726,35 +741,39 @@ ${
 </details>
 
 <div class="section-head">
-  <div><h2>Learning this now</h2></div>
+  <div><h2>${t('Learning this now')}</h2></div>
 </div>
 ${
   learning.length
     ? `<div class="rows">${learning.map(studentRow).join('')}</div>`
-    : '<div class="empty">Nobody is on this song at the moment.</div>'
+    : `<div class="empty">${t('Nobody is on this song at the moment.')}</div>`
 }
 
 ${
   finished.length
-    ? `<div class="section-head"><div><h2>Finished it</h2>
-       <p class="lede">${finished.length} ${finished.length === 1 ? 'student has' : 'students have'} completed this song.</p></div></div>
+    ? `<div class="section-head"><div><h2>${t('Finished it')}</h2>
+       <p class="lede">${
+         finished.length === 1
+           ? t('%s student has completed this song.', finished.length)
+           : t('%s students have completed this song.', finished.length)
+       }</p></div></div>
      <div class="rows">${finished.map(studentRow).join('')}</div>`
     : ''
 }
 
 ${
   assignable.length
-    ? `<div class="section-head"><h2>Assign to a student</h2></div>
+    ? `<div class="section-head"><h2>${t('Assign to a student')}</h2></div>
   <div class="card">
     <form method="post" action="/t/song/${esc(section.id)}/assign"
           style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
       <div class="field" style="flex:1;min-width:240px;margin-bottom:0">
-        <label for="assign-student">Student</label>
+        <label for="assign-student">${t('Student')}</label>
         <select id="assign-student" name="student_id" required>
           ${assignable.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
         </select>
       </div>
-      <button class="btn btn-primary" type="submit">Assign</button>
+      <button class="btn btn-primary" type="submit">${t('Assign')}</button>
     </form>
   </div>`
     : ''

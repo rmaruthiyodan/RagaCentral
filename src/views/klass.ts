@@ -12,6 +12,7 @@ import { esc, fmtDate, relativeDate, waLink } from '../util';
 import type { User, SessionRow, AssignedRow } from '../types';
 import { prettyIst, prettyIstDate, inZone, type Occurrence } from '../tz';
 import type { WithZone } from './schedule';
+import { t, setLang } from '../i18n';
 
 export interface ClassPageData {
   student: WithZone & { email: string; phone?: string | null };
@@ -34,6 +35,7 @@ function loggedField(label: string, ml: string | null, en: string | null, cls = 
 }
 
 export function classPage(user: User, d: ClassPageData, siteName: string, msg?: string): string {
+  setLang(user.lang);
   const { student, occ, lastLesson, songs, alreadyLogged } = d;
   const local = student.time_zone ? inZone(occ.instant, student.time_zone) : null;
   const off = occ.skipped || occ.missed;
@@ -71,13 +73,13 @@ export function classPage(user: User, d: ClassPageData, siteName: string, msg?: 
       local
         ? `<div class="cw-line cw-local">${esc(local.time)} ${esc(local.weekday)}
            <span class="zone">${esc(local.abbr)}</span></div>`
-        : '<div class="cw-line local-unknown">their time zone is not set</div>'
+        : `<div class="cw-line local-unknown">${t('their time zone is not set')}</div>`
     }
-    <div class="cw-meta">${esc(prettyIstDate(occ.date))} · ${occ.slot.duration_min} min</div>
+    <div class="cw-meta">${esc(prettyIstDate(occ.date))} · ${t('%s min', occ.slot.duration_min)}</div>
     ${
       occ.moved
-        ? `<div class="cw-meta"><span class="pill p-warn">moved</span>
-           from ${esc(prettyIstDate(occ.originalDate))}</div>`
+        ? `<div class="cw-meta"><span class="pill p-warn">${t('moved')}</span>
+           ${t('from %s', esc(prettyIstDate(occ.originalDate)))}</div>`
         : ''
     }
   </div>
@@ -85,29 +87,35 @@ export function classPage(user: User, d: ClassPageData, siteName: string, msg?: 
 
 ${
   off
-    ? `<div class="flash err">This class is marked ${occ.missed ? 'missed' : 'cancelled'}${
-        occ.reason ? ` — ${esc(occ.reason)}` : ''
-      }.
+    ? `<div class="flash err">${
+        occ.reason
+          ? t(
+              'This class is marked %s — %s.',
+              occ.missed ? t('missed') : t('cancelled'),
+              esc(occ.reason),
+            )
+          : t('This class is marked %s.', occ.missed ? t('missed') : t('cancelled'))
+      }
    <form method="post" action="/t/slots/${esc(occ.slot.id)}/restore" style="display:inline;margin-left:8px">
      <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
      <input type="hidden" name="back" value="/t/class/${esc(occ.slot.id)}/${esc(occ.originalDate)}">
-     <button class="btn btn-sm" type="submit">Put it back</button></form>
+     <button class="btn btn-sm" type="submit">${t('Put it back')}</button></form>
  </div>`
     : ''
 }
 
-<div class="section-head"><h2>Pick up from here</h2></div>
+<div class="section-head"><h2>${t('Pick up from here')}</h2></div>
 ${
   lastLesson
     ? `<div class="resume">
   <div class="resume-eyebrow">
-    <span>Last lesson</span><span class="dotsep">·</span>
+    <span>${t('Last lesson')}</span><span class="dotsep">·</span>
     <span>${esc(fmtDate(lastLesson.held_on))}</span><span class="dotsep">·</span>
     <span>${esc(relativeDate(lastLesson.held_on))}</span>
     ${
       lastLesson.status === 'ongoing'
-        ? '<span class="pill p-brass">was still in progress</span>'
-        : '<span class="pill p-good">finished</span>'
+        ? `<span class="pill p-brass">${t('was still in progress')}</span>`
+        : `<span class="pill p-good">${t('finished')}</span>`
     }
   </div>
   ${
@@ -116,25 +124,25 @@ ${
       : `<p class="resume-text" style="color:var(--ink-3)">${
           lastLesson.covered_ml || lastLesson.covered
             ? esc((lastLesson.covered_ml || lastLesson.covered)!)
-            : 'Nothing was noted about where you stopped.'
+            : t('Nothing was noted about where you stopped.')
         }</p>`
   }
-  ${practise ? `<p class="resume-sub"><b>They were asked to practise:</b> ${esc(practise)}</p>` : ''}
+  ${practise ? `<p class="resume-sub"><b>${t('They were asked to practise:')}</b> ${esc(practise)}</p>` : ''}
   ${
     lastLesson.covered && stopped
-      ? `<p class="resume-sub"><b>Covered:</b> ${esc((lastLesson.covered_ml || lastLesson.covered)!)}</p>`
+      ? `<p class="resume-sub"><b>${t('Covered:')}</b> ${esc((lastLesson.covered_ml || lastLesson.covered)!)}</p>`
       : ''
   }
   <div class="resume-actions">
-    <a class="btn btn-sm" href="/t/s/${esc(student.id)}/lessons">All previous lessons</a>
+    <a class="btn btn-sm" href="/t/s/${esc(student.id)}/lessons">${t('All previous lessons')}</a>
   </div>
 </div>`
-    : `<div class="empty">No previous lesson logged for ${esc(student.name.split(' ')[0])}.</div>`
+    : `<div class="empty">${t('No previous lesson logged for %s.', esc(student.name.split(' ')[0]))}</div>`
 }
 
 <div class="section-head">
-  <div><h2>Songs to work on</h2>
-    <p class="lede">Open one to play its recordings and read its notes.</p></div>
+  <div><h2>${t('Songs to work on')}</h2>
+    <p class="lede">${t('Open one to play its recordings and read its notes.')}</p></div>
 </div>
 ${
   songs.length
@@ -145,35 +153,43 @@ ${
       <div class="row-title">${inlineTitle(a.title, a.title_ml)}</div>
       <div class="row-meta">
         ${a.group_name ? `<span>${esc(a.group_name)}</span>` : ''}
-        ${a.raga ? `<span>Raga ${esc(a.raga)}</span>` : ''}
-        <span class="num">${a.rec_count} ${a.rec_count === 1 ? 'recording' : 'recordings'}</span>
-        ${a.note_count ? `<span class="num">${a.note_count} ${a.note_count === 1 ? 'note' : 'notes'}</span>` : ''}
+        ${a.raga ? `<span>${t('Raga %s', esc(a.raga))}</span>` : ''}
+        <span class="num">${
+          a.rec_count === 1 ? t('%s recording', a.rec_count) : t('%s recordings', a.rec_count)
+        }</span>
+        ${
+          a.note_count
+            ? `<span class="num">${
+                a.note_count === 1 ? t('%s note', a.note_count) : t('%s notes', a.note_count)
+              }</span>`
+            : ''
+        }
       </div>
     </div>
-    <div class="row-actions"><span class="btn btn-sm btn-primary">Open</span></div>
+    <div class="row-actions"><span class="btn btn-sm btn-primary">${t('Open')}</span></div>
   </a>`,
         )
         .join('')}</div>`
-    : `<div class="empty">No songs assigned yet.
-       <a href="/t/s/${esc(student.id)}/songs">Assign one</a>.</div>`
+    : `<div class="empty">${t('No songs assigned yet.')}
+       <a href="/t/s/${esc(student.id)}/songs">${t('Assign one')}</a>.</div>`
 }
 
 <div class="section-head" id="log">
-  <div><h2>${alreadyLogged ? 'This lesson is logged' : 'Log this lesson'}</h2>
+  <div><h2>${alreadyLogged ? t('This lesson is logged') : t('Log this lesson')}</h2>
     <p class="lede">${
       alreadyLogged
-        ? 'You already wrote this one up. Edit it under Lessons if anything changed.'
-        : 'Fill this in at the end and the stopping point carries into next week.'
+        ? t('You already wrote this one up. Edit it under Lessons if anything changed.')
+        : t('Fill this in at the end and the stopping point carries into next week.')
     }</p></div>
 </div>
 
 ${
   alreadyLogged
     ? `<div class="card">
-    ${loggedField('Covered', alreadyLogged.covered_ml, alreadyLogged.covered)}
-    ${loggedField('Stopped at', alreadyLogged.left_off_ml, alreadyLogged.left_off, 'stop')}
+    ${loggedField(t('Covered'), alreadyLogged.covered_ml, alreadyLogged.covered)}
+    ${loggedField(t('Stopped at'), alreadyLogged.left_off_ml, alreadyLogged.left_off, 'stop')}
     <div class="btn-row" style="margin-top:14px">
-      <a class="btn btn-sm" href="/t/s/${esc(student.id)}/lessons">Edit it</a>
+      <a class="btn btn-sm" href="/t/s/${esc(student.id)}/lessons">${t('Edit it')}</a>
     </div>
   </div>`
     : `<div class="card">
@@ -184,7 +200,7 @@ ${
     ${
       songs.length
         ? `<div class="field">
-      <label>Songs you worked on</label>
+      <label>${t('Songs you worked on')}</label>
       <div class="songpick">
         ${songs
           .map(
@@ -198,32 +214,32 @@ ${
         : ''
     }
     ${spoken({
-      id: 'cl-covered', name: 'covered', label: 'What you covered', en: '', ml: '',
-      placeholder: 'Sarali 1 to 7 at two speeds. Started the pallavi.',
+      id: 'cl-covered', name: 'covered', label: t('What you covered'), en: '', ml: '',
+      placeholder: t('Sarali 1 to 7 at two speeds. Started the pallavi.'),
       dictate: Boolean(d.dictate),
     })}
     ${spoken({
-      id: 'cl-left', name: 'left_off', label: 'Where you stopped', en: '', ml: '',
-      placeholder: 'Midway through the second sangati — start there next time.',
-      hint: "This is what you'll see at the top of this screen next week.",
+      id: 'cl-left', name: 'left_off', label: t('Where you stopped'), en: '', ml: '',
+      placeholder: t('Midway through the second sangati — start there next time.'),
+      hint: t("This is what you'll see at the top of this screen next week."),
       dictate: Boolean(d.dictate),
     })}
     ${spoken({
-      id: 'cl-next', name: 'next_focus', label: 'To practise before next time', optional: true,
+      id: 'cl-next', name: 'next_focus', label: t('To practise before next time'), optional: true,
       en: '', ml: '',
-      placeholder: 'That one phrase, slowly, with the recording at 0.75x.',
+      placeholder: t('That one phrase, slowly, with the recording at 0.75x.'),
       dictate: Boolean(d.dictate),
     })}
     <div class="field">
-      <label>How did it end?</label>
+      <label>${t('How did it end?')}</label>
       <div class="statuspick">
         <label><input type="radio" name="status" value="completed" checked>
-          <span><b>Finished what we planned</b><span>Ready for something new next time.</span></span></label>
+          <span><b>${t('Finished what we planned')}</b><span>${t('Ready for something new next time.')}</span></span></label>
         <label><input type="radio" name="status" value="ongoing">
-          <span><b>Still in the middle of it</b><span>Carry on from the same place.</span></span></label>
+          <span><b>${t('Still in the middle of it')}</b><span>${t('Carry on from the same place.')}</span></span></label>
       </div>
     </div>
-    <button class="btn btn-primary" type="submit">Save lesson</button>
+    <button class="btn btn-primary" type="submit">${t('Save lesson')}</button>
   </form>
 </div>`
 }
@@ -231,28 +247,28 @@ ${
 ${
   off
     ? ''
-    : `<div class="section-head"><h2>If it isn't happening</h2></div>
+    : `<div class="section-head"><h2>${t("If it isn't happening")}</h2></div>
 <div class="card">
   <div class="day-actions" style="margin:0;padding:0;border:none">
     <form method="post" action="/t/slots/${esc(occ.slot.id)}/missed" class="day-form">
       <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
       <input type="hidden" name="back" value="/t/class/${esc(occ.slot.id)}/${esc(occ.originalDate)}">
-      <input name="reason" type="text" placeholder="Why it didn't happen — optional">
-      <button class="btn btn-sm" type="submit">Mark missed</button>
+      <input name="reason" type="text" placeholder="${t("Why it didn't happen — optional")}">
+      <button class="btn btn-sm" type="submit">${t('Mark missed')}</button>
     </form>
     <form method="post" action="/t/slots/${esc(occ.slot.id)}/skip" class="day-form">
       <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
       <input type="hidden" name="back" value="/t/class/${esc(occ.slot.id)}/${esc(occ.originalDate)}">
-      <input name="reason" type="text" placeholder="Reason — Onam, travel…">
-      <button class="btn btn-sm" type="submit">Cancel this class</button>
+      <input name="reason" type="text" placeholder="${t('Reason — Onam, travel…')}">
+      <button class="btn btn-sm" type="submit">${t('Cancel this class')}</button>
     </form>
     <form method="post" action="/t/slots/${esc(occ.slot.id)}/move" class="day-form">
       <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
       <input type="hidden" name="back" value="/t/schedule/day/${esc(occ.date)}">
-      <span class="day-label">Reschedule to</span>
+      <span class="day-label">${t('Reschedule to')}</span>
       <input name="new_date" type="date" value="${esc(occ.date)}" required>
       <input name="new_time_ist" type="time" value="${esc(occ.time)}" required>
-      <button class="btn btn-sm" type="submit">Move</button>
+      <button class="btn btn-sm" type="submit">${t('Move')}</button>
     </form>
   </div>
 </div>`

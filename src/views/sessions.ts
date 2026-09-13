@@ -9,6 +9,7 @@
 
 import { esc, fmtDate, relativeDate } from '../util';
 import type { SessionRow, AssignedRow } from '../types';
+import { t, setLang } from '../i18n';
 
 /** Separator used by group_concat in the session queries. */
 export const SEP = ' ~|~ ';
@@ -53,9 +54,11 @@ export function resumeCard(
   const logHref = o.logHref || '#log';
   if (!latest) {
     return o.isTeacher
-      ? `<div class="empty" style="margin-bottom:6px"><strong>No lessons logged yet</strong>
-         After your next class with ${esc(o.firstName)}, write down what you covered and where you
-         stopped. It shows up here, so you can pick straight up next time.</div>`
+      ? `<div class="empty" style="margin-bottom:6px"><strong>${t('No lessons logged yet')}</strong>
+         ${t(
+           'After your next class with %s, write down what you covered and where you stopped. It shows up here, so you can pick straight up next time.',
+           esc(o.firstName),
+         )}</div>`
       : '';
   }
 
@@ -65,15 +68,15 @@ export function resumeCard(
 
   return `<div class="resume">
   <div class="resume-eyebrow">
-    <span>${ongoing ? 'Pick up from here' : 'Last lesson'}</span>
+    <span>${ongoing ? t('Pick up from here') : t('Last lesson')}</span>
     <span class="dotsep">&middot;</span>
     <span>${esc(fmtDate(latest.held_on))}</span>
     <span class="dotsep">&middot;</span>
     <span>${esc(relativeDate(latest.held_on))}</span>
     ${
       ongoing
-        ? '<span class="pill p-brass">still in progress</span>'
-        : '<span class="pill p-good">finished</span>'
+        ? `<span class="pill p-brass">${t('still in progress')}</span>`
+        : `<span class="pill p-good">${t('finished')}</span>`
     }
   </div>
 
@@ -82,11 +85,12 @@ export function resumeCard(
       ? `<div class="resume-text">${bilingual(latest.left_off_ml, latest.left_off)}</div>`
       : latest.covered || latest.covered_ml
         ? `<div class="resume-text is-fallback">${bilingual(latest.covered_ml, latest.covered)}</div>`
-        : `<p class="resume-text" style="color:var(--ink-3)">No note was left about where you
-             stopped.</p>`
+        : `<p class="resume-text" style="color:var(--ink-3)">${t(
+            'No note was left about where you stopped.',
+          )}</p>`
   }
 
-  ${next ? `<div class="resume-sub"><b>Before next time:</b>${next}</div>` : ''}
+  ${next ? `<div class="resume-sub"><b>${t('Before next time:')}</b>${next}</div>` : ''}
   ${songChips(latest.section_titles)}
 
   ${
@@ -95,11 +99,13 @@ export function resumeCard(
       ${
         ongoing
           ? `<form method="post" action="/t/sessions/${esc(latest.id)}/complete">
-               <button class="btn btn-sm btn-primary" type="submit">Mark this lesson finished</button>
+               <button class="btn btn-sm btn-primary" type="submit">${t(
+                 'Mark this lesson finished',
+               )}</button>
              </form>`
           : ''
       }
-      <a class="btn btn-sm" href="${esc(logHref)}">Log the next lesson</a>
+      <a class="btn btn-sm" href="${esc(logHref)}">${t('Log the next lesson')}</a>
     </div>`
       : ''
   }
@@ -133,12 +139,16 @@ export function spoken(o: {
   return `<div class="field spoken" data-spoken>
     <div class="spoken-head">
       <label for="${esc(o.id)}">${esc(o.label)}${
-        o.optional ? ' <span class="opt">&mdash; optional</span>' : ''
+        o.optional ? ` <span class="opt">${t('— optional')}</span>` : ''
       }</label>
       ${
         o.dictate
-          ? `<button class="mic" type="button" data-mic aria-label="Speak this in Malayalam">
-        <span class="mic-dot" aria-hidden="true"></span><span data-mic-label>Speak it</span>
+          ? `<button class="mic" type="button" data-mic aria-label="${esc(
+              t('Speak this in Malayalam'),
+            )}">
+        <span class="mic-dot" aria-hidden="true"></span><span data-mic-label>${t(
+          'Speak it',
+        )}</span>
       </button>`
           : ''
       }
@@ -151,7 +161,7 @@ export function spoken(o: {
     </div>
 
     <div class="spoken-en">
-      <span class="spoken-tag"${o.ml ? '' : ' hidden'} data-en-tag>English</span>
+      <span class="spoken-tag"${o.ml ? '' : ' hidden'} data-en-tag>${t('English')}</span>
       <textarea id="${esc(o.id)}" name="${esc(o.name)}" rows="2"
         data-en placeholder="${esc(o.placeholder)}">${esc(o.en)}</textarea>
     </div>
@@ -179,11 +189,13 @@ function logFields(assigned: AssignedRow[], s: SessionRow | undefined, dictate: 
 
   return `<div class="field-row">
     <div class="field">
-      <label for="${p}date">Date</label>
+      <label for="${p}date">${t('Date')}</label>
       <input id="${p}date" name="held_on" type="date" value="${esc(s?.held_on ?? today)}" required>
     </div>
     <div class="field">
-      <label for="${p}dur">How long <span class="opt">&mdash; minutes, optional</span></label>
+      <label for="${p}dur">${t('How long')} <span class="opt">${t(
+        '— minutes, optional',
+      )}</span></label>
       <input id="${p}dur" name="duration_min" type="number" min="1" max="600"
              value="${esc(s?.duration_min ?? '')}" placeholder="45">
     </div>
@@ -192,7 +204,7 @@ function logFields(assigned: AssignedRow[], s: SessionRow | undefined, dictate: 
   ${
     assigned.length
       ? `<div class="field">
-      <label>Songs you worked on</label>
+      <label>${t('Songs you worked on')}</label>
       <div class="songpick">
         ${assigned
           .map(
@@ -211,8 +223,8 @@ function logFields(assigned: AssignedRow[], s: SessionRow | undefined, dictate: 
   ${spoken({
     id: `${p}covered`,
     name: 'covered',
-    label: 'What you covered',
-    placeholder: 'Sarali 1 to 7 at two speeds. Started the pallavi of Vatapi.',
+    label: t('What you covered'),
+    placeholder: t('Sarali 1 to 7 at two speeds. Started the pallavi of Vatapi.'),
     en: s?.covered ?? '',
     ml: s?.covered_ml ?? '',
     dictate,
@@ -221,10 +233,13 @@ function logFields(assigned: AssignedRow[], s: SessionRow | undefined, dictate: 
   ${spoken({
     id: `${p}left`,
     name: 'left_off',
-    label: 'Where you stopped',
-    placeholder: 'Midway through the second sangati — the phrase before the arohanam still needs work.',
-    hint: `This is the line pinned to the top of the page next time. Be as specific as
-      you'd want to be reminded.`,
+    label: t('Where you stopped'),
+    placeholder: t(
+      'Midway through the second sangati — the phrase before the arohanam still needs work.',
+    ),
+    hint: t(
+      "This is the line pinned to the top of the page next time. Be as specific as you'd want to be reminded.",
+    ),
     en: s?.left_off ?? '',
     ml: s?.left_off_ml ?? '',
     dictate,
@@ -233,24 +248,28 @@ function logFields(assigned: AssignedRow[], s: SessionRow | undefined, dictate: 
   ${spoken({
     id: `${p}next`,
     name: 'next_focus',
-    label: 'To practise before next time',
+    label: t('To practise before next time'),
     optional: true,
-    placeholder: 'Sarali 1 to 5 daily, slowly, with the tanpura.',
+    placeholder: t('Sarali 1 to 5 daily, slowly, with the tanpura.'),
     en: s?.next_focus ?? '',
     ml: s?.next_focus_ml ?? '',
     dictate,
   })}
 
   <div class="field">
-    <label>How did it end?</label>
+    <label>${t('How did it end?')}</label>
     <div class="statuspick">
       <label>
         <input type="radio" name="status" value="completed"${s?.status !== 'ongoing' ? ' checked' : ''}>
-        <span><b>Finished what we planned</b><span>Ready to start something new next time.</span></span>
+        <span><b>${t('Finished what we planned')}</b><span>${t(
+          'Ready to start something new next time.',
+        )}</span></span>
       </label>
       <label>
         <input type="radio" name="status" value="ongoing"${s?.status === 'ongoing' ? ' checked' : ''}>
-        <span><b>Still in the middle of it</b><span>Carry on from the same place next lesson.</span></span>
+        <span><b>${t('Still in the middle of it')}</b><span>${t(
+          'Carry on from the same place next lesson.',
+        )}</span></span>
       </label>
     </div>
   </div>`;
@@ -265,9 +284,11 @@ export function lessonLog(
   const open = sessions.length - done;
 
   const tally = `<div class="tally">
-    <div><div class="t-num">${sessions.length}</div><div class="t-lab">lessons</div></div>
-    <div><div class="t-num">${done}</div><div class="t-lab">completed</div></div>
-    <div class="ongoing"><div class="t-num">${open}</div><div class="t-lab">ongoing</div></div>
+    <div><div class="t-num">${sessions.length}</div><div class="t-lab">${t('lessons')}</div></div>
+    <div><div class="t-num">${done}</div><div class="t-lab">${t('completed')}</div></div>
+    <div class="ongoing"><div class="t-num">${open}</div><div class="t-lab">${t(
+      'ongoing',
+    )}</div></div>
   </div>`;
 
   const one = (s: SessionRow) => `<div id="l-${esc(s.id)}"
@@ -276,35 +297,37 @@ export function lessonLog(
     <span class="lesson-date">${esc(fmtDate(s.held_on))}</span>
     ${
       s.status === 'ongoing'
-        ? '<span class="pill p-brass">ongoing</span>'
-        : '<span class="pill p-good">completed</span>'
+        ? `<span class="pill p-brass">${t('ongoing')}</span>`
+        : `<span class="pill p-good">${t('completed')}</span>`
     }
-    ${s.duration_min ? `<span class="lesson-dur">${s.duration_min} min</span>` : ''}
+    ${s.duration_min ? `<span class="lesson-dur">${t('%s min', s.duration_min)}</span>` : ''}
     <span class="spacer"></span>
     ${
       o.isTeacher && s.status === 'ongoing'
         ? `<form method="post" action="/t/sessions/${esc(s.id)}/complete">
-             <button class="btn btn-sm" type="submit">Mark finished</button></form>`
+             <button class="btn btn-sm" type="submit">${t('Mark finished')}</button></form>`
         : ''
     }
   </div>
 
   ${songChips(s.section_titles)}
-  ${field('Covered', s.covered_ml, s.covered)}
-  ${field('Stopped at', s.left_off_ml, s.left_off, 'stop')}
-  ${field('To practise', s.next_focus_ml, s.next_focus)}
+  ${field(t('Covered'), s.covered_ml, s.covered)}
+  ${field(t('Stopped at'), s.left_off_ml, s.left_off, 'stop')}
+  ${field(t('To practise'), s.next_focus_ml, s.next_focus)}
 
   ${
     o.isTeacher
       ? `<details class="lesson-edit">
-    <summary>Edit this lesson</summary>
+    <summary>${t('Edit this lesson')}</summary>
     <form method="post" action="/t/sessions/${esc(s.id)}">
       ${logFields(o.assigned, s, dictate)}
-      <div class="btn-row"><button class="btn btn-sm btn-primary" type="submit">Save changes</button></div>
+      <div class="btn-row"><button class="btn btn-sm btn-primary" type="submit">${t(
+        'Save changes',
+      )}</button></div>
     </form>
     <form method="post" action="/t/sessions/${esc(s.id)}/delete" style="margin-top:10px"
-          onsubmit="return confirm('Delete this lesson from the log?')">
-      <button class="btn btn-sm btn-danger" type="submit">Delete lesson</button>
+          onsubmit="return confirm('${t('Delete this lesson from the log?')}')">
+      <button class="btn btn-sm btn-danger" type="submit">${t('Delete lesson')}</button>
     </form>
   </details>`
       : ''
@@ -313,11 +336,11 @@ export function lessonLog(
 
   return `<div class="section-head">
     <div>
-      <h2>Lessons</h2>
+      <h2>${t('Lessons')}</h2>
       <p class="lede">${
         o.isTeacher
-          ? 'Every class, most recent first. An ongoing one is a lesson to carry on from.'
-          : 'What you covered in each class with your teacher.'
+          ? t('Every class, most recent first. An ongoing one is a lesson to carry on from.')
+          : t('What you covered in each class with your teacher.')
       }</p>
     </div>
   </div>
@@ -328,16 +351,16 @@ export function lessonLog(
       ? `<div class="rows" style="margin-top:14px">${sessions.map(one).join('')}</div>`
       : o.isTeacher
         ? ''
-        : '<div class="empty">No lessons logged yet.</div>'
+        : `<div class="empty">${t('No lessons logged yet.')}</div>`
   }
 
   ${
     o.isTeacher
-      ? `<div class="section-head" id="log"><h2>Log a lesson</h2></div>
+      ? `<div class="section-head" id="log"><h2>${t('Log a lesson')}</h2></div>
     <div class="card">
       <form method="post" action="/t/s/${esc(o.studentId)}/sessions">
         ${logFields(o.assigned, undefined, dictate)}
-        <button class="btn btn-primary" type="submit">Save lesson</button>
+        <button class="btn btn-primary" type="submit">${t('Save lesson')}</button>
       </form>
     </div>`
       : ''

@@ -15,6 +15,7 @@ import {
   takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher, requireTeacherJson,
 } from './auth';
 import { newId, now, extFor, slugify } from './util';
+import { isLang } from './i18n';
 import { transcribe, DictateError, CARNATIC_TERMS } from './transcribe';
 import * as V from './views/pages';
 import type { StudentRow } from './views/pages';
@@ -88,11 +89,14 @@ app.post('/settings/theme', requireUser, async (c) => {
 
   const palette = String(f.get('palette') ?? '');
   const mode = String(f.get('theme_mode') ?? '');
+  const language = String(f.get('lang') ?? '');
 
   if (palette && V.isPalette(palette)) {
     await c.env.DB.prepare('UPDATE users SET palette = ? WHERE id = ?').bind(palette, user.id).run();
   } else if (mode && V.isMode(mode)) {
     await c.env.DB.prepare('UPDATE users SET theme_mode = ? WHERE id = ?').bind(mode, user.id).run();
+  } else if (language && isLang(language)) {
+    await c.env.DB.prepare('UPDATE users SET lang = ? WHERE id = ?').bind(language, user.id).run();
   }
 
   let back = user.role === 'teacher' ? '/t' : '/me';
@@ -1021,12 +1025,6 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
     const [y, m] = month.split('-').map(Number);
     return new Date(Date.UTC(y, m - 1 + by, 1)).toISOString().slice(0, 7);
   };
-  const label = (ym: string) => {
-    const [y, m] = ym.split('-').map(Number);
-    return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short', year: 'numeric' })
-      .format(new Date(Date.UTC(y, m - 1, 1)));
-  };
-
   return c.html(
     Stu.lessonsTab(
       c.get('user'),
@@ -1039,8 +1037,6 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
         monthOccs,
         prevMonth: shift(-1),
         nextMonth: shift(1),
-        monthLabelPrev: label(shift(-1)),
-        monthLabelNext: label(shift(1)),
         dictate: dictateEnabled(c.env),
       },
       site(c),
