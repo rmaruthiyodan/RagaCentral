@@ -1,13 +1,15 @@
 {
   "name": "sruti",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:local": "wrangler d1 execute sruti --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute sruti --remote --file=./schema.sql",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types test-tz.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs"
   },
   "keywords": [],
   "author": "",

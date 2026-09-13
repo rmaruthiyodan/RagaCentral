@@ -8,6 +8,10 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    /* tz.ts and i18n name their imports with the .ts extension so that
+       test-tz.mjs can run them under Node's type stripping, which does no
+       extension or directory resolution. Safe with noEmit. */
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },

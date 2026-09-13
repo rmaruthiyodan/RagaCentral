@@ -33,7 +33,7 @@
  * view here already works.
  * ================================================================== */
 
-import { ML } from './ml';
+import { ML } from './ml.ts'; // see the note in tz.ts
 
 export type Lang = 'en' | 'ml';
 

@@ -1,4 +1,7 @@
-import { lang } from './i18n';
+/* The .ts is deliberate. test-tz.mjs runs this module under Node's type
+   stripping, which resolves neither a missing extension nor a directory's
+   index — and the bundler is happy either way. */
+import { lang } from './i18n/index.ts';
 /* ==================================================================
  * Time zones
  *

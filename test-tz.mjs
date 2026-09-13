@@ -1,4 +1,4 @@
-import { istToInstant, inZone, expand, istToday, weekdayOf, addDays, prettyIst } from '/home/claude/sruti/src/tz.ts';
+import { istToInstant, inZone, expand, istToday, weekdayOf, addDays, prettyIst } from './src/tz.ts';
 
 const check = (label, got, want) => {
   const ok = got === want;
