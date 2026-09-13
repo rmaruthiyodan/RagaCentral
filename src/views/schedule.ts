@@ -86,9 +86,9 @@ export function schedulePage(
                  <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
                  <button class="btn btn-sm btn-quiet" type="submit">Undo</button></form>
                <a class="btn btn-sm" href="/t/schedule/day/${esc(occ.date)}">Reschedule</a>`
-            : `<details class="change">
+            : `<details class="change" data-reveal>
             <summary class="btn btn-sm btn-quiet">Change</summary>
-            <div class="change-body">
+            <div class="change-body" data-reveal-body>
               <form method="post" action="/t/slots/${esc(occ.slot.id)}/skip">
                 <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
                 <label for="sk-${esc(occ.slot.id)}-${esc(occ.originalDate)}">Cancel this one class</label>

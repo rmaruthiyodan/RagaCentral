@@ -68,6 +68,24 @@
     true,
   );
 
+  /* A panel that floats out of its row — the schedule's Change panel — can
+     open below the fold, where nothing tells you it opened at all. Bring it
+     into view once, gently, and only when it actually doesn't fit. */
+  Array.prototype.slice.call(document.querySelectorAll('details[data-reveal]')).forEach(function (d) {
+    d.addEventListener('toggle', function () {
+      if (!d.open) return;
+      var body = d.querySelector('[data-reveal-body]') || d.lastElementChild;
+      if (!body || !body.getBoundingClientRect) return;
+      var r = body.getBoundingClientRect();
+      if (r.bottom <= (window.innerHeight || 0) - 8) return; // already visible
+      try {
+        body.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      } catch (e) {
+        body.scrollIntoView(false); // older browsers take no options
+      }
+    });
+  });
+
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest && ev.target.closest('[data-disc-all]');
     if (!btn) return;

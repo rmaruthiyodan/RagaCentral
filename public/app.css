@@ -656,27 +656,17 @@ video{background:#000;max-height:420px}
 }
 
 /* ============================================================
-   Editing a song
-   ============================================================ */
-.songedit{position:relative}
-.songedit > summary{list-style:none;cursor:pointer}
-.songedit > summary::-webkit-details-marker{display:none}
-.songedit-body{
-  position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(440px,80vw);
-  background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius);
-  padding:16px 18px;box-shadow:var(--shadow);
-}
-@media (max-width:640px){
-  .songedit-body{position:static;width:auto;margin-top:10px}
-}
-
-/* ============================================================
    Schedule
    Two clocks side by side is the whole point of this screen, so
    the times get the visual weight and everything else recedes.
    ============================================================ */
 .sched{display:flex;flex-direction:column;gap:22px}
-.sched-day{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);overflow:hidden}
+/* overflow is visible on purpose: the Change panel hangs out of the
+   bottom of this card, and clipping it is exactly the bug that hid it.
+   The corners are therefore rounded on the pieces inside instead. */
+.sched-day{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.sched-date{border-radius:calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0}
+.sched-items > .sched-row:last-child{border-radius:0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px)}
 .sched-day.is-today{border-color:var(--brass)}
 .sched-date{
   display:flex;align-items:center;gap:10px;padding:10px 18px;
@@ -691,7 +681,11 @@ video{background:#000;max-height:420px}
 .sched-row{
   display:flex;align-items:center;gap:14px;padding:13px 18px;
   border-bottom:1px solid var(--line);
+  position:relative; /* the Change panel spans this row, not its button */
 }
+/* A row with its panel open has to paint above the rows below it, or their
+   backgrounds and borders show through the panel's shadow. */
+.sched-row:has(details.change[open]){z-index:31}
 .sched-row:last-child{border-bottom:none}
 .sched-row.is-skipped{opacity:.62}
 .sched-row.is-skipped .sched-times{text-decoration:line-through}
@@ -726,22 +720,43 @@ video{background:#000;max-height:420px}
 .sched-actions .dur{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3)}
 .sched-actions form{margin:0}
 
-.change{position:relative}
+/* The Change panel.
+ *
+ * It hangs off the ROW, not off the little button, and spans the row's
+ * full width. Anchoring it to the button made it a 330px column three
+ * forms deep — 450px tall, against a day card 102px tall — and since
+ * .sched-day clipped its overflow, all but the first few pixels were
+ * simply cut off. Two fixes, and both are needed: the card no longer
+ * clips (see .sched-day above), and the panel is now wide and short
+ * instead of narrow and tall, so it fits under the row it belongs to.
+ */
 .change > summary{list-style:none;cursor:pointer}
 .change > summary::-webkit-details-marker{display:none}
 .change-body{
-  position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(330px,84vw);
+  position:absolute;left:0;right:0;top:calc(100% - 5px);z-index:30;
   background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius);
-  padding:15px 17px;box-shadow:var(--shadow);
+  padding:16px 18px;box-shadow:var(--shadow);
+  display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
 }
-.change-body form + form{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.change-body form{margin:0;min-width:0}
+.change-body label{display:block}
 .change-body input{margin-bottom:8px}
 .move-row{display:flex;gap:8px}
+/* A rule apiece when they stack, none when they sit side by side — a
+   divider drawn for a column layout looks like a mistake in a stacked one. */
+@media (max-width:719px){
+  .change-body form + form{padding-top:20px;border-top:1px solid var(--line)}
+  .change-body{gap:0}
+}
 @media (max-width:760px){
   .sched-row{flex-wrap:wrap}
   .sched-times{min-width:0;width:100%}
-  .change-body{position:static;width:auto;margin-top:10px}
 }
+/* No position:static fallback on narrow screens any more. That existed
+   because the panel used to hang off the little Change button and would
+   run off the right edge of a phone; anchored left:0/right:0 to the row
+   it is by definition as wide as the page and no wider. Left static, it
+   sized itself inside .sched-actions and pushed the page sideways. */
 
 /* ---------- slots ---------- */
 .slot-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
