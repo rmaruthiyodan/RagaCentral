@@ -44,8 +44,11 @@ scripts/
   sync-schema.mjs   adds columns an existing database is missing
   backup-report.mjs what a .sql dump actually contains
   restore.mjs       put a dump back, then verify it row by row
-  backup-to-drive.sh weekly backup into your Google Drive folder
-  com.rpsajeev.backup.plist  the launchd job that runs it
+  backup.mjs        the weekly backup — database and recordings → Google Drive
+  restore-media.mjs put the recordings back into R2 from that backup
+  lib/r2.mjs        a small signed-HTTPS client for R2
+  lib/media-keys.mjs which files the database expects to exist
+  com.rpsajeev.backup.plist  the launchd job that runs the backup
   media-audit.mjs   every recording still has its file?
 .github/workflows/
   deploy.yml        push to main → checks → schema → deploy → healthz
@@ -418,10 +421,17 @@ whole setup.
 ## Backups
 
 `BACKUP.md` is the whole strategy. In short: D1's Time Travel covers the last
-7 days on the free plan and needs no setup; a weekly job puts a dump
-in Google Drive (or a GitHub Action does, if the Mac may be off); an R2 bucket lock
-and a weekly `rclone copy` protect the media; `scripts/restore.mjs` puts a dump
-back and checks every table's row count against it.
+7 days on the free plan and needs no setup; `node scripts/backup.mjs`, run
+weekly by launchd, puts the database dump *and* every recording into your
+Google Drive folder (a GitHub Action does the database too, if the Mac may be
+off); `scripts/restore.mjs` puts a dump back and checks every table's row count
+against it, and `scripts/restore-media.mjs` puts the recordings back into R2.
+
+The recordings are backed up against the dump the same run just took — the
+database says which files matter, so an orphaned upload is never mistaken for
+data and a file that has gone missing from R2 is reported rather than quietly
+skipped. It copies forward and never back: a recording deleted in R2 stays in
+the backup.
 
 The backup deliberately does *not* run inside the Worker — the free plan's 10 ms
 CPU and 50-subrequest limits make that unreliable as the library grows, and a

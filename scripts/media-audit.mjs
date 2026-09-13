@@ -18,6 +18,7 @@
  * ================================================================== */
 
 import { readFileSync } from 'node:fs';
+import { mediaKeysFromDump } from './lib/media-keys.mjs';
 
 const [dumpFile, objectsFile] = process.argv.slice(2);
 if (!dumpFile || !objectsFile) {
@@ -31,24 +32,10 @@ if (!dumpFile || !objectsFile) {
 
 const sql = readFileSync(dumpFile, 'utf8');
 
-/* Keys the database expects. Both tables that hold an R2 key:
-   recordings.r2_key and notes.image_key. Pulled out of the dump's
-   INSERT rows rather than by connecting to anything, so this can be
-   run against last week's backup as easily as against today. */
-const wanted = new Map(); // key → what row wants it
-
-/* wrangler quotes table names — INSERT INTO "recordings" — so the match
-   allows for that. Getting this wrong reports "0 files expected" and a
-   clean bill of health, which is the worst possible way to be wrong. */
-for (const line of sql.split('\n')) {
-  if (/^INSERT INTO ["`]?recordings["`]?/.test(line)) {
-    const m = line.match(/'(rec\/[^']+)'/);
-    if (m) wanted.set(m[1], 'recording');
-  } else if (/^INSERT INTO ["`]?notes["`]?/.test(line)) {
-    const m = line.match(/'(note\/[^']+)'/);
-    if (m) wanted.set(m[1], 'note image');
-  }
-}
+/* Keys the database expects — read out of the dump's INSERT rows by
+   the same code the backup uses, so the two can never disagree about
+   what needs to exist. */
+const wanted = mediaKeysFromDump(sql);
 
 if (!wanted.size) {
   console.error(`\n  Found no media keys in ${dumpFile}. Either this app has no`);

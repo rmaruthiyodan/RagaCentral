@@ -111,37 +111,73 @@ being switched off for a fortnight is a real worry.
 ### Route A — the Mac writes into your Drive folder · recommended
 
 Google Drive for desktop keeps a **real folder** on the Mac and syncs it. So
-"upload to Drive" is just "write a file there": no API keys, no OAuth token to
-expire quietly in eighteen months.
+"upload to Drive" is just "write a file there": no API keys for Drive, no OAuth
+token to expire quietly in eighteen months.
 
-**1. Make sure Drive for desktop is installed and signed in.** Check the folder
-exists:
+One program does the whole thing — the database and the recordings:
+
+```bash
+node scripts/backup.mjs              # the weekly job
+node scripts/backup.mjs --check      # can it reach everything? changes nothing
+node scripts/backup.mjs --db-only    # skip the recordings
+node scripts/backup.mjs --verify     # re-check what's already in Drive
+node scripts/backup.mjs --dry-run    # say what it would do
+```
+
+**1. Make sure Drive for desktop is installed and signed in.**
 
 ```bash
 ls ~/Library/CloudStorage/
 # GoogleDrive-mailratish@gmail.com
 ```
 
-**2. Rehearse the script** — this touches nothing live and writes to /tmp:
+The script finds that folder by itself and backs up into
+`My Drive/RP Sajeev Music backups`. Set `DEST` if you want it somewhere else.
+
+**2. Make an R2 API token so it can read the recordings.**
+
+This is *not* the Cloudflare API token wrangler uses — R2 has its own, and they
+are not interchangeable. Cloudflare dashboard → **R2 → API → Create API token**:
+
+- Permission: **Object Read only**. The backup only ever reads; a token that
+  cannot write cannot be the thing that damages the bucket.
+- Scope it to the `sruti-media` bucket.
+- Copy the **Access Key ID** and **Secret Access Key** now. The secret is shown
+  once and never again.
+
+You also need your **Account ID**, which is on the R2 overview page.
+
+**3. Put the settings where the script and launchd can both find them.**
+`~/.sruti-backup.env`, which is a plain `KEY=value` file:
+
+```bash
+cat > ~/.sruti-backup.env <<'EOF'
+R2_ACCOUNT_ID=your-account-id
+R2_ACCESS_KEY_ID=your-access-key-id
+R2_SECRET_ACCESS_KEY=your-secret-access-key
+R2_BUCKET=sruti-media
+# DEST="/Users/you/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/RP Sajeev Music backups"
+# KEEP=12          weeks of database dumps
+# QUOTA_GB=15      how much room this Drive has, in GB
+EOF
+chmod 600 ~/.sruti-backup.env
+```
+
+`chmod 600` matters: that file is a key to every recording in the bucket. It is
+in your home directory, not the project, so it can never be committed.
+
+**4. Check, then rehearse, then run it.**
 
 ```bash
 cd ~/Documents/sruti
-DEST=/tmp/try TARGET=--local ./scripts/backup-to-drive.sh
-ls -R /tmp/try
-```
-
-**3. Point it at Drive and run it for real.** The default `DEST` is
-`~/Library/CloudStorage/GoogleDrive-<your-login>/My Drive/RP Sajeev Music
-backups`; if your folder is named differently, set `DEST` to the right path:
-
-```bash
-DEST="$HOME/Library/CloudStorage/GoogleDrive-mailratish@gmail.com/My Drive/RP Sajeev Music backups" \
-  ./scripts/backup-to-drive.sh
+node scripts/backup.mjs --check      # four lines, all of them should say ok
+DEST=/tmp/try TARGET=--local node scripts/backup.mjs   # touches nothing live
+node scripts/backup.mjs              # the real one
 ```
 
 Open Drive in a browser. The dump should be there within a minute.
 
-**4. Let it run itself, every Monday at 1am:**
+**5. Let it run itself, every Monday at 1am:**
 
 ```bash
 cp scripts/com.rpsajeev.backup.plist ~/Library/LaunchAgents/
@@ -150,39 +186,63 @@ launchctl start com.rpsajeev.backup          # don't wait for Monday
 tail -f ~/Library/Logs/sruti-backup.log
 ```
 
-Edit the `DEST` line inside `backup-to-drive.sh` if you changed it, since
-launchd won't have your shell's environment. If the Mac is asleep at 1am,
-launchd runs the job when it next wakes — the week isn't skipped.
+launchd starts with almost no environment, which is exactly why the settings
+live in `~/.sruti-backup.env` rather than in your shell profile. If the Mac is
+asleep at 1am, launchd runs the job when it next wakes — the week isn't skipped.
+If you edit the plist, `launchctl unload` and `load` it again; launchd reads it
+only when it loads.
 
 **What lands in Drive**
 
 ```
 RP Sajeev Music backups/
-  LAST BACKUP.txt              when, what, and how to restore
+  LAST BACKUP.txt                  when, what, and what needs attention
+  status.json                      the same, for a script to read
   database/
-    sruti-2026-09-07.sql.gz    one per week, newest 12 kept
-    sruti-2026-09-07.report.json   row counts, checksum
-  media/                       only if you set MEDIA_REMOTE
+    sruti-2026-09-14.sql.gz        one per week, newest 12 kept
+    sruti-2026-09-14.report.json   row counts, checksum
+  media/
+    manifest.json                  key → size, etag, the week it arrived
+    rec/<student>/<song>/<take>.mp3
+    note/<student>/<song>/<note>.png
 ```
 
-**Media too** (optional, needs rclone and R2 keys):
+**How the recordings are backed up**
 
-```bash
-MEDIA_REMOTE=r2:sruti-media ./scripts/backup-to-drive.sh
-```
+The database dump is the manifest. Each run reads the `r2_key` of every
+recording and every note image out of the dump it just took, and fetches the
+ones that aren't already in Drive. Three consequences worth knowing:
 
-It runs `rclone copy`, so a recording deleted in R2 stays in Drive. Mind your
-Drive quota — 15 GB on a free Google account, shared with Gmail and Photos. If
-the library outgrows that, keep the database in Drive and the media in
-Backblaze.
+- **It is incremental.** The first run downloads the library; after that it
+  downloads the week's new takes and nothing else.
+- **An orphan in the bucket is never mistaken for data.** A file no row points
+  at is not backed up, because nothing would ever ask for it again.
+- **A file the database expects and R2 does not have is reported and the run
+  fails.** That is real data loss — a student pressing play would get nothing —
+  and the backup is where you want to find out, not the lesson.
 
-**Two things the script refuses to do**, both learned from how these fail:
+Media **copies forward and never back**. A recording deleted from R2 stays in
+the backup; there is no code path in the program that deletes a media file.
+
+**Four things the program refuses to do**, each learned from how these fail:
 
 - If the Drive folder isn't there it stops, rather than writing a "backup" that
   exists only on the Mac.
 - If the export comes back empty it stops **before** copying, so this week's bad
   dump never replaces last week's good one. Tested by feeding it an empty dump:
   the existing files were untouched.
+- If copying the recordings would push the folder past `QUOTA_GB` (15 by
+  default — a free Google account, shared with Gmail and Photos) it copies
+  none of them and says by how much. A full Drive doesn't just stop the media;
+  Drive stops syncing everything, database dumps included.
+- It never writes a partial file into place. Downloads land as `.part` and are
+  renamed only once complete, so an interrupted run can't leave a half file
+  that next week mistakes for a whole one.
+
+**If the library outgrows Drive**, keep the database in Drive and point the
+media somewhere with more room — set `DEST` for the database and run a second
+pass with a different `DEST` on an external disk, or use the Backblaze leg in
+the GitHub Action above.
 
 ### Route B — GitHub Actions uploads to Drive · no Mac needed
 
@@ -251,12 +311,40 @@ Use `--local` to rehearse against the development database first, and
 
 ### The media
 
+From the Google Drive backup:
+
+```bash
+node scripts/restore-media.mjs                      # what it would do
+node scripts/restore-media.mjs --yes                # actually do it
+node scripts/restore-media.mjs sruti-2026-09-14.sql --yes   # only what that dump still references
+```
+
+This needs an R2 token with **Object Read & Write** — the backup's read-only
+token cannot upload, which is the point of it being read-only. Put the write
+token in the environment for the one command rather than leaving it in
+`~/.sruti-backup.env`:
+
+```bash
+R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... node scripts/restore-media.mjs --yes
+```
+
+Two refusals, both deliberate:
+
+- **Nothing happens without `--yes`.** The plain run reads, counts and prints.
+  A restore is usually run by someone having a bad day; it should not be
+  possible to start one by pressing up-arrow.
+- **An object already in R2 is left alone** unless you pass `--force`.
+  Restoring into a half-good bucket is the common case, and overwriting the
+  good half with an older copy turns a partial loss into a total one.
+
+Or, from Backblaze if that leg is enabled:
+
 ```bash
 rclone copy b2:<bucket>/media r2:sruti-media --transfers 8
 ```
 
-Keys are the R2 object keys, so a restored file lands exactly where the
-database expects it. Restoring media without the matching database, or the
+Keys are the R2 object keys either way, so a restored file lands exactly where
+the database expects it. Restoring media without the matching database, or the
 other way round, leaves recordings that belong to nobody — restore both from
 the same week.
 
@@ -266,12 +354,18 @@ the same week.
 
 A backup is a belief until you have restored from it. Put it in the calendar.
 
-1. Download the newest artifact.
-2. `node scripts/backup-report.mjs <dump>` — row counts look like a real week?
-3. `node scripts/restore.mjs <dump> --local --wipe` — restores into the
+1. `node scripts/backup.mjs --verify` — does Drive hold every recording the
+   newest dump references? This is the cheap half of the drill and is worth
+   running any week you feel like it.
+2. Take the newest `.sql.gz` out of Drive and `gunzip` it.
+3. `node scripts/backup-report.mjs <dump>` — row counts look like a real week?
+4. `node scripts/restore.mjs <dump> --local --wipe` — restores into the
    development database, so nothing live is touched.
-4. `npm run dev`, sign in with `/dev/login`, open a student, play a recording.
-5. Write the date somewhere. If a drill fails, that is the good outcome — you
+5. `npm run dev`, sign in with `/dev/login`, open a student, play a recording.
+   That last step is the one that actually tests the media backup, because a
+   recording plays only if its file came back with the right bytes under the
+   right key.
+6. Write the date somewhere. If a drill fails, that is the good outcome — you
    found it on a Tuesday afternoon instead of during a real loss.
 
 This procedure has been run: the drill against a deliberately damaged local

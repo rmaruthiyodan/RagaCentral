@@ -13,6 +13,9 @@
   Stop it:
     launchctl unload ~/Library/LaunchAgents/com.rpsajeev.backup.plist
 
+  If you change this file, unload and load it again — launchd reads it
+  once, at load, and will otherwise keep running the old version.
+
   If the Mac is asleep at 1am, launchd runs the job when it next wakes.
   It does not skip the week.
 -->
@@ -25,7 +28,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/Users/ratish/Documents/sruti/scripts/backup-to-drive.sh</string>
+    <string>cd /Users/ratish/Documents/sruti &amp;&amp; node scripts/backup.mjs</string>
   </array>
 
   <!-- launchd starts with almost no PATH, so node and npx have to be
