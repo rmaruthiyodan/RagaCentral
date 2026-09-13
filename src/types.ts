@@ -93,6 +93,8 @@ export interface Note {
   recording_id: string | null;
   title: string | null;
   body: string | null;
+  /** The same note as spoken in Malayalam; `body` is the English beside it. */
+  body_ml: string | null;
   image_key: string | null;
   image_mime: string | null;
   sort_order: number;

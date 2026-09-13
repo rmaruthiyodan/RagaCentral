@@ -104,7 +104,11 @@ export function overviewTab(
       counts,
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 
-${resumeCard(d.sessions[0] ?? null, { isTeacher: true, firstName: student.name.split(' ')[0] })}
+${resumeCard(d.sessions[0] ?? null, {
+  isTeacher: true,
+  firstName: student.name.split(' ')[0],
+  logHref: `/t/s/${student.id}/lessons#log`,
+})}
 
 ${
   next

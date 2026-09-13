@@ -189,14 +189,20 @@ export function disclosure(o: {
   body: string;
   open?: boolean;
   cls?: string;
+  /** Controls that sit on the summary line, so they work while it's shut. */
+  actions?: string;
+  /** Emitted immediately before the <details> — for a form the actions
+      reach by id, since a <form> cannot live inside a <summary>. */
+  before?: string;
 }): string {
-  return `<details class="disc${o.cls ? ` ${o.cls}` : ''}" data-disc="${esc(o.key)}"${
+  return `${o.before ?? ''}<details class="disc${o.cls ? ` ${o.cls}` : ''}" data-disc="${esc(o.key)}"${
     o.open ? ' open' : ''
   }>
   <summary>
     <span class="disc-mark" aria-hidden="true"></span>
     <span class="disc-title">${o.title}</span>
     ${o.meta ? `<span class="disc-meta">${o.meta}</span>` : ''}
+    ${o.actions ? `<span class="disc-actions">${o.actions}</span>` : ''}
   </summary>
   <div class="disc-body">${o.body}</div>
 </details>`;

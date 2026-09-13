@@ -11,6 +11,7 @@
 
 import { page, avatar, titleWithScript, disclosure, discloseAll } from './layout';
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
+import { spoken } from './sessions';
 import type { User, Group, Section, Recording, Note } from '../types';
 
 /** Common parts of a Carnatic piece, offered as suggestions rather than a fixed list. */
@@ -41,6 +42,8 @@ export interface SongPageData {
   learning: SongStudent[];
   finished: SongStudent[];
   assignable: SongStudent[];
+  /** Show the speak-it button on note bodies (dictation is configured). */
+  dictate?: boolean;
 }
 
 function partsDatalist(): string {
@@ -126,7 +129,7 @@ function noteBlock(
   n: Note & { student_name: string | null },
   idx: number,
   total: number,
-  o: { students: SongStudent[]; shared: string[]; back: string },
+  o: { students: SongStudent[]; shared: string[]; back: string; dictate?: boolean },
 ): string {
   const p = `n${n.id}-`;
   return `<div class="note" id="note-${esc(n.id)}">
@@ -144,7 +147,8 @@ function noteBlock(
     </span>
   </div>
   ${n.title ? `<p class="note-title">${esc(n.title)}</p>` : ''}
-  ${n.body ? `<p class="note-body">${esc(n.body)}</p>` : ''}
+  ${n.body_ml ? `<p class="note-body ml">${esc(n.body_ml)}</p>` : ''}
+  ${n.body ? `<p class="note-body${n.body_ml ? ' said-en' : ''}">${esc(n.body)}</p>` : ''}
   ${n.image_key ? `<img class="note-img" src="/img/${esc(n.id)}" alt="Note attachment" loading="lazy">` : ''}
 
   <div class="note-tools">
@@ -160,10 +164,15 @@ function noteBlock(
             <input id="${p}t" name="title" type="text" value="${esc(n.title ?? '')}"
                    placeholder="Anupallavi &mdash; gamaka">
           </div>
-          <div class="field">
-            <label for="${p}b">Note</label>
-            <textarea id="${p}b" name="body" rows="3">${esc(n.body ?? '')}</textarea>
-          </div>
+          ${spoken({
+            id: `${p}b`,
+            name: 'body',
+            label: 'Note',
+            placeholder: '',
+            en: n.body ?? '',
+            ml: n.body_ml ?? '',
+            dictate: Boolean(o.dictate),
+          })}
           <div class="btn-row">
             <button class="btn btn-sm btn-primary" type="submit">Save note</button>
           </div>
@@ -200,6 +209,7 @@ function noteForm(o: {
   students: SongStudent[];
   back: string;
   idPrefix: string;
+  dictate?: boolean;
 }): string {
   const p = o.idPrefix;
   return `<form method="post" action="/t/notes" enctype="multipart/form-data">
@@ -210,11 +220,15 @@ function noteForm(o: {
     <label for="${p}title">Heading <span class="opt">&mdash; optional</span></label>
     <input id="${p}title" name="title" type="text" placeholder="Anupallavi &mdash; gamaka">
   </div>
-  <div class="field">
-    <label for="${p}body">Note</label>
-    <textarea id="${p}body" name="body" rows="3"
-      placeholder="The gamaka on the second sangati should be slower than it looks written."></textarea>
-  </div>
+  ${spoken({
+    id: `${p}body`,
+    name: 'body',
+    label: 'Note',
+    placeholder: 'The gamaka on the second sangati should be slower than it looks written.',
+    en: '',
+    ml: '',
+    dictate: Boolean(o.dictate),
+  })}
   <div class="field">
     <label for="${p}img">Screenshot or notation <span class="opt">&mdash; optional</span></label>
     <input id="${p}img" name="image" type="file" accept="image/*">
@@ -262,6 +276,7 @@ function recordingBlock(
     noteShares: Map<string, string[]>;
     back: string;
     open: boolean;
+    dictate?: boolean;
   },
 ): string {
   const media =
@@ -343,6 +358,7 @@ function recordingBlock(
                   students: o.students,
                   shared: o.noteShares.get(n.id) ?? [],
                   back: o.back,
+                  dictate: o.dictate,
                 }),
               )
               .join('')
@@ -357,6 +373,7 @@ function recordingBlock(
             students: o.students,
             back: o.back,
             idPrefix: `${p}n-`,
+            dictate: o.dictate,
           })}
         </div>
       </details>
@@ -560,6 +577,7 @@ ${
                   noteShares,
                   back,
                   open: i === 0 || list.length <= 2,
+                  dictate: d.dictate,
                 }),
               )
               .join(''),
@@ -686,6 +704,7 @@ ${
             students: everyone,
             shared: noteShares.get(n.id) ?? [],
             back,
+            dictate: d.dictate,
           }),
         )
         .join('')
@@ -701,6 +720,7 @@ ${
       students: everyone,
       back,
       idPrefix: 'song-note-',
+      dictate: d.dictate,
     })}
   </div>
 </details>
@@ -744,7 +764,9 @@ ${
       user,
       siteName,
       nav: 'catalogue',
-      scripts: ['/player.js', '/recorder.js'],
+      scripts: d.dictate
+        ? ['/player.js', '/recorder.js', '/dictate.js']
+        : ['/player.js', '/recorder.js'],
     },
   );
 }

@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS notes (
   recording_id  TEXT REFERENCES recordings(id) ON DELETE CASCADE,
   title         TEXT,                              -- short heading, so notes can be scanned
   body          TEXT,
+  -- Spoken in Malayalam, kept beside the English the way a lesson note is.
+  body_ml       TEXT,
   image_key     TEXT,
   image_mime    TEXT,
   image_bytes   INTEGER NOT NULL DEFAULT 0,

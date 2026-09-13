@@ -1,7 +1,7 @@
 import {
   page, avatar, inlineTitle, titleWithScript, flash, disclosure, discloseAll,
 } from './layout';
-import { resumeCard, lessonLog } from './sessions';
+import { resumeCard, lessonLog, spoken } from './sessions';
 import { studentSchedule, zoneOptions } from './schedule';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
@@ -282,13 +282,29 @@ export function teacherCatalogue(
   // wall. Collapsed, the group names are an index. What you open is remembered.
   const openByDefault = groups.length <= 3;
 
-  const groupBlock = (id: string, name: string, nameMl: string | null) => {
+  /* Sorting a catalogue is done in bursts, so the controls have to work
+     without opening each group first — hence the form outside the details
+     and the buttons reaching it by id, the same shape the recordings use.
+     The ungrouped bucket isn't a real group and can't be moved. */
+  const groupBlock = (id: string, name: string, nameMl: string | null, gi = -1) => {
     const items = byGroup.get(id) ?? [];
+    const movable = id !== '__none' && groups.length > 1;
+    const before = movable
+      ? `<form id="gmv-${esc(id)}" method="post" action="/t/groups/${esc(id)}/move" class="mv-form"></form>`
+      : '';
+    const actions = movable
+      ? `<button class="btn btn-sm" type="submit" form="gmv-${esc(id)}" name="dir" value="up"
+           data-keep-open title="Move this group up"${gi === 0 ? ' disabled' : ''}>&uarr;</button>
+         <button class="btn btn-sm" type="submit" form="gmv-${esc(id)}" name="dir" value="down"
+           data-keep-open title="Move this group down"${
+             gi === groups.length - 1 ? ' disabled' : ''
+           }>&darr;</button>`
+      : '';
     const body = `${
     items.length
       ? `<div class="rows">${items
           .map(
-            (s) => `<div class="row">
+            (s, i) => `<div class="row">
         <div class="row-main">
           <div class="row-title">${inlineTitle(s.title, s.title_ml)}</div>
           <div class="row-meta">
@@ -299,6 +315,16 @@ export function teacherCatalogue(
           </div>
         </div>
         <div class="row-actions">
+          <span class="rec-order">
+            <form method="post" action="/t/sections/${esc(s.id)}/move">
+              <button class="btn btn-sm" name="dir" value="up" type="submit"
+                title="Move up within this group"${i === 0 ? ' disabled' : ''}>&uarr;</button></form>
+            <form method="post" action="/t/sections/${esc(s.id)}/move">
+              <button class="btn btn-sm" name="dir" value="down" type="submit"
+                title="Move down within this group"${
+                  i === items.length - 1 ? ' disabled' : ''
+                }>&darr;</button></form>
+          </span>
           <a class="btn btn-sm btn-primary" href="/t/song/${esc(s.id)}">Open</a>
           <form method="post" action="/t/sections/${esc(s.id)}/delete" onsubmit="return confirm('Delete &quot;${esc(
             s.title,
@@ -326,6 +352,8 @@ export function teacherCatalogue(
       }`,
       meta: `${items.length} ${items.length === 1 ? 'song' : 'songs'}`,
       body,
+      before,
+      actions,
     });
   };
 
@@ -427,7 +455,7 @@ ${
       : `<div class="empty"><strong>No songs match "${esc(q)}"</strong>
          Search covers the title in either script, plus raga, taala and composer.</div>`
     : `${groups.length + (byGroup.has('__none') ? 1 : 0) > 1 ? discloseAll('Open a group to see its songs.') : ''}
-${groups.map((g) => groupBlock(g.id, g.name, g.name_ml)).join('')}
+${groups.map((g, gi) => groupBlock(g.id, g.name, g.name_ml, gi)).join('')}
 ${byGroup.has('__none') ? groupBlock('__none', 'Ungrouped', null) : ''}`
 }
 ${
@@ -453,8 +481,11 @@ export function songPage(opts: {
   notes: Note[];
   siteName: string;
   msg?: string;
+  /** Show the speak-it button on the note box. */
+  dictate?: boolean;
 }): string {
   const { viewer, student, section, recordings, notes, siteName, msg } = opts;
+  const dictate = Boolean(opts.dictate);
   const isTeacher = viewer.role === 'teacher';
   const backHref = isTeacher ? `/t/s/${student.id}` : '/me';
   const backLabel = isTeacher ? `← ${student.name}` : '← My songs';
@@ -474,7 +505,8 @@ export function songPage(opts: {
     }
   </div>
   ${n.title ? `<p class="note-title">${esc(n.title)}</p>` : ''}
-  ${n.body ? `<p class="note-body">${esc(n.body)}</p>` : ''}
+  ${n.body_ml ? `<p class="note-body ml">${esc(n.body_ml)}</p>` : ''}
+  ${n.body ? `<p class="note-body${n.body_ml ? ' said-en' : ''}">${esc(n.body)}</p>` : ''}
   ${n.image_key ? `<img class="note-img" src="/img/${esc(n.id)}" alt="Note attachment" loading="lazy">` : ''}
   <div class="note-tools">
     <a class="note-dl" href="/note/${esc(n.id)}/download">Download note</a>
@@ -781,10 +813,15 @@ ${
     <form method="post" action="/t/notes" enctype="multipart/form-data">
       <input type="hidden" name="section_id" value="${esc(section.id)}">
       <input type="hidden" name="student_id" value="${esc(student.id)}">
-      <div class="field">
-        <label for="note-body">Note</label>
-        <textarea id="note-body" name="body" rows="3" placeholder="Sing the second sangati only after the first is steady."></textarea>
-      </div>
+      ${spoken({
+        id: 'note-body',
+        name: 'body',
+        label: 'Note',
+        placeholder: 'Sing the second sangati only after the first is steady.',
+        en: '',
+        ml: '',
+        dictate,
+      })}
       <div class="field">
         <label for="note-img">Screenshot or photo of notation <span class="opt">— optional</span></label>
         <input id="note-img" name="image" type="file" accept="image/*">
@@ -801,7 +838,11 @@ ${
       user: viewer,
       siteName,
       nav: isTeacher ? 'students' : 'mine',
-      scripts: isTeacher ? ['/player.js', '/recorder.js'] : ['/player.js'],
+      scripts: isTeacher
+        ? dictate
+          ? ['/player.js', '/recorder.js', '/dictate.js']
+          : ['/player.js', '/recorder.js']
+        : ['/player.js'],
     },
   );
 }

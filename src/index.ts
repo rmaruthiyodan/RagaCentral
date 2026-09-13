@@ -488,6 +488,10 @@ app.post('/t/notes/:id', requireTeacher, async (c) => {
     sets.push('body = ?');
     vals.push(String(f.get('body') ?? '').trim() || null);
   }
+  if (f.has('body_ml')) {
+    sets.push('body_ml = ?');
+    vals.push(String(f.get('body_ml') ?? '').trim() || null);
+  }
   if (f.has('visibility')) {
     const ids = postedShareIds(f);
     const visibility = await setShares(c.env, 'note', note.id, String(f.get('visibility')), ids);
@@ -650,6 +654,7 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
     learning: rows.filter((r) => !r.completed_at),
     finished: rows.filter((r) => r.completed_at),
     assignable: assignable.results ?? [],
+    dictate: dictateEnabled(c.env),
   };
   return c.html(songPage(c.get('user'), data, site(c), c.req.query('msg')));
 });
@@ -721,6 +726,79 @@ app.post('/t/catalogue/seed', requireTeacher, async (c) => {
         added ? `Added ${added} songs.` : 'Everything in the starter catalogue is already here.',
       ),
   );
+});
+
+/* ------------------------------------------------------------------ *
+ * Moving one row up or down a hand-ordered list.
+ *
+ * Swaps sort_order with the nearest neighbour, where "nearest" means the
+ * same ordering the list is displayed in — sort_order first, then a name
+ * column, because a fresh catalogue has every sort_order at 0 and
+ * without the tiebreak nothing has a neighbour at all. Rows that share a
+ * sort_order are separated rather than swapped, which would be a no-op.
+ *
+ * `scope` keeps a song inside its own group: without it, moving the first
+ * song of a group swaps it with the last song of the one above, which on
+ * screen looks like the button did nothing.
+ * ------------------------------------------------------------------ */
+async function moveInList(
+  env: Env,
+  table: 'groups' | 'sections',
+  id: string,
+  dir: 'up' | 'down',
+  nameCol: 'name' | 'title',
+  scope?: { col: string; val: string | null },
+): Promise<void> {
+  const row = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`)
+    .bind(id)
+    .first<{ id: string; sort_order: number } & Record<string, unknown>>();
+  if (!row) return;
+
+  const where = scope ? ` AND COALESCE(${scope.col},'') = ?4` : '';
+  const binds: unknown[] = [row.sort_order, String(row[nameCol] ?? ''), id];
+  if (scope) binds.push(scope.val ?? '');
+
+  const neighbour = await env.DB.prepare(
+    dir === 'up'
+      ? `SELECT id, sort_order FROM ${table}
+           WHERE (sort_order < ?1 OR (sort_order = ?1 AND ${nameCol} COLLATE NOCASE < ?2))
+             AND id <> ?3${where}
+         ORDER BY sort_order DESC, ${nameCol} COLLATE NOCASE DESC LIMIT 1`
+      : `SELECT id, sort_order FROM ${table}
+           WHERE (sort_order > ?1 OR (sort_order = ?1 AND ${nameCol} COLLATE NOCASE > ?2))
+             AND id <> ?3${where}
+         ORDER BY sort_order ASC, ${nameCol} COLLATE NOCASE ASC LIMIT 1`,
+  )
+    .bind(...(binds as [number, string, string, ...unknown[]]))
+    .first<{ id: string; sort_order: number }>();
+  if (!neighbour) return;
+
+  const a = row.sort_order;
+  const b = neighbour.sort_order;
+  const [newA, newB] = a === b ? (dir === 'up' ? [b - 1, b] : [b + 1, b]) : [b, a];
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`).bind(newA, id),
+    env.DB.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`).bind(newB, neighbour.id),
+  ]);
+}
+
+app.post('/t/groups/:id/move', requireTeacher, async (c) => {
+  const dir = String((await c.req.formData()).get('dir')) === 'up' ? 'up' : 'down';
+  await moveInList(c.env, 'groups', c.req.param('id'), dir, 'name');
+  return c.redirect('/t/catalogue');
+});
+
+app.post('/t/sections/:id/move', requireTeacher, async (c) => {
+  const dir = String((await c.req.formData()).get('dir')) === 'up' ? 'up' : 'down';
+  const s = await c.env.DB.prepare('SELECT group_id FROM sections WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<{ group_id: string | null }>();
+  if (s)
+    await moveInList(c.env, 'sections', c.req.param('id'), dir, 'title', {
+      col: 'group_id',
+      val: s.group_id,
+    });
+  return c.redirect('/t/catalogue');
 });
 
 app.post('/t/sections/:id/delete', requireTeacher, async (c) => {
@@ -1217,7 +1295,14 @@ app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {
   if (!data) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
   return c.html(
-    V.songPage({ viewer: c.get('user'), student, ...data, siteName: site(c), msg: c.req.query('msg') }),
+    V.songPage({
+      viewer: c.get('user'),
+      student,
+      ...data,
+      siteName: site(c),
+      msg: c.req.query('msg'),
+      dictate: dictateEnabled(c.env),
+    }),
   );
 });
 
@@ -1687,6 +1772,7 @@ app.post('/t/notes', requireTeacher, async (c) => {
   const studentId = String(f.get('student_id') ?? '') || c.get('user').id;
   const recordingId = String(f.get('recording_id') ?? '') || null;
   const body = String(f.get('body') ?? '').trim() || null;
+  const bodyMl = String(f.get('body_ml') ?? '').trim() || null;
   const image = f.get('image');
   const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${sectionId}`;
 
@@ -1706,7 +1792,7 @@ app.post('/t/notes', requireTeacher, async (c) => {
     await c.env.MEDIA.put(imageKey, image.stream(), { httpMetadata: { contentType: imageMime } });
   }
 
-  if (!body && !imageKey) return c.redirect(back);
+  if (!body && !bodyMl && !imageKey) return c.redirect(back);
 
   // Ordered within its own list — the notes on this recording, or the song's.
   const nmax = await c.env.DB.prepare(
@@ -1718,12 +1804,12 @@ app.post('/t/notes', requireTeacher, async (c) => {
     .first<{ m: number }>();
 
   await c.env.DB.prepare(
-    `INSERT INTO notes (id, section_id, student_id, recording_id, title, body, image_key, image_mime,
-       image_bytes, created_by, sort_order, visibility, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO notes (id, section_id, student_id, recording_id, title, body, body_ml,
+       image_key, image_mime, image_bytes, created_by, sort_order, visibility, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   )
     .bind(id, sectionId, studentId, recordingId, String(f.get('title') ?? '').trim() || null,
-      body, imageKey, imageMime, imageBytes,
+      body, bodyMl, imageKey, imageMime, imageBytes,
       c.get('user').id, (nmax?.m ?? 0) + 10, visibility, now())
     .run();
 
@@ -1792,7 +1878,9 @@ app.get('/note/:id/download', requireUser, async (c) => {
     ...(note.rec_title ? [`Recording: ${note.rec_title}`] : []),
     `Written: ${note.created_at.slice(0, 10)}`,
     '',
-    note.body ?? '',
+    // Malayalam first, the way it reads on screen; the file is UTF-8.
+    ...(note.body_ml ? [note.body_ml, ''] : []),
+    ...(note.body ? [note.body] : []),
     ...(note.image_key ? ['', '(This note also has an image — download it separately.)'] : []),
     '',
   ];

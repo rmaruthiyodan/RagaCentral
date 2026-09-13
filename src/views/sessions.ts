@@ -38,11 +38,19 @@ function bilingual(ml: string | null | undefined, en: string | null | undefined)
   return `<p class="ml">${esc(m)}</p><p class="said-en">${esc(e)}</p>`;
 }
 
-/** The one thing the teacher should see first: where the last lesson stopped. */
+/**
+ * The one thing the teacher should see first: where the last lesson stopped.
+ *
+ * `logHref` is where "Log the next lesson" goes. It used to be a bare
+ * "#log", which works on the Past classes tab where the form lives and
+ * does nothing at all on Overview, where the card is most often read —
+ * the anchor pointed at an id that isn't on the page.
+ */
 export function resumeCard(
   latest: SessionRow | null,
-  o: { isTeacher: boolean; firstName: string },
+  o: { isTeacher: boolean; firstName: string; logHref?: string },
 ): string {
+  const logHref = o.logHref || '#log';
   if (!latest) {
     return o.isTeacher
       ? `<div class="empty" style="margin-bottom:6px"><strong>No lessons logged yet</strong>
@@ -91,7 +99,7 @@ export function resumeCard(
              </form>`
           : ''
       }
-      <a class="btn btn-sm" href="#log">Log the next lesson</a>
+      <a class="btn btn-sm" href="${esc(logHref)}">Log the next lesson</a>
     </div>`
       : ''
   }
@@ -303,7 +311,7 @@ export function lessonLog(
   }
 </div>`;
 
-  return `<div class="section-head" id="log">
+  return `<div class="section-head">
     <div>
       <h2>Lessons</h2>
       <p class="lede">${
@@ -325,7 +333,7 @@ export function lessonLog(
 
   ${
     o.isTeacher
-      ? `<div class="section-head"><h2>Log a lesson</h2></div>
+      ? `<div class="section-head" id="log"><h2>Log a lesson</h2></div>
     <div class="card">
       <form method="post" action="/t/s/${esc(o.studentId)}/sessions">
         ${logFields(o.assigned, undefined, dictate)}
