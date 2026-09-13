@@ -16,6 +16,18 @@ services:
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
       BOOTSTRAP_TEACHER_EMAIL: "${BOOTSTRAP_TEACHER_EMAIL:-teacher@example.com}"
+
+      # Speaking a lesson note in Malayalam.
+      #
+      # The default engine is Workers AI, which has no local simulator — it
+      # runs on Cloudflare even in development — so in here the microphone is
+      # simply hidden and everything else works as normal. To dictate from the
+      # container, use Sarvam: it is an ordinary API call and needs no
+      # Cloudflare account.
+      DICTATE_PROVIDER: "${DICTATE_PROVIDER:-}"
+      SARVAM_API_KEY: "${SARVAM_API_KEY:-}"
+      SARVAM_MODEL: "${SARVAM_MODEL:-}"
+      DICTATE: "${DICTATE:-}"
     restart: unless-stopped
 
 volumes:

@@ -65,6 +65,35 @@ this Mac can record, but opening `http://192.168.1.x:8787` from your phone on
 the same wifi cannot; the record button will fail while everything else works.
 Playback, uploads and notes are fine either way.
 
+**Speaking a lesson note doesn't work in here by default.** Workers AI — the
+engine behind the microphone — has no local simulator. Every other binding runs
+on disk inside the container (D1 becomes a SQLite file, R2 a directory), but
+`[ai]` is always remote: `wrangler dev` opens a connection to Cloudflare for it
+before the Worker starts, and with no account it fails outright with
+
+```
+it's necessary to set a CLOUDFLARE_API_TOKEN environment variable for
+wrangler to work
+```
+
+The container is meant to run with no Cloudflare account at all, so the
+entrypoint removes that binding when no `CLOUDFLARE_API_TOKEN` is present, says
+so on startup, and carries on. The microphone is simply hidden; every other part
+of the lesson log works exactly as it does deployed. `wrangler.toml` in the repo
+is untouched — only the copy inside the running container.
+
+To dictate from the container anyway, use the other engine. Sarvam is an
+ordinary API call and needs no Cloudflare account, so put this in a `.env` file
+beside `docker-compose.yml`:
+
+```
+DICTATE_PROVIDER=sarvam
+SARVAM_API_KEY=your-key
+SARVAM_MODEL=saaras:v4
+```
+
+Or pass a real `CLOUDFLARE_API_TOKEN` and the binding stays, Workers AI and all.
+
 **This is not how your students reach it.** A container on your Mac is
 reachable from your Mac. For students in other countries you would need the Mac
 switched on permanently, a tunnel or port forwarding, and a real domain with a
@@ -103,5 +132,9 @@ your data is not at risk from an upgrade.
   use http://localhost:8080.
 - **Build fails pulling packages** — check Docker Desktop is running and has
   network access.
+- **`it's necessary to set a CLOUDFLARE_API_TOKEN`** — a binding in
+  `wrangler.toml` needs a real Cloudflare account. The one that does this is
+  `[ai]`, and the entrypoint already strips it when no token is set; if you see
+  this after adding a binding of your own, that binding is remote-only too.
 - **Blank page or 500s** — `docker compose logs -f sruti` shows the Worker's own
   logs, including anything the app printed.

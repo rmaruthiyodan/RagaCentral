@@ -10,7 +10,39 @@ SESSION_SECRET=${SESSION_SECRET:-local-development-only-change-me}
 GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
 GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
 BOOTSTRAP_TEACHER_EMAIL=${BOOTSTRAP_TEACHER_EMAIL:-teacher@example.com}
+DICTATE=${DICTATE:-}
+DICTATE_PROVIDER=${DICTATE_PROVIDER:-}
+SARVAM_API_KEY=${SARVAM_API_KEY:-}
+SARVAM_MODEL=${SARVAM_MODEL:-}
+SARVAM_BASE=${SARVAM_BASE:-}
 EOF
+
+# ---------------------------------------------------------------------
+# Workers AI has no local simulator.
+#
+# Every other binding runs on disk inside this container — D1 becomes a
+# SQLite file, R2 becomes a directory. `[ai]` cannot: wrangler lists it as
+# "Mode: remote" and opens a connection to Cloudflare before the Worker
+# starts. With no CLOUDFLARE_API_TOKEN, and CI=true so it can't prompt,
+# that fails outright and the app never comes up:
+#
+#   it's necessary to set a CLOUDFLARE_API_TOKEN environment variable
+#   for wrangler to work
+#
+# The container's whole point is running with no Cloudflare account at
+# all, so the binding is removed here unless a token was passed in. The
+# deployed Worker keeps it — wrangler.toml is untouched in the repo, only
+# in this container's copy.
+# ---------------------------------------------------------------------
+if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && grep -q '^\[ai\]' /app/wrangler.toml; then
+  awk '
+    /^\[ai\]$/      { skip = 1; next }
+    skip && /^$/     { skip = 0; next }
+    skip             { next }
+                     { print }
+  ' /app/wrangler.toml > /app/wrangler.toml.tmp && mv /app/wrangler.toml.tmp /app/wrangler.toml
+  AI_OFF=1
+fi
 
 # The database is brought up to date in four steps, and the order matters.
 #
@@ -39,6 +71,12 @@ echo "→ 4/4 data"
 npx wrangler d1 execute sruti --local --file=./backfill.sql >/dev/null
 
 echo "→ Sruti is at http://localhost:8787"
+if [ -n "${AI_OFF:-}" ] && [ "${DICTATE_PROVIDER:-}" != "sarvam" ]; then
+  echo "   dictation is off in here: Workers AI needs a Cloudflare account, and"
+  echo "   this container runs without one. To speak lesson notes locally, set"
+  echo "   DICTATE_PROVIDER=sarvam and SARVAM_API_KEY — that one is a plain API"
+  echo "   call and works fine in a container. Everything else is unaffected."
+fi
 if [ "${DEV_LOGIN:-true}" = "true" ]; then
   echo "   no Google credentials needed to look around:"
   echo "   http://localhost:8787/dev/login?email=teacher@example.com&role=teacher"
