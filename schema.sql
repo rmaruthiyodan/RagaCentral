@@ -103,6 +103,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   covered       TEXT,                              -- what was worked on
   left_off      TEXT,                              -- the resume point: where exactly we stopped
   next_focus    TEXT,                              -- what the student should practise before next time
+  -- Spoken in Malayalam and kept in both, the way a song keeps title and
+  -- title_ml. The _ml columns are his own words; the plain ones are what a
+  -- student who doesn't read the script reads instead.
+  covered_ml    TEXT,
+  left_off_ml   TEXT,
+  next_focus_ml TEXT,
   duration_min  INTEGER,
   created_by    TEXT REFERENCES users(id),
   created_at    TEXT NOT NULL,

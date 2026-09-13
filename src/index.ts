@@ -12,9 +12,10 @@ import {
 } from './tz';
 import {
   currentUser, startSession, endSession, googleAuthUrl, setOAuthState,
-  takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher,
+  takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher, requireTeacherJson,
 } from './auth';
 import { newId, now, extFor, slugify } from './util';
+import { transcribe, DictateError, CARNATIC_TERMS } from './transcribe';
 import * as V from './views/pages';
 import type { StudentRow } from './views/pages';
 
@@ -801,6 +802,9 @@ function readSessionForm(f: FormData) {
     covered: str('covered'),
     left_off: str('left_off'),
     next_focus: str('next_focus'),
+    covered_ml: str('covered_ml'),
+    left_off_ml: str('left_off_ml'),
+    next_focus_ml: str('next_focus_ml'),
     duration_min: Number.isFinite(dur) && dur > 0 ? Math.round(dur) : null,
     sectionIds: f.getAll('section_ids').map(String).filter(Boolean),
   };
@@ -948,6 +952,7 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
         nextMonth: shift(1),
         monthLabelPrev: label(shift(-1)),
         monthLabelNext: label(shift(1)),
+        dictate: dictateEnabled(c.env),
       },
       site(c),
       c.req.query('msg'),
@@ -1031,7 +1036,12 @@ app.get('/t/class/:slotId/:date', requireTeacher, async (c) => {
   const songs = (await assignedFor(c.env, student.id)).filter((a) => !a.completed_at);
 
   return c.html(
-    classPage(c.get('user'), { student, occ, lastLesson, songs, alreadyLogged }, site(c), c.req.query('msg')),
+    classPage(
+      c.get('user'),
+      { student, occ, lastLesson, songs, alreadyLogged, dictate: dictateEnabled(c.env) },
+      site(c),
+      c.req.query('msg'),
+    ),
   );
 });
 
@@ -1045,10 +1055,12 @@ app.post('/t/s/:id/sessions', requireTeacher, async (c) => {
   const id = newId('ls');
   await c.env.DB.prepare(
     `INSERT INTO sessions
-       (id, student_id, held_on, status, covered, left_off, next_focus, duration_min, created_by, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+       (id, student_id, held_on, status, covered, left_off, next_focus,
+        covered_ml, left_off_ml, next_focus_ml, duration_min, created_by, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   )
-    .bind(id, studentId, d.held_on, d.status, d.covered, d.left_off, d.next_focus, d.duration_min, c.get('user').id, now())
+    .bind(id, studentId, d.held_on, d.status, d.covered, d.left_off, d.next_focus,
+          d.covered_ml, d.left_off_ml, d.next_focus_ml, d.duration_min, c.get('user').id, now())
     .run();
   await setSessionSections(c.env, id, d.sectionIds);
 
@@ -1073,9 +1085,10 @@ app.post('/t/sessions/:id', requireTeacher, async (c) => {
   const d = readSessionForm(await c.req.formData());
   await c.env.DB.prepare(
     `UPDATE sessions SET held_on=?, status=?, covered=?, left_off=?, next_focus=?,
-       duration_min=?, updated_at=? WHERE id=?`,
+       covered_ml=?, left_off_ml=?, next_focus_ml=?, duration_min=?, updated_at=? WHERE id=?`,
   )
-    .bind(d.held_on, d.status, d.covered, d.left_off, d.next_focus, d.duration_min, now(), id)
+    .bind(d.held_on, d.status, d.covered, d.left_off, d.next_focus,
+          d.covered_ml, d.left_off_ml, d.next_focus_ml, d.duration_min, now(), id)
     .run();
   await setSessionSections(c.env, id, d.sectionIds);
 
@@ -1346,7 +1359,80 @@ function postedShareIds(f: FormData): string[] {
     .filter(Boolean);
 }
 
-app.post('/api/recordings', requireTeacher, async (c) => {
+/* ================================================================== *
+ * Speaking a lesson note
+ *
+ * Takes a short clip and hands back the Malayalam and an English
+ * rendering. It writes nothing: the teacher gets both in the form and
+ * decides what to keep. A dictation that goes wrong should cost him a
+ * retry, never a lesson.
+ * ================================================================== */
+
+const MAX_DICTATE = 8 * 1024 * 1024; // ~2 minutes of anything a browser records
+
+app.post('/t/api/dictate', requireTeacherJson, async (c) => {
+  if (!dictateEnabled(c.env))
+    return c.json({ error: 'Dictation is switched off for this site.' }, 503);
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: 'That clip was too long to send in one go. Try a shorter one.' }, 413);
+  }
+
+  const file = form.get('audio');
+  if (!(file instanceof File) || file.size === 0)
+    return c.json({ error: 'Nothing was recorded.' }, 400);
+  if (file.size > MAX_DICTATE)
+    return c.json({ error: 'That clip is too long — keep it to a sentence or two.' }, 413);
+
+  /* The vocabulary the model has no reason to know: the Carnatic terms,
+     plus the titles and ragas of the songs this teacher actually
+     teaches. Sarvam takes them as keyterms and gets them right; Whisper
+     takes them as a prompt and does a little better than nothing. */
+  const keyterms = [...CARNATIC_TERMS, ...(await catalogueTerms(c.env))];
+
+  try {
+    const t = await transcribe(c.env, await file.arrayBuffer(), file.type, keyterms);
+    if (!t.ml && !t.en)
+      return c.json({ error: "Nothing came back — the clip may be silent." }, 422);
+    return c.json(t);
+  } catch (e) {
+    const known = e instanceof DictateError;
+    if (!known) console.error('dictate failed', e);
+    return c.json(
+      { error: known ? (e as Error).message : 'The transcriber did not answer. Type it instead.' },
+      known ? 400 : 502,
+    );
+  }
+});
+
+/** Song titles and ragas, deduped, as vocabulary hints. Cheap and cached. */
+let termCache: { at: number; terms: string[] } | null = null;
+async function catalogueTerms(env: Env): Promise<string[]> {
+  if (termCache && Date.now() - termCache.at < 10 * 60_000) return termCache.terms;
+  const { results } = await env.DB.prepare(
+    'SELECT title, raga FROM sections ORDER BY id LIMIT 300',
+  ).all<{ title: string; raga: string | null }>();
+  const set = new Set<string>();
+  for (const r of results ?? []) {
+    if (r.title) set.add(r.title);
+    if (r.raga) set.add(r.raga);
+  }
+  termCache = { at: Date.now(), terms: [...set] };
+  return termCache.terms;
+}
+
+/** Is there anything behind the microphone button? */
+export function dictateEnabled(env: Env): boolean {
+  if ((env.DICTATE || '').toLowerCase() === 'off') return false;
+  const p = (env.DICTATE_PROVIDER || 'workers-ai').trim();
+  if (p === 'sarvam') return Boolean(env.SARVAM_API_KEY);
+  return Boolean(env.AI);
+}
+
+app.post('/api/recordings', requireTeacherJson, async (c) => {
   let form: FormData;
   try {
     form = await c.req.formData();

@@ -271,6 +271,44 @@ top of their own page.
 
 ---
 
+## Speaking a lesson note in Malayalam
+
+The teacher writes up his classes on an iPhone, and Apple's dictation has no
+Malayalam — only English (India) and Hindi among Indian languages. Safari's
+in-browser speech recognition borrows the same list. So the app does not ask the
+phone to know Malayalam: it records the clip, sends it up, and transcribes it
+server-side.
+
+Each of the three lesson fields — what you covered, where you stopped, what to
+practise — has a **Speak it** button. Say a sentence, press it again, and the
+Malayalam and an English rendering both land in the form. **Nothing is saved
+until you press Save**, so a transcript that gets a word wrong costs a retry and
+nothing else. Speaking twice appends rather than replaces, and anything you have
+already typed survives.
+
+Both languages are stored: `covered_ml` beside `covered`, and so on, the way a
+song keeps `title_ml` beside `title`. Wherever a lesson is read back — the
+resume card, the history, the class screen, the student's own page — his
+Malayalam leads and the English sits under it, so a student abroad who doesn't
+read the script still follows.
+
+### Which engine
+
+| | |
+|---|---|
+| `workers-ai` (default) | Whisper inside Cloudflare. **Free at this volume** — 10,000 neurons a day and Whisper costs 46.63 per audio minute, so around 200 minutes daily at no charge. Needs no account beyond the one already running the app. Whisper is a general multilingual model and is much weaker on Indic languages than European ones. |
+| `sarvam` | Built for Indian languages. About ₹0.50 a minute, with free credits to start. Worth paying for because of `keyterms`: the app hands it the Carnatic vocabulary **and this teacher's own song titles and ragas**, so *gamaka* and *Vatapi Ganapatim* come back as themselves. Its `codemix` mode is also the right shape for Malayalam with English terms left in. |
+
+Set `DICTATE_PROVIDER` in wrangler.toml. For Sarvam, also
+`npx wrangler secret put SARVAM_API_KEY`. `DICTATE = "off"` hides the microphone
+entirely.
+
+Start on `workers-ai`, since it costs nothing, and listen to what comes back. If
+the Carnatic words are mangled, switch — it is one line, not a rewrite.
+
+**If nothing is configured the button simply doesn't appear**, and every form
+still works exactly as it did. The feature is additive from top to bottom.
+
 ## The schedule
 
 **Setting it up.** Schedule → Manage weekly slots. Each student can have as many slots as they

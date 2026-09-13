@@ -226,6 +226,26 @@ export const requireUser: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> 
   await next();
 };
 
+/**
+ * The same rule as requireTeacher, but for the endpoints a script calls.
+ *
+ * A redirect is the right answer for a page and the wrong one for fetch:
+ * the browser follows it, the script gets the sign-in page's HTML, and
+ * `res.json()` throws something that reads like a network failure rather
+ * than "you are signed out". These say so in the status line.
+ */
+export const requireTeacherJson: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> = async (
+  c,
+  next,
+) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: 'You are signed out. Reload the page and sign in again.' }, 401);
+  if (user.status !== 'active' || user.role !== 'teacher')
+    return c.json({ error: 'Only a teacher can do that.' }, 403);
+  c.set('user', user);
+  await next();
+};
+
 export const requireTeacher: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> = async (c, next) => {
   const user = await currentUser(c);
   if (!user) return c.redirect('/');

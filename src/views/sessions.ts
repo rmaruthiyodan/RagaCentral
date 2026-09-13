@@ -22,6 +22,22 @@ function songChips(titles: string | null): string {
     .join('')}</div>`;
 }
 
+/* ------------------------------------------------------------------ *
+ * Reading a note back.
+ *
+ * His words first, in Malayalam, then the English under them — the same
+ * order a song title uses. When there is only one of the two, show that
+ * one and no label; a lone "English" tag over the only text there is
+ * would be noise.
+ * ------------------------------------------------------------------ */
+function bilingual(ml: string | null | undefined, en: string | null | undefined): string {
+  const m = ml?.trim();
+  const e = en?.trim();
+  if (!m) return e ? `<p>${esc(e)}</p>` : '';
+  if (!e) return `<p class="ml">${esc(m)}</p>`;
+  return `<p class="ml">${esc(m)}</p><p class="said-en">${esc(e)}</p>`;
+}
+
 /** The one thing the teacher should see first: where the last lesson stopped. */
 export function resumeCard(
   latest: SessionRow | null,
@@ -36,8 +52,8 @@ export function resumeCard(
   }
 
   const ongoing = latest.status === 'ongoing';
-  const stopped = latest.left_off?.trim();
-  const next = latest.next_focus?.trim();
+  const stopped = (latest.left_off_ml || latest.left_off || '').trim();
+  const next = bilingual(latest.next_focus_ml, latest.next_focus);
 
   return `<div class="resume">
   <div class="resume-eyebrow">
@@ -55,13 +71,14 @@ export function resumeCard(
 
   ${
     stopped
-      ? `<p class="resume-text">${esc(stopped)}</p>`
-      : `<p class="resume-text" style="color:var(--ink-3)">${
-          latest.covered ? esc(latest.covered) : 'No note was left about where you stopped.'
-        }</p>`
+      ? `<div class="resume-text">${bilingual(latest.left_off_ml, latest.left_off)}</div>`
+      : latest.covered || latest.covered_ml
+        ? `<div class="resume-text is-fallback">${bilingual(latest.covered_ml, latest.covered)}</div>`
+        : `<p class="resume-text" style="color:var(--ink-3)">No note was left about where you
+             stopped.</p>`
   }
 
-  ${next ? `<p class="resume-sub"><b>Before next time:</b> ${esc(next)}</p>` : ''}
+  ${next ? `<div class="resume-sub"><b>Before next time:</b>${next}</div>` : ''}
   ${songChips(latest.section_titles)}
 
   ${
@@ -81,7 +98,73 @@ export function resumeCard(
 </div>`;
 }
 
-function logFields(assigned: AssignedRow[], s?: SessionRow): string {
+/* ------------------------------------------------------------------ *
+ * A field you can speak into.
+ *
+ * Two boxes, not one: the Malayalam he actually said, and an English
+ * rendering for the students abroad who don't read the script — the same
+ * pairing a song has with title and title_ml. The microphone fills both
+ * and then gets out of the way; nothing is saved until he presses Save,
+ * so a bad transcript costs a retry, not a lesson.
+ *
+ * The Malayalam box only appears once there is Malayalam in it, or once
+ * he dictates. Typing a note by hand should not mean staring at an empty
+ * second box every time.
+ * ------------------------------------------------------------------ */
+export function spoken(o: {
+  id: string;
+  name: string;
+  label: string;
+  placeholder: string;
+  en: string;
+  ml: string;
+  hint?: string;
+  optional?: boolean;
+  dictate: boolean;
+}): string {
+  return `<div class="field spoken" data-spoken>
+    <div class="spoken-head">
+      <label for="${esc(o.id)}">${esc(o.label)}${
+        o.optional ? ' <span class="opt">&mdash; optional</span>' : ''
+      }</label>
+      ${
+        o.dictate
+          ? `<button class="mic" type="button" data-mic aria-label="Speak this in Malayalam">
+        <span class="mic-dot" aria-hidden="true"></span><span data-mic-label>Speak it</span>
+      </button>`
+          : ''
+      }
+    </div>
+
+    <div class="spoken-ml"${o.ml ? '' : ' hidden'} data-ml-wrap>
+      <span class="spoken-tag">മലയാളം</span>
+      <textarea id="${esc(o.id)}-ml" class="ml" name="${esc(o.name)}_ml" rows="2"
+        data-ml placeholder="നിങ്ങൾ പറഞ്ഞത് ഇവിടെ വരും">${esc(o.ml)}</textarea>
+    </div>
+
+    <div class="spoken-en">
+      <span class="spoken-tag"${o.ml ? '' : ' hidden'} data-en-tag>English</span>
+      <textarea id="${esc(o.id)}" name="${esc(o.name)}" rows="2"
+        data-en placeholder="${esc(o.placeholder)}">${esc(o.en)}</textarea>
+    </div>
+
+    <p class="mic-status" data-mic-status hidden role="status"></p>
+    ${o.hint ? `<p class="hint">${o.hint}</p>` : ''}
+  </div>`;
+}
+
+function field(
+  label: string,
+  ml: string | null,
+  en: string | null,
+  cls = '',
+): string {
+  const body = bilingual(ml, en);
+  if (!body) return '';
+  return `<div class="lesson-field${cls ? ` ${cls}` : ''}"><span class="fl">${esc(label)}</span>${body}</div>`;
+}
+
+function logFields(assigned: AssignedRow[], s: SessionRow | undefined, dictate: boolean): string {
   const checked = new Set((s?.section_ids ?? '').split(SEP).filter(Boolean));
   const today = new Date().toISOString().slice(0, 10);
   const p = s ? `e${s.id}-` : 'new-';
@@ -117,25 +200,38 @@ function logFields(assigned: AssignedRow[], s?: SessionRow): string {
       : ''
   }
 
-  <div class="field">
-    <label for="${p}covered">What you covered</label>
-    <textarea id="${p}covered" name="covered" rows="2"
-      placeholder="Sarali 1 to 7 at two speeds. Started the pallavi of Vatapi.">${esc(s?.covered ?? '')}</textarea>
-  </div>
+  ${spoken({
+    id: `${p}covered`,
+    name: 'covered',
+    label: 'What you covered',
+    placeholder: 'Sarali 1 to 7 at two speeds. Started the pallavi of Vatapi.',
+    en: s?.covered ?? '',
+    ml: s?.covered_ml ?? '',
+    dictate,
+  })}
 
-  <div class="field">
-    <label for="${p}left">Where you stopped</label>
-    <textarea id="${p}left" name="left_off" rows="2"
-      placeholder="Midway through the second sangati — the phrase before the arohanam still needs work.">${esc(s?.left_off ?? '')}</textarea>
-    <p class="hint">This is the line pinned to the top of the page next time. Be as specific as
-      you'd want to be reminded.</p>
-  </div>
+  ${spoken({
+    id: `${p}left`,
+    name: 'left_off',
+    label: 'Where you stopped',
+    placeholder: 'Midway through the second sangati — the phrase before the arohanam still needs work.',
+    hint: `This is the line pinned to the top of the page next time. Be as specific as
+      you'd want to be reminded.`,
+    en: s?.left_off ?? '',
+    ml: s?.left_off_ml ?? '',
+    dictate,
+  })}
 
-  <div class="field">
-    <label for="${p}next">To practise before next time <span class="opt">&mdash; optional</span></label>
-    <textarea id="${p}next" name="next_focus" rows="2"
-      placeholder="Sarali 1 to 5 daily, slowly, with the tanpura.">${esc(s?.next_focus ?? '')}</textarea>
-  </div>
+  ${spoken({
+    id: `${p}next`,
+    name: 'next_focus',
+    label: 'To practise before next time',
+    optional: true,
+    placeholder: 'Sarali 1 to 5 daily, slowly, with the tanpura.',
+    en: s?.next_focus ?? '',
+    ml: s?.next_focus_ml ?? '',
+    dictate,
+  })}
 
   <div class="field">
     <label>How did it end?</label>
@@ -154,8 +250,9 @@ function logFields(assigned: AssignedRow[], s?: SessionRow): string {
 
 export function lessonLog(
   sessions: SessionRow[],
-  o: { isTeacher: boolean; studentId: string; assigned: AssignedRow[] },
+  o: { isTeacher: boolean; studentId: string; assigned: AssignedRow[]; dictate?: boolean },
 ): string {
+  const dictate = Boolean(o.dictate);
   const done = sessions.filter((s) => s.status === 'completed').length;
   const open = sessions.length - done;
 
@@ -185,16 +282,16 @@ export function lessonLog(
   </div>
 
   ${songChips(s.section_titles)}
-  ${s.covered ? `<div class="lesson-field"><span class="fl">Covered</span><p>${esc(s.covered)}</p></div>` : ''}
-  ${s.left_off ? `<div class="lesson-field stop"><span class="fl">Stopped at</span><p>${esc(s.left_off)}</p></div>` : ''}
-  ${s.next_focus ? `<div class="lesson-field"><span class="fl">To practise</span><p>${esc(s.next_focus)}</p></div>` : ''}
+  ${field('Covered', s.covered_ml, s.covered)}
+  ${field('Stopped at', s.left_off_ml, s.left_off, 'stop')}
+  ${field('To practise', s.next_focus_ml, s.next_focus)}
 
   ${
     o.isTeacher
       ? `<details class="lesson-edit">
     <summary>Edit this lesson</summary>
     <form method="post" action="/t/sessions/${esc(s.id)}">
-      ${logFields(o.assigned, s)}
+      ${logFields(o.assigned, s, dictate)}
       <div class="btn-row"><button class="btn btn-sm btn-primary" type="submit">Save changes</button></div>
     </form>
     <form method="post" action="/t/sessions/${esc(s.id)}/delete" style="margin-top:10px"
@@ -231,7 +328,7 @@ export function lessonLog(
       ? `<div class="section-head"><h2>Log a lesson</h2></div>
     <div class="card">
       <form method="post" action="/t/s/${esc(o.studentId)}/sessions">
-        ${logFields(o.assigned)}
+        ${logFields(o.assigned, undefined, dictate)}
         <button class="btn btn-primary" type="submit">Save lesson</button>
       </form>
     </div>`

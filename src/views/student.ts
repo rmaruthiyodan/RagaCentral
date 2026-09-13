@@ -317,6 +317,7 @@ export function lessonsTab(
     monthOccs: Occurrence[];
     prevMonth: string;
     nextMonth: string;
+    dictate?: boolean;
     monthLabelPrev: string;
     monthLabelNext: string;
   },
@@ -347,9 +348,15 @@ ${monthCalendar(d.month, d.monthOccs, {
   },
 })}
 
-${lessonLog(d.sessions, { isTeacher: true, studentId: student.id, assigned: d.assigned })}`,
+${lessonLog(d.sessions, { isTeacher: true, studentId: student.id, assigned: d.assigned, dictate: d.dictate })}`,
     ),
-    { title: `${student.name} · Past classes`, user, siteName, nav: 'students' },
+    {
+      title: `${student.name} · Past classes`,
+      user,
+      siteName,
+      nav: 'students',
+      scripts: d.dictate ? ['/dictate.js'] : [],
+    },
   );
 }
 

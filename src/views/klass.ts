@@ -7,6 +7,7 @@
  * ================================================================== */
 
 import { page, avatar, inlineTitle } from './layout';
+import { spoken } from './sessions';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
 import type { User, SessionRow, AssignedRow } from '../types';
 import { prettyIst, prettyIstDate, inZone, type Occurrence } from '../tz';
@@ -18,6 +19,18 @@ export interface ClassPageData {
   lastLesson: SessionRow | null;
   songs: AssignedRow[];
   alreadyLogged: SessionRow | null;
+  dictate?: boolean;
+}
+
+/* His Malayalam over the English, the same order a song title uses. */
+function loggedField(label: string, ml: string | null, en: string | null, cls = ''): string {
+  const m = ml?.trim();
+  const e = en?.trim();
+  if (!m && !e) return '';
+  const body = m && e
+    ? `<p class="ml">${esc(m)}</p><p class="said-en">${esc(e)}</p>`
+    : `<p${m ? ' class="ml"' : ''}>${esc((m || e)!)}</p>`;
+  return `<div class="lesson-field${cls ? ` ${cls}` : ''}"><span class="fl">${esc(label)}</span>${body}</div>`;
 }
 
 export function classPage(user: User, d: ClassPageData, siteName: string, msg?: string): string {
@@ -25,8 +38,8 @@ export function classPage(user: User, d: ClassPageData, siteName: string, msg?: 
   const local = student.time_zone ? inZone(occ.instant, student.time_zone) : null;
   const off = occ.skipped || occ.missed;
 
-  const stopped = lastLesson?.left_off?.trim();
-  const practise = lastLesson?.next_focus?.trim();
+  const stopped = (lastLesson?.left_off_ml || lastLesson?.left_off || '').trim();
+  const practise = (lastLesson?.next_focus_ml || lastLesson?.next_focus || '').trim();
 
   return page(
     `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
@@ -101,13 +114,15 @@ ${
     stopped
       ? `<p class="resume-text">${esc(stopped)}</p>`
       : `<p class="resume-text" style="color:var(--ink-3)">${
-          lastLesson.covered ? esc(lastLesson.covered) : 'Nothing was noted about where you stopped.'
+          lastLesson.covered_ml || lastLesson.covered
+            ? esc((lastLesson.covered_ml || lastLesson.covered)!)
+            : 'Nothing was noted about where you stopped.'
         }</p>`
   }
   ${practise ? `<p class="resume-sub"><b>They were asked to practise:</b> ${esc(practise)}</p>` : ''}
   ${
     lastLesson.covered && stopped
-      ? `<p class="resume-sub"><b>Covered:</b> ${esc(lastLesson.covered)}</p>`
+      ? `<p class="resume-sub"><b>Covered:</b> ${esc((lastLesson.covered_ml || lastLesson.covered)!)}</p>`
       : ''
   }
   <div class="resume-actions">
@@ -155,8 +170,8 @@ ${
 ${
   alreadyLogged
     ? `<div class="card">
-    ${alreadyLogged.covered ? `<div class="lesson-field"><span class="fl">Covered</span><p>${esc(alreadyLogged.covered)}</p></div>` : ''}
-    ${alreadyLogged.left_off ? `<div class="lesson-field stop"><span class="fl">Stopped at</span><p>${esc(alreadyLogged.left_off)}</p></div>` : ''}
+    ${loggedField('Covered', alreadyLogged.covered_ml, alreadyLogged.covered)}
+    ${loggedField('Stopped at', alreadyLogged.left_off_ml, alreadyLogged.left_off, 'stop')}
     <div class="btn-row" style="margin-top:14px">
       <a class="btn btn-sm" href="/t/s/${esc(student.id)}/lessons">Edit it</a>
     </div>
@@ -182,22 +197,23 @@ ${
     </div>`
         : ''
     }
-    <div class="field">
-      <label for="cl-covered">What you covered</label>
-      <textarea id="cl-covered" name="covered" rows="2"
-        placeholder="Sarali 1 to 7 at two speeds. Started the pallavi."></textarea>
-    </div>
-    <div class="field">
-      <label for="cl-left">Where you stopped</label>
-      <textarea id="cl-left" name="left_off" rows="2"
-        placeholder="Midway through the second sangati — start there next time."></textarea>
-      <p class="hint">This is what you'll see at the top of this screen next week.</p>
-    </div>
-    <div class="field">
-      <label for="cl-next">To practise before next time <span class="opt">— optional</span></label>
-      <textarea id="cl-next" name="next_focus" rows="2"
-        placeholder="That one phrase, slowly, with the recording at 0.75x."></textarea>
-    </div>
+    ${spoken({
+      id: 'cl-covered', name: 'covered', label: 'What you covered', en: '', ml: '',
+      placeholder: 'Sarali 1 to 7 at two speeds. Started the pallavi.',
+      dictate: Boolean(d.dictate),
+    })}
+    ${spoken({
+      id: 'cl-left', name: 'left_off', label: 'Where you stopped', en: '', ml: '',
+      placeholder: 'Midway through the second sangati — start there next time.',
+      hint: "This is what you'll see at the top of this screen next week.",
+      dictate: Boolean(d.dictate),
+    })}
+    ${spoken({
+      id: 'cl-next', name: 'next_focus', label: 'To practise before next time', optional: true,
+      en: '', ml: '',
+      placeholder: 'That one phrase, slowly, with the recording at 0.75x.',
+      dictate: Boolean(d.dictate),
+    })}
     <div class="field">
       <label>How did it end?</label>
       <div class="statuspick">
@@ -241,6 +257,12 @@ ${
   </div>
 </div>`
 }`,
-    { title: `${student.name} · ${prettyIstDate(occ.date)}`, user, siteName, nav: 'schedule' },
+    {
+      title: `${student.name} · ${prettyIstDate(occ.date)}`,
+      user,
+      siteName,
+      nav: 'schedule',
+      scripts: d.dictate ? ['/dictate.js'] : [],
+    },
   );
 }

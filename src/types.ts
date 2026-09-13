@@ -7,6 +7,15 @@ export interface Env {
   SESSION_SECRET: string;
   BOOTSTRAP_TEACHER_EMAIL: string;
   SITE_NAME: string;
+
+  /* Speaking a lesson note. All optional: with none of them set the
+     dictate button simply doesn't appear and every form still works. */
+  AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
+  DICTATE_PROVIDER?: string; // workers-ai (default) | sarvam
+  DICTATE?: string; // "off" disables the button even where AI is bound
+  SARVAM_API_KEY?: string;
+  SARVAM_MODEL?: string;
+  SARVAM_BASE?: string; // override for rehearsals; defaults to api.sarvam.ai
 }
 
 export interface User {
@@ -104,6 +113,12 @@ export interface Session {
   covered: string | null;
   left_off: string | null;
   next_focus: string | null;
+  /* Spoken in Malayalam, kept alongside the English the way a song keeps
+     title and title_ml. His words are the _ml ones; the plain columns are
+     the version a student who doesn't read the script can follow. */
+  covered_ml: string | null;
+  left_off_ml: string | null;
+  next_focus_ml: string | null;
   duration_min: number | null;
   created_by: string | null;
   created_at: string;
