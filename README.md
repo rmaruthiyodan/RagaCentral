@@ -75,6 +75,21 @@ wrangler.toml       Cloudflare configuration
 You need a Cloudflare account and a Google Cloud project. Both are free; Cloudflare will ask
 for a card when you switch R2 on, even though nothing here costs anything.
 
+**The short way.** Once you have a Cloudflare account:
+
+```bash
+npm install
+npx wrangler login
+./scripts/first-deploy.sh setup      # creates everything, deploys, prints the address
+# ...then make the Google client it tells you to, and:
+./scripts/first-deploy.sh google     # sign-in
+```
+
+That runs the steps below in the one order that works, stops with a plain-English reason when
+something has really failed, and is safe to run again — every step checks for what it is about
+to create. The rest of this section is the same thing by hand, worth reading once so you know
+what it did.
+
 ### 1. Install and log in
 
 ```bash
