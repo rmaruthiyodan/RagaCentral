@@ -570,11 +570,19 @@ ${
        Add one below and everyone learning this song will have it.</div>`
 }
 
-<div class="section-head">
-  <div><h2>Add a recording</h2>
-    <p class="lede">Record into the browser or drop in files. Audio becomes MP3 before it uploads.
-      Every take needs a name &mdash; it's how you'll find it again.</p></div>
-</div>
+<!-- Recording is something you go and do, not something you read on the way
+     past, so the whole apparatus stays shut until it's wanted. No data-disc:
+     this one is always closed on load rather than remembering, because a
+     recorder left open is not a state worth restoring. -->
+<details class="panel addrec">
+  <summary>
+    <span class="addrec-t">Add a recording</span>
+    <span class="addrec-s">record in the browser, or drop in files</span>
+  </summary>
+  <div class="panel-body">
+
+<p class="lede" style="margin-top:10px">Audio becomes MP3 before it uploads.
+  Every take needs a name &mdash; it's how you'll find it again.</p>
 
 ${
   everyone.length
@@ -660,6 +668,9 @@ ${
   </div>
   <div class="queue" data-queue></div>
 </div>
+
+  </div>
+</details>
 
 <div class="section-head">
   <div><h2>Notes about the whole song</h2>

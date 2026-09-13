@@ -646,11 +646,17 @@ export function songPage(opts: {
       list.forEach((r, i) => partIndex.set(r.id, { idx: i, total: list.length }));
   }
 
+  /* Shut by default, like the one on the song page: recording is something
+     you go and do, and until you do, the button and the whole apparatus are
+     just a wall between the teacher and the takes they came to hear. No
+     data-disc — always closed on load rather than remembered. */
   const recorderBlock = isTeacher
-    ? `<div class="section-head">
-    <div><h2>Add a recording</h2>
-      <p class="lede">Record straight into the browser, or drop in files you already have.</p></div>
-  </div>
+    ? `<details class="panel addrec">
+  <summary>
+    <span class="addrec-t">Add a recording</span>
+    <span class="addrec-s">record in the browser, or drop in files</span>
+  </summary>
+  <div class="panel-body">
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="record">Record now</button>
     <button role="tab" aria-selected="false" data-tab="upload">Upload files</button>
@@ -695,7 +701,9 @@ export function songPage(opts: {
       <input type="file" data-file multiple accept="audio/*,video/*" hidden>
     </div>
     <div class="queue" data-queue></div>
-  </div>`
+  </div>
+  </div>
+</details>`
     : '';
 
   return page(
@@ -767,8 +775,9 @@ ${recorderBlock}
 
 ${
   isTeacher
-    ? `<div class="section-head"><h2>Add a note for this song</h2></div>
-  <div class="card">
+    ? `<details class="panel" style="margin-top:14px">
+  <summary>Add a note for this song</summary>
+  <div class="panel-body">
     <form method="post" action="/t/notes" enctype="multipart/form-data">
       <input type="hidden" name="section_id" value="${esc(section.id)}">
       <input type="hidden" name="student_id" value="${esc(student.id)}">
@@ -783,7 +792,8 @@ ${
       </div>
       <button class="btn btn-primary" type="submit">Save note</button>
     </form>
-  </div>`
+  </div>
+</details>`
     : ''
 }`,
     {

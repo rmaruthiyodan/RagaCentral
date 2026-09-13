@@ -376,6 +376,24 @@ details.panel[open] > summary::before{content:"−"}
 details.panel > summary:hover{background:var(--surface-2)}
 .panel-body{padding:4px 18px 18px;border-top:1px solid var(--line)}
 
+/* "Add a recording" — a panel, but the loudest one on the page, because it
+   is the thing the teacher came to do. Shut by default: the recorder, the
+   two tabs and the audience picker between them filled a screen of space
+   above the takes, on every visit, whether or not anything was being
+   recorded. The summary carries the heading so the closed state still reads
+   as a section rather than as a stray button. */
+details.addrec{margin:30px 0 14px}
+details.addrec > summary{padding:15px 18px;gap:10px;flex-wrap:wrap}
+details.addrec > summary::before{font-size:17px}
+.addrec-t{font-family:var(--f-display);font-weight:700;font-size:17px;color:var(--ink)}
+.addrec-s{font-weight:400;font-size:13.5px;color:var(--ink-3)}
+details.addrec[open] > summary{border-bottom:1px solid var(--line)}
+details.addrec[open] .panel-body{border-top:none}
+/* On a phone the subtitle drops under the heading rather than squeezing it. */
+@media (max-width:560px){
+  .addrec-s{flex-basis:100%;margin-left:22px}
+}
+
 /* ---------- collapsible sections ---------- *
    Plain <details>. disclose.js only remembers what you left open. */
 details.disc{
