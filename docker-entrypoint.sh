@@ -71,11 +71,37 @@ echo "→ 4/4 data"
 npx wrangler d1 execute sruti --local --file=./backfill.sql >/dev/null
 
 echo "→ Sruti is at http://localhost:8787"
-if [ -n "${AI_OFF:-}" ] && [ "${DICTATE_PROVIDER:-}" != "sarvam" ]; then
-  echo "   dictation is off in here: Workers AI needs a Cloudflare account, and"
-  echo "   this container runs without one. To speak lesson notes locally, set"
-  echo "   DICTATE_PROVIDER=sarvam and SARVAM_API_KEY — that one is a plain API"
-  echo "   call and works fine in a container. Everything else is unaffected."
+
+# Say plainly whether the microphone will be there, and if not, why. This is
+# the one setting whose effect isn't visible until you go looking for a button
+# that isn't there, so it gets said out loud on every start.
+case "${DICTATE_PROVIDER:-}" in
+  sarvam)
+    if [ -n "${SARVAM_API_KEY:-}" ]; then
+      echo "   speaking a lesson note: on, via Sarvam"
+    else
+      echo "   speaking a lesson note: OFF — DICTATE_PROVIDER=sarvam reached the"
+      echo "     container but SARVAM_API_KEY is empty. Check your .env sits next"
+      echo "     to docker-compose.yml, and recreate: docker compose up -d --build"
+    fi
+    ;;
+  ''|workers-ai)
+    if [ -n "${AI_OFF:-}" ]; then
+      echo "   speaking a lesson note: OFF — Workers AI needs a Cloudflare account"
+      echo "     and this container runs without one. Put DICTATE_PROVIDER=sarvam"
+      echo "     and SARVAM_API_KEY in a .env beside docker-compose.yml; that one"
+      echo "     is a plain API call and works in here. Nothing else is affected."
+    else
+      echo "   speaking a lesson note: on, via Workers AI"
+    fi
+    ;;
+  *)
+    echo "   speaking a lesson note: OFF — DICTATE_PROVIDER=\"${DICTATE_PROVIDER}\" is"
+    echo "     not a known engine. Use workers-ai or sarvam."
+    ;;
+esac
+if [ "${DICTATE:-}" = "off" ]; then
+  echo "   (and DICTATE=off is set, which hides it regardless)"
 fi
 if [ "${DEV_LOGIN:-true}" = "true" ]; then
   echo "   no Google credentials needed to look around:"

@@ -56,7 +56,18 @@ app.get('/healthz', async (c) => {
 
   const ok = db && media;
   return c.json(
-    { ok, db, media, ms: Date.now() - started, at: new Date().toISOString() },
+    {
+      ok,
+      db,
+      media,
+      /* Why the microphone is or isn't on the lesson form. No key, no
+         account id — just enough to answer "I set the variables and
+         nothing happened" without reading container logs, and it works
+         the same deployed as it does in Docker. */
+      dictate: dictateWhy(c.env),
+      ms: Date.now() - started,
+      at: new Date().toISOString(),
+    },
     ok ? 200 : 503,
     { 'cache-control': 'no-store' },
   );
@@ -1422,6 +1433,20 @@ async function catalogueTerms(env: Env): Promise<string[]> {
   }
   termCache = { at: Date.now(), terms: [...set] };
   return termCache.terms;
+}
+
+/**
+ * The same decision as dictateEnabled, but it says why — which is the
+ * question people actually have when the button isn't there.
+ */
+export function dictateWhy(env: Env): string {
+  if ((env.DICTATE || '').toLowerCase() === 'off') return 'off (DICTATE=off)';
+  const p = (env.DICTATE_PROVIDER || 'workers-ai').trim();
+  if (p === 'sarvam')
+    return env.SARVAM_API_KEY ? 'sarvam' : 'off (DICTATE_PROVIDER=sarvam but SARVAM_API_KEY is empty)';
+  if (p === 'workers-ai')
+    return env.AI ? 'workers-ai' : 'off (no AI binding — normal in Docker; use sarvam there)';
+  return `off (DICTATE_PROVIDER="${p}" is not a known engine)`;
 }
 
 /** Is there anything behind the microphone button? */
