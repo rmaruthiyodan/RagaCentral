@@ -407,8 +407,10 @@ class at once, and there is nothing stale to migrate when a rule changes.
 **Audio is re-encoded to MP3 in the browser.** Browsers disagree about recording formats: Chrome
 and Firefox produce WebM/Opus, Safari produces MP4/AAC, and Safari could not *play* WebM until
 version 18.4. A lesson recorded in Chrome would have been silent on an older iPhone. So audio is
-decoded and re-encoded to 96 kbps mono MP3 before upload — one format, plays on anything, and
-about 0.7 MB per minute. If the conversion fails for any reason the original is kept rather than
+decoded and re-encoded to 160 kbps mono MP3 before upload — one format, plays on anything, and
+about 1.2 MB per minute. 160 rather than 96 because these are reference takes: a student slows
+one to 0.5x and loops a phrase, which is where a lower bitrate's smearing becomes audible in the
+same range as the gamaka detail they are listening for. If the conversion fails for any reason the original is kept rather than
 lost. Video is left alone; re-encoding video in a page isn't worth it.
 
 **Uploads go through the Worker, not straight to R2.** Simpler, and it needs no extra API
@@ -481,7 +483,7 @@ copy held in the account it protects doesn't answer the failure that matters.
 |---|---|---|
 | Workers | 100,000 requests/day | Nowhere near it |
 | D1 | 5 GB, 5M row reads/day | A few megabytes |
-| R2 | 10 GB stored, downloads free | ~4 MB per audio recording |
+| R2 | 10 GB stored, downloads free | ~1.2 MB per minute of audio, so a 5-minute take is ~6 MB |
 
 At 100 students with 30 recordings each you'd be at roughly 16 GB — about ten cents a month.
 Playback never costs anything, which is the reason for R2 rather than S3 or Supabase.

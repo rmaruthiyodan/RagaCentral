@@ -18,7 +18,14 @@
 
   var STUDENT = root.dataset.student;
   var SECTION = root.dataset.section;
-  var MP3_KBPS = 96;              // plenty for a solo voice; ~0.7 MB per minute
+  /* 160, not 96. A single voice is transparent enough either way at normal
+     speed, but these are reference takes: a student slows one to 0.5x and
+     loops a phrase, and that is exactly where 96 kbps smearing lands — in
+     the same range as the gamaka detail they are listening for. 1.2 MB a
+     minute instead of 0.7, against R2's free 10 GB, is a trade worth making.
+     Raising this changes new recordings only; everything already uploaded
+     stays as it was encoded. */
+  var MP3_KBPS = 160;             // mono; ~1.2 MB per minute
   var VIDEO_MAX_SEC = 120;        // keep clips short so storage stays predictable
   var AUDIO_MAX_SEC = 20 * 60;
 

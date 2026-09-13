@@ -622,12 +622,14 @@ footer{
         in Chrome would have been silent on an older iPhone — the exact device a student is most
         likely to practise from.
       </p>
-      <pre>MediaRecorder  →  decodeAudioData  →  lamejs (96 kbps mono MP3)  →  POST /api/recordings
+      <pre>MediaRecorder  →  decodeAudioData  →  lamejs (160 kbps mono MP3)  →  POST /api/recordings
                                           ↓ yields between blocks
                                      page stays responsive</pre>
       <ul>
         <li>Audio is re-encoded in the browser before upload: one format, plays anywhere, about
-          0.7&nbsp;MB a minute.</li>
+          1.2&nbsp;MB a minute. 160&nbsp;kbps rather than 96 because a student slows a reference
+          take to 0.5&times; and loops it, and that is where a lower bitrate's smearing lands —
+          in the same range as the gamaka detail they are listening for.</li>
         <li>If conversion fails for any reason the original is kept rather than the take lost.</li>
         <li>Video is left alone and capped at two minutes.</li>
         <li>Uploads go <em>through</em> the Worker — simpler than presigned URLs and needs no
