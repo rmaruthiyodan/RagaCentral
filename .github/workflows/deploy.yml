@@ -1,0 +1,77 @@
+name: Deploy
+
+# Every push to main goes live — but only after the checks pass and the
+# database has been brought up to date. The order is the whole point:
+# a column has to exist before the code that selects it starts serving.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs-design-book.html'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The views are template literals; the compiler still catches the
+      # shape errors, and it costs seconds.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Real DST transitions in New York, London and Sydney, date
+      # rollover, and a class moved across a week boundary.
+      - name: Time-zone tests
+        run: node --experimental-strip-types test-tz.mjs
+
+      # A safety net, not a substitute for reading the diff: a schema
+      # change that would drop or rewrite a column has to be done by
+      # hand, deliberately.
+      - name: Refuse destructive SQL
+        run: |
+          if grep -rniE '^\s*(DROP|ALTER +TABLE +[a-z_]+ +(DROP|RENAME))' \
+               schema.sql indexes.sql backfill.sql; then
+            echo "::error::A destructive statement is in the schema files. Apply it by hand."
+            exit 1
+          fi
+
+      # Four steps, in this order — see BACKUP.md and the README.
+      - name: Bring the database up to date
+        run: |
+          npx wrangler d1 execute sruti --remote -y --file=./schema.sql
+          node scripts/sync-schema.mjs --remote
+          npx wrangler d1 execute sruti --remote -y --file=./indexes.sql
+          npx wrangler d1 execute sruti --remote -y --file=./backfill.sql
+
+      - name: Deploy the Worker
+        run: npx wrangler deploy
+
+      # If the deploy broke the app's connection to D1 or R2, find out
+      # here rather than from the teacher on Monday morning.
+      - name: Check it came back up
+        run: |
+          for i in 1 2 3 4 5; do
+            sleep 5
+            body=$(curl -sS --max-time 10 "${{ vars.SITE_URL }}/healthz" || true)
+            echo "$body"
+            case "$body" in *'"ok":true'*) exit 0 ;; esac
+          done
+          echo "::error::/healthz did not report ok after the deploy"
+          exit 1

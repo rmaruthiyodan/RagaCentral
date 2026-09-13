@@ -8,6 +8,7 @@ import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow } from '../types';
 
 export type { AssignedRow };
+export { isPalette, isMode, PALETTES } from './layout';
 
 const STATUS_LABEL: Record<string, string> = {
   active: 'Active', paused: 'Paused', graduated: 'Graduated', ended: 'Ended',
@@ -172,17 +173,22 @@ ${rows}
         <input id="ns-name" name="name" type="text" required placeholder="Anjali Menon"></div>
       <div class="field"><label for="ns-email">Google email</label>
         <input id="ns-email" name="email" type="email" required placeholder="anjali@gmail.com"></div>
+    </div>
+    <div class="field-row">
       <div class="field"><label for="ns-loc">Where they are <span class="opt">— optional</span></label>
         <input id="ns-loc" name="location" type="text" placeholder="Dubai, UAE"></div>
       <div class="field"><label for="ns-phone">WhatsApp number <span class="opt">— optional</span></label>
         <input id="ns-phone" name="phone" type="tel" inputmode="tel" placeholder="+91 98470 12345"></div>
       <div class="field"><label for="ns-tz">Time zone <span class="opt">— optional</span></label>
         <select id="ns-tz" name="time_zone">
-          <option value="">— set automatically on first sign-in —</option>
+          <option value="">Set on their first sign-in</option>
           ${zoneOptions(null)}
         </select></div>
     </div>
-    <button class="btn btn-primary" type="submit">Add student</button>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Add student</button>
+      <span class="hint">Only the name and email are needed — the rest can wait.</span>
+    </div>
   </form>
 </div>
 
@@ -442,7 +448,8 @@ export function songPage(opts: {
   viewer: User;
   student: User;
   section: Section & { group_name: string | null };
-  recordings: Recording[];
+  /** `locked` is 1 when this student may not hear it — see loadSong. */
+  recordings: (Recording & { locked?: number })[];
   notes: Note[];
   siteName: string;
   msg?: string;
@@ -469,17 +476,67 @@ export function songPage(opts: {
   ${n.title ? `<p class="note-title">${esc(n.title)}</p>` : ''}
   ${n.body ? `<p class="note-body">${esc(n.body)}</p>` : ''}
   ${n.image_key ? `<img class="note-img" src="/img/${esc(n.id)}" alt="Note attachment" loading="lazy">` : ''}
+  <div class="note-tools">
+    <a class="note-dl" href="/note/${esc(n.id)}/download">Download note</a>
+    ${n.image_key ? `<a class="note-dl" href="/img/${esc(n.id)}?download=1">Download image</a>` : ''}
+  </div>
 </div>`;
 
-  const renderRec = (r: Recording, idx: number, total: number) => {
+  /**
+   * A recording this student hasn't been given: named, so they know it exists
+   * and can ask for it, but with nothing to play. The teacher gets the button
+   * that hands it over, right here rather than back in the catalogue.
+   */
+  const renderLocked = (r: Recording) => `<div class="rec is-locked">
+  <div class="rec-sum-top">
+    <span class="rec-title">
+      <span class="lock" aria-hidden="true">🔒</span>
+      ${esc(r.title || (r.kind === 'video' ? 'Video clip' : 'Recording'))}
+      ${r.part ? `<span class="part-tag">${esc(r.part)}</span>` : ''}
+    </span>
+    <span class="rec-meta">
+      <span>${esc(fmtDuration(r.duration_sec))}</span>
+      ${isTeacher ? `<span>${esc(fmtDate(r.created_at))}</span>` : ''}
+    </span>
+  </div>
+  ${r.description ? `<p class="rec-desc">${esc(r.description)}</p>` : ''}
+  <div class="locked-foot">
+    ${
+      isTeacher
+        ? `<span class="locked-note">${esc(student.name.split(' ')[0])} can't hear this one.</span>
+      <form method="post" action="/t/recordings/${esc(r.id)}/share">
+        <input type="hidden" name="student_id" value="${esc(student.id)}">
+        <input type="hidden" name="back" value="${esc(backHref === '/me' ? '/me' : `/t/s/${student.id}/${section.id}`)}">
+        <button class="btn btn-sm btn-primary" type="submit">Unlock for ${esc(student.name.split(' ')[0])}</button>
+      </form>`
+        : `<span class="locked-note">Your teacher hasn't shared this one with you yet.</span>`
+    }
+  </div>
+</div>`;
+
+  const renderRec = (r: Recording, seq: number) => {
+    const { idx, total } = partIndex.get(r.id) ?? { idx: 0, total: 1 };
     const media =
       r.kind === 'video'
         ? `<video controls preload="metadata" playsinline src="/media/${esc(r.id)}"></video>`
         : `<audio controls preload="metadata" src="/media/${esc(r.id)}"></audio>`;
     const attached = notesFor(r.id);
     // The top recording opens, so there's always something to press play on.
-    const open = idx === 0 || total <= 2;
-    return `<details class="rec" data-rec="${esc(r.id)}" data-disc="rec:${esc(r.id)}"${
+    const open = seq === 0 || recCount <= 2;
+    /* The reorder form sits outside the <details> and the buttons reach it
+       by id: a <form> isn't valid inside a <summary>, and anything inside
+       the details is hidden while it's closed — which is exactly when you
+       want to reorder, without opening every take first. */
+    return `${
+      isTeacher
+        ? `<form id="mv-${esc(r.id)}" method="post" action="/t/recordings/${esc(
+            r.id,
+          )}/move" class="mv-form">
+      <input type="hidden" name="back" value="${esc(`/t/s/${student.id}/${section.id}`)}">
+    </form>`
+        : ''
+    }
+<details class="rec" data-rec="${esc(r.id)}" data-disc="rec:${esc(r.id)}"${
       open ? ' open' : ''
     }>
   <summary>
@@ -499,6 +556,16 @@ export function songPage(opts: {
       </span>
       ${r.description ? `<span class="rec-sum-desc">${esc(r.description)}</span>` : ''}
     </span>
+    ${
+      isTeacher
+        ? `<span class="rec-order">
+      <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="up"
+        data-keep-open title="Move up"${idx === 0 ? ' disabled' : ''}>&uarr;</button>
+      <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="down"
+        data-keep-open title="Move down"${idx === total - 1 ? ' disabled' : ''}>&darr;</button>
+    </span>`
+        : ''
+    }
   </summary>
   <div class="rec-body">
   ${r.description ? `<p class="rec-desc">${esc(r.description)}</p>` : ''}
@@ -519,28 +586,17 @@ export function songPage(opts: {
       <span class="loop-state" data-loop-state></span>
     </div>
     <div class="ctrl-group" style="margin-left:auto">
-      ${
-        isTeacher
-          ? `<div class="reorder">
-        <form method="post" action="/t/recordings/${esc(r.id)}/move">
-          <input type="hidden" name="dir" value="up">
-          <button class="btn btn-sm" type="submit" title="Move up"${idx === 0 ? ' disabled' : ''}>↑</button>
-        </form>
-        <form method="post" action="/t/recordings/${esc(r.id)}/move">
-          <input type="hidden" name="dir" value="down">
-          <button class="btn btn-sm" type="submit" title="Move down"${
-            idx === total - 1 ? ' disabled' : ''
-          }>↓</button>
-        </form>
-      </div>`
-          : ''
-      }
       <a class="btn btn-sm" href="/media/${esc(r.id)}?download=1">Download</a>
       ${
         isTeacher
-          ? `<form method="post" action="/t/recordings/${esc(
-              r.id,
-            )}/delete" onsubmit="return confirm('Delete this recording permanently?')">
+          ? `<form method="post" action="/t/recordings/${esc(r.id)}/unshare">
+               <input type="hidden" name="student_id" value="${esc(student.id)}">
+               <input type="hidden" name="back" value="/t/s/${esc(student.id)}/${esc(section.id)}">
+               <button class="btn btn-sm" type="submit"
+                 title="Take this one back from ${esc(student.name.split(' ')[0])}">Lock</button></form>
+             <form method="post" action="/t/recordings/${esc(
+               r.id,
+             )}/delete" onsubmit="return confirm('Delete this recording permanently?')">
                <button class="btn btn-sm btn-danger" type="submit">Delete</button></form>`
           : ''
       }
@@ -570,6 +626,25 @@ export function songPage(opts: {
   };
 
   const generalNotes = notesFor(null);
+  const open = recordings.filter((r) => !r.locked);
+  const locked = recordings.filter((r) => r.locked);
+  const recCount = open.length;
+
+  /* The server moves a recording within its own part, so the arrows have to
+     be disabled by position within the part — not within the whole list, or
+     the first take of a second part offers an "up" that does nothing. */
+  const partIndex = new Map<string, { idx: number; total: number }>();
+  {
+    const byPart = new Map<string, Recording[]>();
+    for (const r of open) {
+      const k = r.part || '';
+      let list = byPart.get(k);
+      if (!list) byPart.set(k, (list = []));
+      list.push(r);
+    }
+    for (const list of byPart.values())
+      list.forEach((r, i) => partIndex.set(r.id, { idx: i, total: list.length }));
+  }
 
   const recorderBlock = isTeacher
     ? `<div class="section-head">
@@ -647,14 +722,45 @@ ${
     : ''
 }
 
-<div class="section-head"><h2>Recordings</h2></div>
-${recordings.length > 2 ? discloseAll('Your browser remembers what you leave open.') : ''}
+<div class="section-head">
+  <div><h2>Recordings</h2>
+    ${
+      locked.length
+        ? `<p class="lede">${open.length} to practise${
+            isTeacher
+              ? `, and ${locked.length} not yet given to ${esc(student.name.split(' ')[0])}.`
+              : `, and ${locked.length} your teacher hasn't shared yet.`
+          }</p>`
+        : ''
+    }</div>
+</div>
+${open.length > 2 ? discloseAll('Your browser remembers what you leave open.') : ''}
 ${
-  recordings.length
-    ? recordings.map((r, i) => renderRec(r, i, recordings.length)).join('')
-    : `<div class="empty"><strong>Nothing here yet</strong>${
-        isTeacher ? 'Record a take below, or upload one.' : 'Your teacher hasn\'t added a recording for this song yet.'
+  open.length
+    ? open.map((r, i) => renderRec(r, i)).join('')
+    : `<div class="empty"><strong>Nothing to play yet</strong>${
+        isTeacher
+          ? 'Record a take below, or unlock one of the others.'
+          : locked.length
+            ? 'Your teacher hasn\'t shared any of these with you yet.'
+            : 'Your teacher hasn\'t added a recording for this song yet.'
       }</div>`
+}
+
+${
+  locked.length
+    ? `<div class="section-head" style="margin-top:26px">
+    <div><h3>${
+      isTeacher ? 'Not shared with them' : 'Not yet shared with you'
+    }</h3>
+      <p class="lede">${
+        isTeacher
+          ? 'These exist on the song but are not for this student — yet.'
+          : 'These takes exist for this song. Ask your teacher if you need one.'
+      }</p></div>
+  </div>
+  ${locked.map(renderLocked).join('')}`
+    : ''
 }
 
 ${recorderBlock}

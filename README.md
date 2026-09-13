@@ -42,6 +42,14 @@ indexes.sql         the indexes — applied after the columns, see below
 backfill.sql        data fixups, safe to run again
 scripts/
   sync-schema.mjs   adds columns an existing database is missing
+  backup-report.mjs what a .sql dump actually contains
+  restore.mjs       put a dump back, then verify it row by row
+  backup-to-drive.sh weekly backup into your Google Drive folder
+  com.rpsajeev.backup.plist  the launchd job that runs it
+  media-audit.mjs   every recording still has its file?
+.github/workflows/
+  deploy.yml        push to main → checks → schema → deploy → healthz
+  backup.yml        the weekly export — see BACKUP.md
 migrations/         the same changes as hand-written SQL, if you prefer
 wrangler.toml       Cloudflare configuration
 ```
@@ -200,17 +208,31 @@ Ticking nobody leaves it with everyone, because a recording no one can hear is n
 meant. You can also choose the audience *before* recording or uploading, under **Add a
 recording** — it applies to whatever you add next.
 
+**Locked recordings.** A student's song page lists *every* recording on that song. The ones
+shared with them play; the rest appear under **Not yet shared with you** — name, part and
+description visible, nothing to play, and the file itself refused if the address is guessed. So a
+student can see what exists and ask for it, instead of not knowing. Opening the same page as the
+teacher (from their Songs tab) shows the same list with **Unlock for <name>** on each locked one
+and **Lock** on each shared one, so handing a take over is one click from where the question came
+up. Locking a recording that was for everyone keeps it with everyone else — the others are
+written in explicitly, nobody loses anything silently.
+
 **Notes.** Two kinds, kept apart. A note about one take lives inside that recording, under
 **Notes on this recording**; a note about the song sits in **Notes about the whole song** at the
 bottom. Both are typed, take an optional heading and screenshot (you can paste an image straight
 in), can be reordered with the arrows, edited, and given their own audience.
 
+**Saving a note.** Every note offers **Download note** — a text file with its heading, body, the
+song it belongs to and the date — and, when it has a screenshot, **Download image**. Both are
+subject to the same audience rules as the note itself.
+
 **Searching.** There's a search box on Students (name, email, place), on Songs (title in either
 script, raga, taala, composer) and on a student's own list.
 
 **Reordering.** Arrows on each recording and note move it up or down, so the order a student
-sees is the order you want them practised in. A note moves within its own list — the notes on
-its recording, or the song-wide ones.
+sees is the order you want them practised in. Each moves **within its own group**: a recording
+among the other takes of the same part, a note among the notes on its recording or among the
+song-wide ones. Open a recording and the arrows are in its controls row, beside Download.
 
 **Editing a song.** "Edit song details" on the song page changes its title, Malayalam title,
 raga, taala, composer or group without touching its recordings.
@@ -376,6 +398,34 @@ SESSION_SECRET=anything-for-local
 variable somehow got set.
 
 ---
+
+**Colours, per person.** The circle in the top bar opens a small menu: five palettes — Brass &
+Peacock, Indigo & Copper, Palm & Sandalwood, Kumkum & Slate, Night Practice — and light, dark or
+match-the-device. The choice is stored on the user, so it follows them from the practice-room
+laptop to the phone, and the teacher's choice has nothing to do with any student's. It is
+rendered server-side on the `<html>` element, so there is no flash of the old colours on load,
+and it works with JavaScript off. Adding a palette means adding it in two places:
+`PALETTES` in `views/layout.ts` and a `[data-palette]` block in `app.css`.
+
+## Once it's live
+
+`OPERATIONS.md` covers the automation: a push to `main` typechecks, runs the
+time-zone tests, brings the database up to date **and then** deploys, and
+confirms `/healthz` came back green. `GET /healthz` is signed out on purpose so
+an external monitor can watch it. Two GitHub secrets and one variable are the
+whole setup.
+
+## Backups
+
+`BACKUP.md` is the whole strategy. In short: D1's Time Travel covers the last
+7 days on the free plan and needs no setup; a weekly job puts a dump
+in Google Drive (or a GitHub Action does, if the Mac may be off); an R2 bucket lock
+and a weekly `rclone copy` protect the media; `scripts/restore.mjs` puts a dump
+back and checks every table's row count against it.
+
+The backup deliberately does *not* run inside the Worker — the free plan's 10 ms
+CPU and 50-subrequest limits make that unreliable as the library grows, and a
+copy held in the account it protects doesn't answer the failure that matters.
 
 ## Costs
 

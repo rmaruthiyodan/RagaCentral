@@ -61,6 +61,12 @@ export function classPage(user: User, d: ClassPageData, siteName: string, msg?: 
         : '<div class="cw-line local-unknown">their time zone is not set</div>'
     }
     <div class="cw-meta">${esc(prettyIstDate(occ.date))} · ${occ.slot.duration_min} min</div>
+    ${
+      occ.moved
+        ? `<div class="cw-meta"><span class="pill p-warn">moved</span>
+           from ${esc(prettyIstDate(occ.originalDate))}</div>`
+        : ''
+    }
   </div>
 </div>
 

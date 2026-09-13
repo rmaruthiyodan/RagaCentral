@@ -45,6 +45,29 @@
     bar.hidden = false;
   });
 
+  /* Buttons that live inside a <summary> — the reorder arrows. A click
+     anywhere in a summary toggles its <details>, so without this the
+     section would collapse (or spring open) as the page navigates away.
+     Capture phase, because the toggle is the browser's own default on
+     the summary, and stopPropagation alone wouldn't reach it. */
+  document.addEventListener(
+    'click',
+    function (ev) {
+      var keep = ev.target.closest && ev.target.closest('[data-keep-open]');
+      if (!keep) return;
+      var sum = keep.closest('summary');
+      if (!sum) return;
+      var d = sum.parentElement;
+      if (!d || d.tagName !== 'DETAILS') return;
+      var was = d.open;
+      // Let the button submit, then put the section back how it was.
+      setTimeout(function () {
+        if (d.open !== was) d.open = was;
+      }, 0);
+    },
+    true,
+  );
+
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest && ev.target.closest('[data-disc-all]');
     if (!btn) return;

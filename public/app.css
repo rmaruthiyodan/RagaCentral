@@ -58,6 +58,119 @@
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -20px rgba(0,0,0,.9);
 }
 
+/* ============================================================
+   Palettes
+   ------------------------------------------------------------
+   Brass & Peacock is the default and lives in :root above. Each
+   alternative overrides the same thirteen tokens and nothing
+   else — no component knows a theme exists.
+
+   Every palette needs three blocks, because "dark" has three
+   states: the OS says dark and the user hasn't chosen (media
+   query), and the user chose dark explicitly ([data-theme]).
+   Generated from one table; edit that, not this.
+   ============================================================ */
+
+/* ---------- indigo ---------- */
+:root[data-palette="indigo"]{
+  --paper:#F6F7FA; --surface:#FFFFFF; --surface-2:#ECEEF4;
+  --ink:#161822; --ink-2:#474C5C; --ink-3:#767C8D;
+  --line:#DFE2EB; --line-strong:#C5C9D6;
+  --brass:#33408C; --brass-ink:#2A3676; --brass-soft:#E5E8F6;
+  --peacock:#9A5A2C; --peacock-soft:#F6EAE0;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"])[data-palette="indigo"]{
+    --paper:#111319; --surface:#181B23; --surface-2:#1F232D;
+    --ink:#E8E9EF; --ink-2:#A9AEBE; --ink-3:#7B8091;
+    --line:#262A35; --line-strong:#343947;
+    --brass:#8FA0EA; --brass-ink:#A9B6F2; --brass-soft:#1B2038;
+    --peacock:#DFA477; --peacock-soft:#2B1F16;
+  }
+}
+:root[data-theme="dark"][data-palette="indigo"]{
+  --paper:#111319; --surface:#181B23; --surface-2:#1F232D;
+  --ink:#E8E9EF; --ink-2:#A9AEBE; --ink-3:#7B8091;
+  --line:#262A35; --line-strong:#343947;
+  --brass:#8FA0EA; --brass-ink:#A9B6F2; --brass-soft:#1B2038;
+  --peacock:#DFA477; --peacock-soft:#2B1F16;
+}
+
+/* ---------- palm ---------- */
+:root[data-palette="palm"]{
+  --paper:#F7F5EE; --surface:#FFFFFF; --surface-2:#EFEBDF;
+  --ink:#1B1D18; --ink-2:#4C5147; --ink-3:#7C8175;
+  --line:#E1DCCC; --line-strong:#C8C2AE;
+  --brass:#2F6146; --brass-ink:#27523B; --brass-soft:#E1EDE5;
+  --peacock:#8A6A1F; --peacock-soft:#F2E9D2;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"])[data-palette="palm"]{
+    --paper:#12150F; --surface:#1A1E17; --surface-2:#212619;
+    --ink:#E9EAE2; --ink-2:#AFB4A6; --ink-3:#7F8578;
+    --line:#2A3024; --line-strong:#3A4132;
+    --brass:#79BE96; --brass-ink:#8FCEA9; --brass-soft:#1A2A1F;
+    --peacock:#D5B15C; --peacock-soft:#2A2413;
+  }
+}
+:root[data-theme="dark"][data-palette="palm"]{
+  --paper:#12150F; --surface:#1A1E17; --surface-2:#212619;
+  --ink:#E9EAE2; --ink-2:#AFB4A6; --ink-3:#7F8578;
+  --line:#2A3024; --line-strong:#3A4132;
+  --brass:#79BE96; --brass-ink:#8FCEA9; --brass-soft:#1A2A1F;
+  --peacock:#D5B15C; --peacock-soft:#2A2413;
+}
+
+/* ---------- kumkum ---------- */
+:root[data-palette="kumkum"]{
+  --paper:#F3F4F6; --surface:#FFFFFF; --surface-2:#E8EAEE;
+  --ink:#15181C; --ink-2:#464C55; --ink-3:#757C87;
+  --line:#DDE0E6; --line-strong:#C3C8D1;
+  --brass:#B03A2E; --brass-ink:#8F2E24; --brass-soft:#F8E5E2;
+  --peacock:#3B5566; --peacock-soft:#E5EAEE;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"])[data-palette="kumkum"]{
+    --paper:#101216; --surface:#171A1F; --surface-2:#1E222A;
+    --ink:#E7E9ED; --ink-2:#A8AEB8; --ink-3:#7A818C;
+    --line:#252A32; --line-strong:#333944;
+    --brass:#E88478; --brass-ink:#F09E93; --brass-soft:#2C1A17;
+    --peacock:#8FB2C6; --peacock-soft:#182530;
+  }
+}
+:root[data-theme="dark"][data-palette="kumkum"]{
+  --paper:#101216; --surface:#171A1F; --surface-2:#1E222A;
+  --ink:#E7E9ED; --ink-2:#A8AEB8; --ink-3:#7A818C;
+  --line:#252A32; --line-strong:#333944;
+  --brass:#E88478; --brass-ink:#F09E93; --brass-soft:#2C1A17;
+  --peacock:#8FB2C6; --peacock-soft:#182530;
+}
+
+/* ---------- night ---------- */
+:root[data-palette="night"]{
+  --paper:#F4F4F2; --surface:#FFFFFF; --surface-2:#EAEAE6;
+  --ink:#17181A; --ink-2:#4A4D52; --ink-3:#787C82;
+  --line:#DEDEDA; --line-strong:#C5C5C0;
+  --brass:#A8681B; --brass-ink:#8A5514; --brass-soft:#F6EAD8;
+  --peacock:#1F6E77; --peacock-soft:#E0EFF0;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"])[data-palette="night"]{
+    --paper:#0E0F12; --surface:#15171B; --surface-2:#1C1F25;
+    --ink:#EDEAE4; --ink-2:#B0B4BC; --ink-3:#7E838C;
+    --line:#232830; --line-strong:#323842;
+    --brass:#E0A548; --brass-ink:#EFBA68; --brass-soft:#2B2213;
+    --peacock:#63B7C4; --peacock-soft:#12292E;
+  }
+}
+:root[data-theme="dark"][data-palette="night"]{
+  --paper:#0E0F12; --surface:#15171B; --surface-2:#1C1F25;
+  --ink:#EDEAE4; --ink-2:#B0B4BC; --ink-3:#7E838C;
+  --line:#232830; --line-strong:#323842;
+  --brass:#E0A548; --brass-ink:#EFBA68; --brass-soft:#2B2213;
+  --peacock:#63B7C4; --peacock-soft:#12292E;
+}
+
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{
@@ -201,15 +314,52 @@ a.row:hover{background:var(--surface-2)}
 /* ---------- forms ---------- */
 label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
 label .opt{font-weight:400;color:var(--ink-3)}
-input[type=text],input[type=email],input[type=number],input[type=search],select,textarea{
-  width:100%;font-family:inherit;font-size:14.5px;color:var(--ink);
+/* Every text-ish control, listed explicitly. A type missing from here — tel
+   and date were — falls back to the browser's own box: a different height and
+   border sitting next to the styled ones, which is exactly what it looks like. */
+input[type=text],input[type=email],input[type=tel],input[type=url],
+input[type=number],input[type=search],input[type=password],
+input[type=date],input[type=time],input[type=datetime-local],input[type=month],
+select,textarea{
+  width:100%;font-family:inherit;font-size:14.5px;line-height:1.4;color:var(--ink);
   background:var(--surface);border:1px solid var(--line-strong);border-radius:3px;
-  padding:9px 11px;
+  padding:9px 11px;min-height:38px;
 }
+/* The native select is a different height from an input at the same padding,
+   so it draws its own chevron instead. */
+select{
+  appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237B7F88' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center;
+  text-overflow:ellipsis;
+}
+input[type=file]{
+  width:100%;font-family:inherit;font-size:13.5px;color:var(--ink-2);
+  padding:7px 0;
+}
+input[type=file]::file-selector-button{
+  font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);
+  background:var(--surface);border:1px solid var(--line-strong);border-radius:3px;
+  padding:6px 11px;margin-right:11px;cursor:pointer;
+}
+input[type=file]::file-selector-button:hover{background:var(--surface-2)}
+/* Ticks and radios pick up the brass rather than the browser's blue. */
+input[type=checkbox],input[type=radio]{accent-color:var(--brass)}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--brass);outline-offset:-1px;border-color:var(--brass)}
+input::placeholder,textarea::placeholder{color:var(--ink-3);opacity:.75}
 textarea{resize:vertical;min-height:78px;line-height:1.55}
 .field{margin-bottom:14px}
-.field-row{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.field-row{display:grid;gap:12px 16px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));align-items:start}
+
+/* A form whose fields wrap onto as many rows as they need, with the buttons
+   set apart underneath rather than crowding the last field. */
+.form-grid{display:grid;gap:2px 18px;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));align-items:start}
+.form-grid .field{margin-bottom:14px}
+.form-actions{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  margin-top:6px;padding-top:16px;border-top:1px solid var(--line);
+}
+.form-actions .hint{margin:0}
 .hint{font-size:12.5px;color:var(--ink-3);margin-top:5px}
 
 /* ---------- disclosure ---------- */
@@ -245,7 +395,10 @@ details.disc[open] > summary{border-bottom:1px solid var(--line)}
   border-top:4px solid transparent;border-bottom:4px solid transparent;
   transition:transform .12s ease;
 }
-details.disc[open] > summary .disc-mark{transform:rotate(90deg)}
+/* Any <details> that shows a mark, not only .disc ones — the recording
+   cards carry the mark without the class, and their chevron sat pointing
+   right while the card was wide open. */
+details[open] > summary .disc-mark{transform:rotate(90deg)}
 .disc-title{flex:1;min-width:0}
 .disc-meta{
   font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;color:var(--ink-3);white-space:nowrap;
@@ -644,6 +797,25 @@ details.rec > summary .disc-mark{margin-top:6px}
 details.rec[open] .rec-sum-desc{display:none}
 .rec-body{padding:14px 18px 16px}
 
+/* The move buttons ride on the title line, so you can reorder a list of
+   takes without opening a single one. The form itself lives outside the
+   <details> (a <form> can't be nested in a <summary>) and is reached by
+   the buttons' form= attribute; it holds nothing visible. */
+.mv-form{display:none}
+.rec-order{
+  flex:none;display:flex;gap:2px;align-items:center;align-self:flex-start;margin-top:2px;
+}
+.rec-order button{
+  font-family:var(--f-mono);padding:5px 8px;line-height:1;min-width:28px;
+  justify-content:center;opacity:.55;
+}
+details.rec > summary:hover .rec-order button,
+.rec-order button:focus-visible{opacity:1}
+.rec-order button[disabled]{opacity:.2}
+@media (max-width:560px){
+  .rec-order button{opacity:1}
+}
+
 /* An inline expansion, not a floating panel — the old popover was clipped
    by the list's own overflow and never appeared. */
 .inline-edit{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
@@ -898,3 +1070,61 @@ input.needs-value{border-color:var(--bad);background:var(--bad-soft)}
 /* A WhatsApp number that opens the chat. */
 a.wa{color:var(--good);text-decoration:none;font-weight:500}
 a.wa:hover{text-decoration:underline}
+
+/* Saving a note: the words as a text file, the notation as an image. */
+.note-dl{
+  font-size:13px;color:var(--peacock);text-decoration:none;font-weight:500;
+  display:inline-flex;align-items:center;gap:5px;
+}
+.note-dl::before{content:"↓";font-family:var(--f-mono);font-size:12px}
+.note-dl:hover{text-decoration:underline}
+
+/* ============================================================
+   A recording the student hasn't been given
+   ============================================================ */
+.rec.is-locked{
+  border-style:dashed;background:var(--surface-2);padding:14px 18px;
+}
+.rec.is-locked + .rec.is-locked{margin-top:10px}
+.rec.is-locked .rec-title{color:var(--ink-2)}
+.rec.is-locked .rec-desc{color:var(--ink-3)}
+.rec.is-locked .lock{font-size:13px;filter:grayscale(1);opacity:.75}
+.locked-foot{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;
+}
+.locked-foot form{margin:0}
+.locked-note{font-size:13px;color:var(--ink-3)}
+
+/* ============================================================
+   Each person's own colours
+   ============================================================ */
+.themepick{position:relative;flex:none}
+.themepick > summary{
+  list-style:none;cursor:pointer;display:grid;place-items:center;
+  width:30px;height:30px;border:1px solid var(--line-strong);border-radius:50%;
+  background:var(--surface);
+}
+.themepick > summary::-webkit-details-marker{display:none}
+.themepick > summary:hover{border-color:var(--brass)}
+.themepick > summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.tp-dot{width:13px;height:13px;border-radius:50%;display:block;box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)}
+.tp-menu{
+  position:absolute;right:0;top:38px;z-index:60;min-width:212px;
+  background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:6px;
+}
+.tp-h{
+  font-family:var(--f-mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);padding:8px 9px 5px;
+}
+.tp-opt{
+  display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  font-family:var(--f-body);font-size:13.5px;font-weight:500;color:var(--ink);
+  background:none;border:0;border-radius:3px;padding:7px 9px;cursor:pointer;
+}
+.tp-opt:hover{background:var(--surface-2)}
+.tp-opt.is-on{background:var(--brass-soft);color:var(--brass-ink);font-weight:600}
+.tp-opt:focus-visible{outline:2px solid var(--brass);outline-offset:-2px}
+@media (max-width:520px){
+  .tp-menu{position:fixed;right:10px;left:10px;top:56px;min-width:0}
+}

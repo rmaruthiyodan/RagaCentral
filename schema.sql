@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS users (
   time_zone    TEXT,                               -- IANA name, e.g. 'America/New_York'
   location     TEXT,                               -- free text, e.g. 'Dubai, UAE'
   phone        TEXT,                               -- WhatsApp number, as typed
+  palette      TEXT,                               -- brass | indigo | palm | kumkum | night
+  theme_mode   TEXT,                               -- auto | light | dark
   status_note  TEXT,                               -- why they paused/ended
   status_changed_at TEXT
 );

@@ -23,6 +23,10 @@ export interface User {
   location: string | null;
   /** WhatsApp number, as the teacher typed it. */
   phone: string | null;
+  /** Their own choice of colours — see PALETTES in views/layout.ts. */
+  palette: string | null;
+  /** auto follows the device; light and dark override it. */
+  theme_mode: string | null;
   status_note: string | null;
   status_changed_at: string | null;
 }

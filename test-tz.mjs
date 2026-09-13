@@ -74,6 +74,23 @@ const weekItLeft = expand(slots, across, '2026-09-06', 7);
 t('it is gone from the week it left', String(weekItLeft.some(o => o.date === '2026-09-11')), 'false');
 t('nothing is duplicated', String(nextWeek.filter(o => o.date === '2026-09-14').length), '1');
 
+console.log('=== opening one class by the date it was due ===');
+// The class page links by the date a class was *originally* due, because
+// that is how an exception is keyed. Expanding a one-day window there has
+// to find the class even though it now happens on another day — this is
+// the regression that made a rescheduled class 404.
+const dueDay = expand(slots, across, '2026-09-11', 1, { includeSkipped: true, by: 'originalDate' });
+t('the moved class is found from its original date', String(dueDay.length), '1');
+t('...and reports where it actually happens', dueDay[0]?.date, '2026-09-14');
+t('...and remembers where it came from', dueDay[0]?.originalDate, '2026-09-11');
+// The default window still means "what lands here", or the calendar shows
+// a class twice: once where it was, once where it went.
+t('the default window does not find it there',
+  String(expand(slots, across, '2026-09-11', 1, { includeSkipped: true }).length), '0');
+// A class that never moved is found either way.
+t('an ordinary class, by original date',
+  String(expand(slots, [], '2026-09-15', 1, { by: 'originalDate' }).length), '1');
+
 console.log('=== helpers ===');
 t('weekdayOf 2026-09-08', String(weekdayOf('2026-09-08')), '2');
 t('addDays across month end', addDays('2026-09-30', 1), '2026-10-01');

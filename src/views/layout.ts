@@ -22,10 +22,69 @@ const FONTS =
  */
 const MARK = `<img class="brand-mark" src="/logo.png" alt="" width="30" height="30">`;
 
+/**
+ * The palettes anyone can pick, and the dot shown beside each name.
+ * The tokens themselves live in app.css under [data-palette]; this is
+ * only the menu. Adding one means adding it in both places.
+ */
+export const PALETTES: { id: string; name: string; dot: string }[] = [
+  { id: 'brass', name: 'Brass & Peacock', dot: '#9A6A28' },
+  { id: 'indigo', name: 'Indigo & Copper', dot: '#33408C' },
+  { id: 'palm', name: 'Palm & Sandalwood', dot: '#2F6146' },
+  { id: 'kumkum', name: 'Kumkum & Slate', dot: '#B03A2E' },
+  { id: 'night', name: 'Night Practice', dot: '#A8681B' },
+];
+
+const MODES: { id: string; name: string }[] = [
+  { id: 'auto', name: 'Match my device' },
+  { id: 'light', name: 'Always light' },
+  { id: 'dark', name: 'Always dark' },
+];
+
+export function isPalette(v: string): boolean {
+  return PALETTES.some((p) => p.id === v);
+}
+export function isMode(v: string): boolean {
+  return MODES.some((m) => m.id === v);
+}
+
+/**
+ * The picker, in the top bar. A <details> rather than a menu widget, and
+ * a form post rather than a fetch: choosing a colour has to work on a
+ * phone with a bad connection and no JavaScript. The route sends you
+ * back where you were using the Referer header, so this doesn't have to
+ * be threaded through thirty call sites.
+ */
+function themePicker(palette: string, mode: string): string {
+  const current = PALETTES.find((p) => p.id === palette) ?? PALETTES[0];
+  return `<details class="themepick">
+  <summary title="Colours" aria-label="Change colours">
+    <span class="tp-dot" style="background:${esc(current.dot)}"></span>
+  </summary>
+  <div class="tp-menu">
+    <form method="post" action="/settings/theme">
+      <div class="tp-h">Colours</div>
+      ${PALETTES.map(
+        (p) => `<button class="tp-opt${p.id === current.id ? ' is-on' : ''}"
+          name="palette" value="${esc(p.id)}" type="submit">
+        <span class="tp-dot" style="background:${esc(p.dot)}"></span>${esc(p.name)}</button>`,
+      ).join('')}
+      <div class="tp-h">Light or dark</div>
+      ${MODES.map(
+        (m) => `<button class="tp-opt${m.id === mode ? ' is-on' : ''}"
+          name="theme_mode" value="${esc(m.id)}" type="submit">${esc(m.name)}</button>`,
+      ).join('')}
+    </form>
+  </div>
+</details>`;
+}
+
 export function page(body: string, o: LayoutOpts): string {
   const site = o.siteName || 'RP Sajeev Music';
   const u = o.user;
   const isTeacher = u?.role === 'teacher';
+  const palette = u?.palette && isPalette(u.palette) ? u.palette : 'brass';
+  const mode = u?.theme_mode && isMode(u.theme_mode) ? u.theme_mode : 'auto';
 
   const nav = u
     ? isTeacher
@@ -40,14 +99,18 @@ export function page(body: string, o: LayoutOpts): string {
 
   const whoami = u
     ? `<div class="whoami">
+         ${themePicker(palette, mode)}
          ${u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="" referrerpolicy="no-referrer">` : ''}
          <span class="who-name">${esc(u.name)}</span>
          <form method="post" action="/auth/logout"><button class="btn btn-sm btn-quiet" type="submit">Sign out</button></form>
        </div>`
     : '';
 
+  /* Rendered on the server, so the right colours are there in the first
+     paint. A class that flips the theme in JavaScript after load gives
+     every page a flash of the previous one. */
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-palette="${esc(palette)}"${mode === 'auto' ? '' : ` data-theme="${esc(mode)}"`}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

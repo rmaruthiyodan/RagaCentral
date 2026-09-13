@@ -1,0 +1,980 @@
+<title>RP Sajeev Music Design Book</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Malayalam:wght@400;600&display=swap">
+
+<style>
+/* ============================================================
+   Design book for RP Sajeev Music.
+   Blueprint palette on purpose: the product's own brass and
+   peacock appear inside as specimens, so the page around them
+   has to be a different colour or the specimens stop reading
+   as specimens.
+   ============================================================ */
+:root{
+  --paper:#F2F3F6;
+  --surface:#FFFFFF;
+  --surface-2:#E9EBF1;
+  --ink:#171A22;
+  --ink-2:#4B5162;
+  --ink-3:#79808F;
+  --line:#DCDFE8;
+  --line-strong:#C2C7D6;
+  --blue:#2C4A7C;
+  --blue-soft:#E3EAF6;
+  --ok:#2C6B4C;
+  --ok-soft:#E2EEE8;
+  --warn:#8A6414;
+  --warn-soft:#F5EDD8;
+  --stop:#93372E;
+  --stop-soft:#F6E4E1;
+
+  --f-display:"Newsreader",Georgia,"Times New Roman",serif;
+  --f-body:"Source Sans 3","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+  --f-ml:"Noto Sans Malayalam",var(--f-body);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#101319; --surface:#171B23; --surface-2:#1E2430;
+    --ink:#E7E9EF; --ink-2:#A9B0C0; --ink-3:#7B8395;
+    --line:#262C38; --line-strong:#343C4C;
+    --blue:#89AEE2; --blue-soft:#182231;
+    --ok:#7CC49A; --ok-soft:#17281F;
+    --warn:#D9B45A; --warn-soft:#2A2415;
+    --stop:#E2887C; --stop-soft:#2C1D1B;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101319; --surface:#171B23; --surface-2:#1E2430;
+  --ink:#E7E9EF; --ink-2:#A9B0C0; --ink-3:#7B8395;
+  --line:#262C38; --line-strong:#343C4C;
+  --blue:#89AEE2; --blue-soft:#182231;
+  --ok:#7CC49A; --ok-soft:#17281F;
+  --warn:#D9B45A; --warn-soft:#2A2415;
+  --stop:#E2887C; --stop-soft:#2C1D1B;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--f-body);font-size:16px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--blue)}
+
+/* ---------- masthead ---------- */
+.mast{
+  border-bottom:1px solid var(--line);background:var(--surface);
+  background-image:
+    linear-gradient(to right,var(--surface-2) 1px,transparent 1px),
+    linear-gradient(to bottom,var(--surface-2) 1px,transparent 1px);
+  background-size:28px 28px;
+  background-position:-1px -1px;
+}
+.mast-in{
+  max-width:1180px;margin:0 auto;padding:52px 28px 40px;
+  display:flex;flex-wrap:wrap;gap:28px;align-items:flex-end;justify-content:space-between;
+}
+.mast h1{
+  font-family:var(--f-display);font-weight:600;font-size:clamp(2.1rem,4.4vw,3.1rem);
+  line-height:1.06;letter-spacing:-.02em;margin:0;text-wrap:balance;
+}
+.mast .kicker{
+  font-family:var(--f-mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--blue);margin:0 0 12px;
+}
+.mast p.sub{color:var(--ink-2);font-size:17px;margin:14px 0 0;max-width:52ch}
+.facts{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);min-width:270px}
+.facts div{background:var(--surface);padding:9px 14px;display:flex;justify-content:space-between;gap:18px}
+.facts dt,.facts .k{font-size:13px;color:var(--ink-3)}
+.facts .v{font-family:var(--f-mono);font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* ---------- shell ---------- */
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px 110px;display:grid;gap:44px}
+@media (min-width:1040px){ .wrap{grid-template-columns:206px minmax(0,1fr)} }
+.toc{align-self:start;position:sticky;top:26px;padding-top:38px}
+.toc-h{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:10px;
+}
+.toc a{
+  display:block;padding:5px 0;font-size:14px;color:var(--ink-2);text-decoration:none;
+  border-left:2px solid transparent;padding-left:11px;margin-left:-11px;
+}
+.toc a:hover{color:var(--ink);border-left-color:var(--blue)}
+@media (max-width:1039px){ .toc{display:none} }
+
+main{padding-top:38px;max-width:76ch}
+section{margin-bottom:56px;scroll-margin-top:20px}
+h2{
+  font-family:var(--f-display);font-weight:600;font-size:1.62rem;letter-spacing:-.015em;
+  margin:0 0 4px;text-wrap:balance;
+}
+h3{font-size:1.02rem;font-weight:700;margin:28px 0 6px;letter-spacing:-.005em}
+h4{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin:22px 0 8px;font-weight:500}
+.eyebrow{
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--blue);display:block;margin-bottom:7px;
+}
+p{margin:0 0 14px}
+main p{max-width:68ch}
+strong{font-weight:700}
+code{font-family:var(--f-mono);font-size:.86em;background:var(--surface-2);padding:1px 5px;border-radius:3px}
+.lede{color:var(--ink-2);font-size:17px;margin-bottom:22px;max-width:64ch}
+
+ul,ol{margin:0 0 16px;padding-left:20px;max-width:68ch}
+li{margin-bottom:6px}
+li::marker{color:var(--ink-3)}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;border:1px solid var(--line);background:var(--surface);margin-bottom:18px}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+th{
+  text-align:left;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500;
+  padding:10px 14px;border-bottom:1px solid var(--line-strong);white-space:nowrap;
+}
+td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+tr:last-child td{border-bottom:none}
+td:first-child{color:var(--ink);font-family:var(--f-mono);font-size:13px;white-space:nowrap}
+td .n{font-family:var(--f-mono);font-size:13px}
+.yes{color:var(--ok);font-weight:600}
+.no{color:var(--stop);font-weight:600}
+
+/* ---------- figures ---------- */
+figure{margin:0 0 22px;border:1px solid var(--line);background:var(--surface);padding:22px 20px 14px}
+figure svg{display:block;width:100%;height:auto;max-width:100%;color:var(--ink-2)}
+figcaption{
+  font-size:13px;color:var(--ink-3);margin-top:12px;padding-top:11px;
+  border-top:1px solid var(--line);max-width:64ch;
+}
+
+/* ---------- callout ---------- */
+.note{
+  border-left:3px solid var(--blue);background:var(--blue-soft);
+  padding:14px 18px;margin:0 0 20px;font-size:15px;color:var(--ink-2);
+}
+.note b{color:var(--ink)}
+
+/* ---------- numbered procedure ---------- */
+.steps{counter-reset:s;list-style:none;padding:0;margin:0 0 20px;display:grid;gap:1px;background:var(--line);border:1px solid var(--line)}
+.steps li{
+  counter-increment:s;background:var(--surface);padding:14px 18px 14px 52px;position:relative;margin:0;
+}
+.steps li::before{
+  content:counter(s);position:absolute;left:16px;top:14px;
+  font-family:var(--f-mono);font-size:12px;color:var(--blue);
+  border:1px solid var(--line-strong);width:22px;height:22px;
+  display:grid;place-items:center;border-radius:50%;
+}
+.steps b{display:block;font-size:15px}
+.steps span{font-size:14px;color:var(--ink-2)}
+
+/* ---------- code ---------- */
+pre{
+  font-family:var(--f-mono);font-size:12.5px;line-height:1.6;background:var(--surface);
+  border:1px solid var(--line);padding:14px 16px;overflow-x:auto;margin:0 0 18px;color:var(--ink-2);
+}
+pre b{color:var(--ink);font-weight:500}
+
+/* ---------- specimen chrome ---------- */
+.spec{border:1px solid var(--line);background:var(--surface);padding:18px 20px;margin-bottom:18px}
+.spec-h{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:12px;
+}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:10px}
+.sw{border:1px solid var(--line);background:var(--surface)}
+.sw i{display:block;height:46px}
+.sw span{display:block;font-family:var(--f-mono);font-size:10.5px;padding:6px 8px;color:var(--ink-2)}
+.sw span b{display:block;color:var(--ink);font-weight:500;font-size:11px}
+
+.scale{display:grid;gap:10px}
+.scale div{display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--line);padding-bottom:9px}
+.scale .t{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-3);width:104px;flex:none}
+
+/* ---------- theme picker ---------- */
+.themebar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.tbtn{
+  font-family:var(--f-body);font-size:13.5px;font-weight:600;cursor:pointer;
+  border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);
+  padding:7px 13px;display:inline-flex;align-items:center;gap:8px;
+}
+.tbtn:hover{background:var(--surface-2)}
+.tbtn[aria-pressed="true"]{border-color:var(--blue);box-shadow:inset 0 -2px 0 var(--blue)}
+.tbtn i{width:11px;height:11px;border-radius:50%;display:block;border:1px solid rgba(0,0,0,.15)}
+.tbtn:focus-visible,.copy:focus-visible,.toc a:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+.themegrid{display:grid;gap:18px;margin-bottom:18px}
+@media (min-width:760px){ .themegrid{grid-template-columns:1fr 1fr} }
+
+/* The preview paints itself entirely from --p-* variables set by JS,
+   so it never inherits this page's palette. */
+.mini{
+  --p-paper:#FBFAF7;--p-surface:#fff;--p-surface-2:#F4F2EC;
+  --p-ink:#1A1C20;--p-ink-2:#4E525A;--p-ink-3:#7B7F88;
+  --p-line:#E3DFD7;--p-line-strong:#CFC9BD;
+  --p-accent:#9A6A28;--p-accent-ink:#7A5320;--p-accent-soft:#F3E9D6;
+  --p-second:#1B5E7E;--p-second-soft:#E2EFF4;--p-on-accent:#fff;
+  background:var(--p-paper);border:1px solid var(--line);
+  font-family:var(--f-body);color:var(--p-ink);overflow:hidden;
+}
+.mini-bar{
+  background:var(--p-surface);border-bottom:1px solid var(--p-line);
+  padding:10px 14px;display:flex;align-items:center;gap:12px;
+}
+.mini-brand{font-family:var(--f-display);font-weight:600;font-size:15px;color:var(--p-ink);white-space:nowrap}
+.mini-bar{flex-wrap:nowrap}
+.mini-nav span{white-space:nowrap}
+.mini-dot{width:20px;height:20px;border-radius:4px;background:var(--p-accent);flex:none}
+.mini-nav{display:flex;gap:3px;margin-left:auto}
+.mini-nav span{font-size:11.5px;color:var(--p-ink-3);padding:3px 8px;border-radius:3px}
+.mini-nav span.on{background:var(--p-accent-soft);color:var(--p-accent-ink)}
+.mini-body{padding:16px 14px;display:grid;gap:11px}
+.mini-h{font-family:var(--f-display);font-size:17px;font-weight:600;color:var(--p-ink);margin:0}
+.mini-card{background:var(--p-surface);border:1px solid var(--p-line);padding:11px 13px}
+.mini-row{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.mini-title{font-size:13.5px;font-weight:600;color:var(--p-ink)}
+.mini-meta{font-family:var(--f-mono);font-size:10.5px;color:var(--p-ink-3)}
+.mini-note{
+  border-left:3px solid var(--p-second);background:var(--p-second-soft);
+  padding:9px 12px;font-size:12.5px;color:var(--p-ink-2);
+}
+.mini-note b{display:block;color:var(--p-ink);font-size:12px;margin-bottom:2px}
+.mini-pills{display:flex;gap:6px;flex-wrap:wrap}
+.mini-pill{
+  font-family:var(--f-mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  padding:3px 7px;border-radius:9px;background:var(--p-second-soft);color:var(--p-second);
+}
+.mini-pill.b{background:var(--p-accent-soft);color:var(--p-accent-ink)}
+.mini-btns{display:flex;gap:7px;align-items:center}
+.mini-btn{
+  font-size:12px;font-weight:600;padding:6px 11px;border:1px solid var(--p-line-strong);
+  background:var(--p-surface);color:var(--p-ink);border-radius:3px;
+}
+.mini-btn.pri{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent)}
+.mini-locked{
+  border:1px dashed var(--p-line-strong);background:var(--p-surface-2);padding:9px 12px;
+  font-size:12.5px;color:var(--p-ink-3);
+}
+.mini-ml{font-family:var(--f-ml);font-size:12.5px;color:var(--p-ink-2)}
+
+.themehead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:8px}
+.themehead h3{margin:0}
+.themehead .use{font-size:13px;color:var(--ink-3)}
+.copy{
+  font-family:var(--f-mono);font-size:11.5px;cursor:pointer;border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--ink-2);padding:5px 10px;
+}
+.copy:hover{background:var(--surface-2);color:var(--ink)}
+.cssout{max-height:270px;overflow:auto}
+
+.two{display:grid;gap:18px}
+@media (min-width:720px){ .two{grid-template-columns:1fr 1fr} }
+
+footer{
+  border-top:1px solid var(--line);margin-top:30px;padding-top:20px;
+  font-size:13.5px;color:var(--ink-3);
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <div>
+      <p class="kicker">Design book · September 2026</p>
+      <h1>RP Sajeev Music</h1>
+      <p class="sub">
+        How the lesson library is built, what governs who hears what, and the pieces to
+        reuse — written to be read by someone who did not build it.
+      </p>
+    </div>
+    <div class="facts">
+      <div><span class="k">Runtime</span><span class="v">Cloudflare Worker · Hono</span></div>
+      <div><span class="k">Data</span><span class="v">D1 · 12 tables</span></div>
+      <div><span class="k">Media</span><span class="v">R2 · free egress</span></div>
+      <div><span class="k">Routes</span><span class="v">64</span></div>
+      <div><span class="k">Front end</span><span class="v">no framework</span></div>
+      <div><span class="k">Running cost</span><span class="v">$0 / month</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-h">Contents</div>
+    <a href="#shape">The shape of it</a>
+    <a href="#request">How a request moves</a>
+    <a href="#model">The data model</a>
+    <a href="#access">Who hears what</a>
+    <a href="#time">Time and the schedule</a>
+    <a href="#upgrade">Upgrading a database</a>
+    <a href="#media">The media pipeline</a>
+    <a href="#system">The interface system</a>
+    <a href="#themes">Theme options</a>
+    <a href="#decisions">Decisions and why</a>
+    <a href="#reuse">Reusing this</a>
+  </nav>
+
+  <main>
+    <section id="shape">
+      <span class="eyebrow">The shape of it</span>
+      <h2>One teacher, many students, one library</h2>
+      <p class="lede">
+        A Carnatic vocal teacher in India records lessons; students in a dozen time zones listen
+        to what has been given to them. Everything else in the app follows from those two
+        sentences.
+      </p>
+      <p>
+        There are exactly two roles. A <strong>teacher</strong> sees everything and is the only
+        person who can add anything. A <strong>student</strong> sees the songs assigned to them,
+        the recordings and notes shared with them, their own lesson history and their own
+        classes — and nothing else, ever, including through a guessed URL.
+      </p>
+      <p>
+        The whole app is server-rendered HTML. Every core flow — assigning a song, logging a
+        lesson, sharing a recording, rescheduling a class — is a plain form post that works with
+        JavaScript switched off. Three small scripts add what markup cannot do: playback speed
+        and the A–B loop, browser recording with MP3 encoding, and remembering which collapsible
+        sections you left open.
+      </p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>File</th><th>What lives there</th></tr></thead>
+          <tbody>
+            <tr><td>src/index.ts</td><td>Every route — 64 of them — plus the access helpers</td></tr>
+            <tr><td>src/auth.ts</td><td>Google sign-in, signed session cookies, route guards</td></tr>
+            <tr><td>src/tz.ts</td><td>The time-zone engine: IST anchoring, occurrence expansion</td></tr>
+            <tr><td>src/views/layout.ts</td><td>Page shell, disclosure component, avatar, flash</td></tr>
+            <tr><td>src/views/song.ts</td><td>The song page: recordings by part, notes, audience editor</td></tr>
+            <tr><td>src/views/student.ts</td><td>One student across five tabs</td></tr>
+            <tr><td>src/views/klass.ts</td><td>One class, opened to teach it</td></tr>
+            <tr><td>src/views/schedule.ts</td><td>Week grid, day view, list, weekly slots, zone options</td></tr>
+            <tr><td>src/views/sessions.ts</td><td>The lesson log and its resume card</td></tr>
+            <tr><td>src/views/pages.ts</td><td>Students, catalogue, the shared song workspace, student home</td></tr>
+            <tr><td>public/app.css</td><td>The entire design system — tokens first, no framework</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="request">
+      <span class="eyebrow">How a request moves</span>
+      <h2>One Worker, two stores</h2>
+      <p>
+        There is no application server and no origin. A request reaches a Cloudflare Worker,
+        which reads the session cookie, asks D1 for rows, and — for audio — streams bytes out of
+        R2 after checking that this listener is allowed to have them.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 720 300" role="img" aria-label="A browser request reaches the Worker, which verifies a signed cookie, reads rows from D1, and streams media from R2 only after an access check">
+          <defs>
+            <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <rect x="8" y="104" width="132" height="62" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="74" y="130" text-anchor="middle" font-size="13" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">Browser</text>
+          <text x="74" y="148" text-anchor="middle" font-size="11" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">cookie</text>
+
+          <rect x="248" y="88" width="164" height="94" fill="none" stroke="#2C4A7C" stroke-width="1.8"/>
+          <text x="330" y="118" text-anchor="middle" font-size="13" fill="#2C4A7C" font-family="Source Sans 3, sans-serif" font-weight="600">Worker</text>
+          <text x="330" y="137" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">verify HMAC</text>
+          <text x="330" y="154" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">studentMaySee()</text>
+          <text x="330" y="171" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">render HTML</text>
+
+          <rect x="536" y="30" width="176" height="58" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="624" y="54" text-anchor="middle" font-size="13" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">D1 (SQLite)</text>
+          <text x="624" y="72" text-anchor="middle" font-size="11" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">rows, a few MB</text>
+
+          <rect x="536" y="196" width="176" height="58" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="624" y="220" text-anchor="middle" font-size="13" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">R2 bucket</text>
+          <text x="624" y="238" text-anchor="middle" font-size="11" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".75">audio, video, images</text>
+
+          <line x1="140" y1="122" x2="246" y2="122" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar1)"/>
+          <text x="193" y="114" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace">GET /me/:song</text>
+
+          <line x1="246" y1="152" x2="140" y2="152" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar1)"/>
+          <text x="193" y="168" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace">HTML</text>
+
+          <line x1="412" y1="112" x2="534" y2="70" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar1)"/>
+          <text x="474" y="82" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace">reads</text>
+
+          <line x1="412" y1="160" x2="534" y2="214" stroke="#2C4A7C" stroke-width="1.6" marker-end="url(#ar1)"/>
+          <text x="470" y="200" text-anchor="middle" font-size="10.5" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">streams, 206 Range</text>
+
+          <line x1="534" y1="240" x2="412" y2="182" stroke="#2C4A7C" stroke-width="1.6" stroke-dasharray="4 3"/>
+          <text x="330" y="214" text-anchor="middle" font-size="10.5" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">only after the check passes</text>
+
+          <text x="8" y="290" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".7">Media never leaves R2 by a public URL — every byte passes the Worker.</text>
+        </svg>
+        <figcaption>
+          The access check sits between the request and the bytes, which is why an R2 object has
+          no public address: a student who guesses <code>/media/&lt;id&gt;</code> gets 403, not audio.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="model">
+      <span class="eyebrow">The data model</span>
+      <h2>Twelve tables, two of them joins</h2>
+      <p>
+        Songs live in <code>sections</code> for historical reasons — the table predates the word
+        "song" being settled on — and a recording belongs to a <em>song</em>, not to a student.
+        That single decision is what lets one reference take serve everyone learning the piece.
+      </p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Table</th><th>Holds</th><th>Worth knowing</th></tr></thead>
+          <tbody>
+            <tr><td>users</td><td>Teachers and students</td><td>role, status, IANA time_zone, location, WhatsApp phone</td></tr>
+            <tr><td>groups</td><td>Teacher-defined song groups</td><td>Sarali varisai, Geethams, a concert set — his call</td></tr>
+            <tr><td>sections</td><td>Songs</td><td>title + title_ml (Malayalam), raga, taala, composer</td></tr>
+            <tr><td>assignments</td><td>Student ↔ song</td><td>archived_at unassigns; completed_at means finished</td></tr>
+            <tr><td>recordings</td><td>Audio and video takes</td><td>belongs to a song; part, description, visibility</td></tr>
+            <tr><td>recording_shares</td><td>Recording ↔ student</td><td>consulted only when visibility ≠ 'shared'</td></tr>
+            <tr><td>notes</td><td>Typed notes, optional image</td><td>recording_id set = about that take; null = about the song</td></tr>
+            <tr><td>note_shares</td><td>Note ↔ student</td><td>same rule as recordings</td></tr>
+            <tr><td>sessions</td><td>One dated class</td><td>covered, <b>left_off</b>, next_focus, status</td></tr>
+            <tr><td>session_sections</td><td>Lesson ↔ songs covered</td><td>a class can touch several songs</td></tr>
+            <tr><td>class_slots</td><td>Weekly or one-off class times</td><td>time_ist is a wall time in India, never an offset</td></tr>
+            <tr><td>slot_exceptions</td><td>One changed occurrence</td><td>skip · move · missed, keyed by the original date</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <b>left_off is the field that earns its keep.</b> It is the one line the teacher writes
+        after a class about where the student stopped, and it is pinned to the top of their page
+        until the next lesson replaces it. Everything else in the lesson log is history; this is
+        the part that gets used.
+      </div>
+    </section>
+
+    <section id="access">
+      <span class="eyebrow">Who hears what</span>
+      <h2>Shared by default, given by name when it matters</h2>
+      <p>
+        A recording or note is either for <strong>everyone learning the song</strong>
+        (<code>visibility = 'shared'</code>) or for <strong>a named set of students</strong>
+        (<code>'chosen'</code>, with rows in the share table). One item can go to any number of
+        students without being copied.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 720 232" role="img" aria-label="A recording marked shared reaches every assigned student; a recording marked chosen reaches only the students named in the share table, and the others see a locked card">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+          <rect x="8" y="26" width="150" height="52" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="83" y="48" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="Source Sans 3, sans-serif" font-weight="600">Recording</text>
+          <text x="83" y="66" text-anchor="middle" font-size="11" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".8">'shared'</text>
+
+          <rect x="8" y="148" width="150" height="52" fill="none" stroke="#2C4A7C" stroke-width="1.6"/>
+          <text x="83" y="170" text-anchor="middle" font-size="12.5" fill="#2C4A7C" font-family="Source Sans 3, sans-serif" font-weight="600">Recording</text>
+          <text x="83" y="188" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">'chosen'</text>
+
+          <rect x="286" y="148" width="152" height="52" fill="none" stroke="#2C4A7C" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text x="362" y="170" text-anchor="middle" font-size="12" fill="#2C4A7C" font-family="IBM Plex Mono, monospace">recording_shares</text>
+          <text x="362" y="188" text-anchor="middle" font-size="11" fill="#2C4A7C" font-family="IBM Plex Mono, monospace" opacity=".8">2 rows</text>
+
+          <rect x="566" y="14" width="146" height="34" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="639" y="36" text-anchor="middle" font-size="12" fill="currentColor" font-family="Source Sans 3, sans-serif">Anjali · plays</text>
+          <rect x="566" y="60" width="146" height="34" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="639" y="82" text-anchor="middle" font-size="12" fill="currentColor" font-family="Source Sans 3, sans-serif">Meera · plays</text>
+          <rect x="566" y="132" width="146" height="34" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="639" y="154" text-anchor="middle" font-size="12" fill="currentColor" font-family="Source Sans 3, sans-serif">Meera · plays</text>
+          <rect x="566" y="178" width="146" height="34" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text x="639" y="200" text-anchor="middle" font-size="12" fill="currentColor" font-family="Source Sans 3, sans-serif" opacity=".8">Nithya · locked</text>
+
+          <line x1="158" y1="42" x2="564" y2="31" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+          <line x1="158" y1="60" x2="564" y2="77" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+          <text x="360" y="42" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace">everyone assigned the song</text>
+
+          <line x1="158" y1="174" x2="284" y2="174" stroke="#2C4A7C" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="438" y1="164" x2="564" y2="149" stroke="#2C4A7C" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="438" y1="184" x2="564" y2="195" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+          <text x="500" y="216" text-anchor="middle" font-size="10.5" fill="currentColor" font-family="IBM Plex Mono, monospace" opacity=".8">not listed → 403 on /media</text>
+        </svg>
+        <figcaption>
+          Locking a recording that was shared does not silently strip it from everyone: the other
+          assigned students are written into the share table in the same transaction, so only the
+          named student loses it.
+        </figcaption>
+      </figure>
+
+      <h3>The check, in full</h3>
+      <pre><b>async function</b> studentMaySee(env, studentId, item, kind) {
+  <b>if</b> (item.visibility !== 'shared') {
+    <b>const</b> given = <b>await</b> …SELECT 1 FROM ${kind}_shares
+                      WHERE ${kind}_id = ? AND student_id = ?;
+    <b>if</b> (!given) <b>return false</b>;
+  }
+  <b>return</b> …SELECT 1 FROM assignments
+           WHERE student_id = ? AND section_id = ? AND archived_at IS NULL;
+}</pre>
+      <p>
+        Anything that is not exactly <code>'shared'</code> is treated as restricted. That is
+        deliberate: a row left behind by a half-finished upgrade is checked against an empty
+        share list and comes back <span class="no">false</span>. The failure mode is a student
+        who has to ask for a recording, not a student who hears one they shouldn't.
+      </p>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>Situation</th><th>Sees it listed</th><th>Can play it</th><th>/media/:id</th></tr></thead>
+          <tbody>
+            <tr><td>shared, song assigned</td><td class="yes">yes</td><td class="yes">yes</td><td class="n">200</td></tr>
+            <tr><td>chosen, named</td><td class="yes">yes</td><td class="yes">yes</td><td class="n">200</td></tr>
+            <tr><td>chosen, not named</td><td class="yes">yes, locked</td><td class="no">no</td><td class="n">403</td></tr>
+            <tr><td>song not assigned</td><td class="no">no</td><td class="no">no</td><td class="n">403</td></tr>
+            <tr><td>signed out</td><td class="no">no</td><td class="no">no</td><td class="n">302 → sign in</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Row three is the newest rule and the one worth understanding. A student sees
+        <em>every</em> recording on their songs; the ones not given to them appear named but
+        unplayable, under "Not yet shared with you". They can see the library exists and ask for
+        a take; the teacher, opening the same page, gets an <strong>Unlock</strong> button on
+        each locked row and a <strong>Lock</strong> on each open one.
+      </p>
+    </section>
+
+    <section id="time">
+      <span class="eyebrow">Time and the schedule</span>
+      <h2>India is fixed; the students move</h2>
+      <p>
+        Every class is anchored to a wall time in India. India has never observed daylight
+        saving, so IST is a fixed UTC+05:30 and turning "Tuesday 7pm" into an instant is
+        arithmetic — no library, no rule table that goes stale.
+      </p>
+      <pre><b>export function</b> istToInstant(date, time) {
+  <b>const</b> [y, m, d] = date.split('-').map(Number);
+  <b>const</b> [hh, mm] = time.split(':').map(Number);
+  <b>return new</b> Date(Date.UTC(y, m - 1, d, hh, mm) - 330 * 60_000);
+}</pre>
+      <p>
+        The students are the ones who move, so their side is computed <em>per occurrence</em>
+        with <code>Intl.DateTimeFormat</code>, which knows each zone's rules.
+        <code>users.time_zone</code> holds an IANA name — never a numeric offset, which is wrong
+        for half the year anywhere that changes its clocks.
+      </p>
+      <ul>
+        <li><strong>Occurrences are computed on read</strong>, never stored. Editing a slot
+          corrects every future class at once, and there is nothing stale to migrate.</li>
+        <li><strong>The scan runs wider than the window.</strong> A class moved from Friday into
+          the following Sunday is generated while scanning Friday; without a ±14-day scan and a
+          trim by final date, it vanishes from the week it landed in.</li>
+        <li><strong>A student who isn't active has no future classes</strong> — but every class
+          they already had stays on the calendar, marked with their status.</li>
+        <li><code>test-tz.mjs</code> asserts against real transitions in New York, London and
+          Sydney, plus date rollover and the moved-across-a-boundary case.</li>
+      </ul>
+      <div class="note">
+        <b>The trap this avoids.</b> Storing "+5:30" or "-5" per student. Twice a year half the
+        roster would be an hour wrong, and the bug would look like the student's fault.
+      </div>
+    </section>
+
+    <section id="upgrade">
+      <span class="eyebrow">Upgrading a database</span>
+      <h2>Four steps, in this order</h2>
+      <p>
+        <code>CREATE TABLE IF NOT EXISTS</code> does <em>nothing</em> to a table that already
+        exists — so a column added in a new version never arrives, and the first index over it
+        takes the whole app down at startup. That happened once. The fix is an ordering, and the
+        container runs all four on every start.
+      </p>
+      <ol class="steps">
+        <li><b>schema.sql — tables</b><span>Creates whatever is missing. No indexes here, ever.</span></li>
+        <li><b>scripts/sync-schema.mjs — columns</b><span>Parses the column list out of schema.sql, compares it to <code>PRAGMA table_info</code>, and issues <code>ALTER TABLE ADD COLUMN</code> for the difference. Only ever adds.</span></li>
+        <li><b>indexes.sql — indexes</b><span>Now that the columns are guaranteed to exist.</span></li>
+        <li><b>backfill.sql — data</b><span>When the <em>meaning</em> of existing rows changes. Each statement is written so its own effect removes the rows it selects, which is what makes a second run a no-op.</span></li>
+      </ol>
+      <p>
+        The same four commands work against Cloudflare with <code>--remote</code>. Adding a
+        column to <code>schema.sql</code> is the whole task: step 2 finds it. That is how
+        <code>recordings.description</code>, <code>notes.title</code> and <code>users.phone</code>
+        reached a running database with no hand-written migration.
+      </p>
+    </section>
+
+    <section id="media">
+      <span class="eyebrow">The media pipeline</span>
+      <h2>Recorded in a browser, played on an old iPhone</h2>
+      <p>
+        Browsers disagree about recording formats: Chrome and Firefox produce WebM/Opus, Safari
+        produces MP4/AAC, and Safari could not <em>play</em> WebM until 18.4. A lesson recorded
+        in Chrome would have been silent on an older iPhone — the exact device a student is most
+        likely to practise from.
+      </p>
+      <pre>MediaRecorder  →  decodeAudioData  →  lamejs (96 kbps mono MP3)  →  POST /api/recordings
+                                          ↓ yields between blocks
+                                     page stays responsive</pre>
+      <ul>
+        <li>Audio is re-encoded in the browser before upload: one format, plays anywhere, about
+          0.7&nbsp;MB a minute.</li>
+        <li>If conversion fails for any reason the original is kept rather than the take lost.</li>
+        <li>Video is left alone and capped at two minutes.</li>
+        <li>Uploads go <em>through</em> the Worker — simpler than presigned URLs and needs no
+          extra R2 credentials. The ceiling is Cloudflare's 100&nbsp;MB request body; the app
+          refuses anything over 90&nbsp;MB with a clear message.</li>
+        <li>Playback asks R2 for byte ranges, so seeking in a 90-minute file doesn't download it.</li>
+      </ul>
+    </section>
+
+    <section id="system">
+      <span class="eyebrow">The interface system</span>
+      <h2>Tokens first, one stylesheet, no framework</h2>
+      <p>
+        <code>public/app.css</code> is about 900 lines and defines every colour as a token at
+        <code>:root</code>, so light and dark stay in step and a rebrand is a block of variables
+        rather than a search across files.
+      </p>
+
+      <h4>The palette in use</h4>
+      <div class="spec">
+        <div class="swatches">
+          <div class="sw"><i style="background:#FBFAF7"></i><span><b>--paper</b>#FBFAF7</span></div>
+          <div class="sw"><i style="background:#FFFFFF"></i><span><b>--surface</b>#FFFFFF</span></div>
+          <div class="sw"><i style="background:#F4F2EC"></i><span><b>--surface-2</b>#F4F2EC</span></div>
+          <div class="sw"><i style="background:#1A1C20"></i><span><b>--ink</b>#1A1C20</span></div>
+          <div class="sw"><i style="background:#7B7F88"></i><span><b>--ink-3</b>#7B7F88</span></div>
+          <div class="sw"><i style="background:#E3DFD7"></i><span><b>--line</b>#E3DFD7</span></div>
+          <div class="sw"><i style="background:#9A6A28"></i><span><b>--brass</b>#9A6A28</span></div>
+          <div class="sw"><i style="background:#F3E9D6"></i><span><b>--brass-soft</b>#F3E9D6</span></div>
+          <div class="sw"><i style="background:#1B5E7E"></i><span><b>--peacock</b>#1B5E7E</span></div>
+          <div class="sw"><i style="background:#E2EFF4"></i><span><b>--peacock-soft</b>#E2EFF4</span></div>
+          <div class="sw"><i style="background:#2C6B4C"></i><span><b>--good</b>#2C6B4C</span></div>
+          <div class="sw"><i style="background:#95382F"></i><span><b>--bad</b>#95382F</span></div>
+        </div>
+      </div>
+      <p>
+        Two accents, each with a job. <strong>Brass</strong> is the teacher's colour — primary
+        buttons, the current nav item, an ongoing lesson. <strong>Peacock</strong> belongs to
+        notes and information. Green, amber and red are semantic only and never decorative.
+      </p>
+
+      <h4>Type</h4>
+      <div class="spec">
+        <div class="scale">
+          <div><span class="t">Literata 700 / 2rem</span><span style="font-family:Newsreader,serif;font-size:1.7rem;font-weight:600">Vatapi Ganapatim</span></div>
+          <div><span class="t">Noto Sans Malayalam</span><span class="mini-ml" style="font-size:1.15rem">വാതാപി ഗണപതിം</span></div>
+          <div><span class="t">Public Sans 400 / 15.5px</span><span>Anupallavi at half speed. Hold the gamaka.</span></div>
+          <div><span class="t">JetBrains Mono / 11px</span><span style="font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.11em;text-transform:uppercase">7:00 pm IST · 60 min</span></div>
+        </div>
+      </div>
+      <p>
+        A serif for song titles because they are names, not labels; a neutral sans for
+        everything read at length; mono for anything a teacher scans for a number — times,
+        durations, file sizes, dates. Malayalam sits alongside the transliteration wherever a
+        title appears, in its own face at its own line height.
+      </p>
+
+      <h4>Components worth reusing</h4>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Class</th><th>What it is</th><th>Where it earns its keep</th></tr></thead>
+          <tbody>
+            <tr><td>.rows / .row</td><td>Bordered list, one object per line</td><td>Students, songs, slots, search results</td></tr>
+            <tr><td>.disc</td><td>Collapsible section, plain &lt;details&gt;</td><td>Song groups, parts, each recording</td></tr>
+            <tr><td>.rec</td><td>A recording: summary line, player, controls, its notes</td><td>Song page, student page</td></tr>
+            <tr><td>.audience</td><td>Everyone / named students, as checkboxes</td><td>Every recording and note</td></tr>
+            <tr><td>.pill</td><td>State in colour and words</td><td>everyone · 3 students · missed · paused</td></tr>
+            <tr><td>.resume</td><td>The pinned "pick up from here" card</td><td>Student overview, class screen</td></tr>
+            <tr><td>.cal-week / .cal-chip</td><td>Seven-day grid, one chip per class</td><td>The schedule</td></tr>
+            <tr><td>.field-row</td><td>Auto-fitting form row, 200px minimum</td><td>Every form</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <b>A rule learned the hard way.</b> The stylesheet lists the input types it styles.
+        A type left off that list — <code>tel</code> and <code>date</code> both were — silently
+        falls back to the browser's own control: a different height and border sitting beside the
+        styled ones. When adding a field type, add it to the selector.
+      </div>
+    </section>
+
+    <section id="themes">
+      <span class="eyebrow">Theme options</span>
+      <h2>Five palettes, live</h2>
+      <p class="lede">
+        Pick one and the preview below re-paints. Each is a complete token set — light and dark —
+        that drops into the top of <code>app.css</code>. Nothing else in the stylesheet changes.
+      </p>
+
+      <div class="themebar" role="group" aria-label="Choose a theme"></div>
+
+      <div class="themehead">
+        <h3 id="t-name">Brass &amp; Peacock</h3>
+        <span class="use" id="t-use"></span>
+      </div>
+      <p id="t-why" style="margin-bottom:14px"></p>
+
+      <div class="themegrid">
+        <div>
+          <div class="spec-h">Light</div>
+          <div class="mini" id="mini-light"></div>
+        </div>
+        <div>
+          <div class="spec-h">Dark</div>
+          <div class="mini" id="mini-dark"></div>
+        </div>
+      </div>
+
+      <div class="themehead" style="margin-top:22px">
+        <div class="spec-h" style="margin:0">The CSS for this theme</div>
+        <button class="copy" id="copybtn" type="button">Copy</button>
+      </div>
+      <pre class="cssout" id="cssout"></pre>
+    </section>
+
+    <section id="decisions">
+      <span class="eyebrow">Decisions and why</span>
+      <h2>The five that shaped everything else</h2>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Decision</th><th>Because</th><th>What it cost</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>R2, not S3<br>or Supabase</td>
+              <td>Egress, not storage, is what scales here: 60 students replaying 4&nbsp;MB files is ~12&nbsp;GB a month from a 2&nbsp;GB library. R2 charges nothing for egress at any volume.</td>
+              <td>A card on file with Cloudflare, for a bill that stays at zero.</td>
+            </tr>
+            <tr>
+              <td>Uploads through<br>the Worker</td>
+              <td>Presigned URLs need a separate R2 API token and more moving parts.</td>
+              <td>A 100&nbsp;MB request ceiling — far above a two-minute clip.</td>
+            </tr>
+            <tr>
+              <td>Recordings belong<br>to the song</td>
+              <td>One reference take serves everyone learning the piece; corrections for one student are the exception, not the rule.</td>
+              <td>A sharing model, which is the price of not copying files.</td>
+            </tr>
+            <tr>
+              <td>Server-rendered<br>HTML, no framework</td>
+              <td>A form post is understandable a year later, works on a bad connection, and has no build step to rot.</td>
+              <td>No client-side routing; a full page load per action.</td>
+            </tr>
+            <tr>
+              <td>The lesson log is<br>fully visible to the student</td>
+              <td>What was covered and what to practise is exactly what a student needs between classes.</td>
+              <td>There is nowhere to write a private note about a student.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Deliberately left out</h3>
+      <ul>
+        <li><strong>Students cannot upload.</strong> The teacher records; students listen.</li>
+        <li><strong>No listen tracking.</strong> The teacher can't see whether a student played something.</li>
+        <li><strong>No email notifications.</strong> Students find new recordings by opening the site — the first non-free piece would be an email service.</li>
+      </ul>
+    </section>
+
+    <section id="reuse">
+      <span class="eyebrow">Reusing this</span>
+      <h2>What to change for another teacher</h2>
+      <ol class="steps">
+        <li><b>Name and mark</b><span><code>SITE_NAME</code> in wrangler.toml; <code>public/logo.png</code> at 96px and <code>public/favicon.png</code> at 64px. Nothing else references the name.</span></li>
+        <li><b>Palette</b><span>Replace the token block at the top of <code>app.css</code> — both the <code>:root</code> set and the two dark blocks. Pick one from the section above.</span></li>
+        <li><b>Repertoire</b><span><code>src/catalogue-seed.ts</code> holds 91 songs in 10 groups. Swap the array for another tradition's; the loader is idempotent on title + raga.</span></li>
+        <li><b>Second script</b><span><code>--f-ml</code> and the <code>.ml</code> class carry Malayalam. Any script with a Google font works the same way.</span></li>
+        <li><b>Time zone</b><span><code>TEACHER_ZONE</code> and <code>IST_OFFSET_MIN</code> in <code>src/tz.ts</code>. A teacher in a DST country needs the arithmetic replaced with an <code>Intl</code> lookup on both sides — the students' side already works that way.</span></li>
+      </ol>
+      <h3>Before trusting a change</h3>
+      <ul>
+        <li><code>npx tsc --noEmit</code> — the views are template literals; the compiler still catches the shape errors.</li>
+        <li><code>node --experimental-strip-types test-tz.mjs</code> — real DST transitions, date rollover, moved classes.</li>
+        <li>Sign in as a student with <code>/dev/login?email=…&amp;role=student</code> on localhost and try to reach something that isn't theirs. Every access rule has a URL you can test by hand.</li>
+      </ul>
+    </section>
+
+    <footer>
+      RP Sajeev Music · design book, September 2026 · the code is the other half of this
+      document: <code>README.md</code> covers day-to-day use, <code>DOCKER.md</code> the local
+      container.
+    </footer>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   Theme options. Each entry is a complete token set for the
+   app's own stylesheet — light and dark — plus a preview.
+   ============================================================ */
+const THEMES = [
+  {
+    id:'brass',
+    name:'Brass & Peacock',
+    use:'in use today',
+    why:'Warm paper, a brass primary and a peacock blue for notes — the colours of a tanpura and a temple mural. It reads as an instrument case rather than an app, which is the point.',
+    light:{paper:'#FBFAF7',surface:'#FFFFFF',surface2:'#F4F2EC',ink:'#1A1C20',ink2:'#4E525A',ink3:'#7B7F88',
+      line:'#E3DFD7',lineStrong:'#CFC9BD',accent:'#9A6A28',accentInk:'#7A5320',accentSoft:'#F3E9D6',
+      second:'#1B5E7E',secondSoft:'#E2EFF4',onAccent:'#FFFFFF'},
+    dark:{paper:'#14161A',surface:'#1C1F24',surface2:'#22262C',ink:'#EAE8E3',ink2:'#AFB3BA',ink3:'#7F838C',
+      line:'#2C3038',lineStrong:'#3B4049',accent:'#D3A053',accentInk:'#E4B871',accentSoft:'#2E2718',
+      second:'#6DB4D2',secondSoft:'#17303B',onAccent:'#17130B'}
+  },
+  {
+    id:'indigo',
+    name:'Indigo & Copper',
+    use:'quieter, more formal',
+    why:'A cool near-white with an indigo primary and copper for notes. The most neutral of the five: it puts the recordings forward and the interface back, and holds up under fluorescent light on a laptop screen.',
+    light:{paper:'#F6F7FA',surface:'#FFFFFF',surface2:'#ECEEF4',ink:'#161822',ink2:'#474C5C',ink3:'#767C8D',
+      line:'#DFE2EB',lineStrong:'#C5C9D6',accent:'#33408C',accentInk:'#2A3676',accentSoft:'#E5E8F6',
+      second:'#9A5A2C',secondSoft:'#F6EAE0',onAccent:'#FFFFFF'},
+    dark:{paper:'#111319',surface:'#181B23',surface2:'#1F232D',ink:'#E8E9EF',ink2:'#A9AEBE',ink3:'#7B8091',
+      line:'#262A35',lineStrong:'#343947',accent:'#8FA0EA',accentInk:'#A9B6F2',accentSoft:'#1B2038',
+      second:'#DFA477',secondSoft:'#2B1F16',onAccent:'#0E1020'}
+  },
+  {
+    id:'palm',
+    name:'Palm & Sandalwood',
+    use:'warmest, most domestic',
+    why:'Sandalwood paper with a deep palm green and an ochre second. Kerala without the postcard: the green is dark enough to hold small text, and the paper is warm without tipping into cream.',
+    light:{paper:'#F7F5EE',surface:'#FFFFFF',surface2:'#EFEBDF',ink:'#1B1D18',ink2:'#4C5147',ink3:'#7C8175',
+      line:'#E1DCCC',lineStrong:'#C8C2AE',accent:'#2F6146',accentInk:'#27523B',accentSoft:'#E1EDE5',
+      second:'#8A6A1F',secondSoft:'#F2E9D2',onAccent:'#FFFFFF'},
+    dark:{paper:'#12150F',surface:'#1A1E17',surface2:'#212619',ink:'#E9EAE2',ink2:'#AFB4A6',ink3:'#7F8578',
+      line:'#2A3024',lineStrong:'#3A4132',accent:'#79BE96',accentInk:'#8FCEA9',accentSoft:'#1A2A1F',
+      second:'#D5B15C',secondSoft:'#2A2413',onAccent:'#0E1410'}
+  },
+  {
+    id:'kumkum',
+    name:'Kumkum & Slate',
+    use:'highest contrast',
+    why:'A cool slate ground with a vermilion primary. The boldest of the five and the easiest to scan at a glance — useful if the teacher works mostly from the schedule, where colour carries the state.',
+    light:{paper:'#F3F4F6',surface:'#FFFFFF',surface2:'#E8EAEE',ink:'#15181C',ink2:'#464C55',ink3:'#757C87',
+      line:'#DDE0E6',lineStrong:'#C3C8D1',accent:'#B03A2E',accentInk:'#8F2E24',accentSoft:'#F8E5E2',
+      second:'#3B5566',secondSoft:'#E5EAEE',onAccent:'#FFFFFF'},
+    dark:{paper:'#101216',surface:'#171A1F',surface2:'#1E222A',ink:'#E7E9ED',ink2:'#A8AEB8',ink3:'#7A818C',
+      line:'#252A32',lineStrong:'#333944',accent:'#E88478',accentInk:'#F09E93',accentSoft:'#2C1A17',
+      second:'#8FB2C6',secondSoft:'#182530',onAccent:'#180F0D'}
+  },
+  {
+    id:'night',
+    name:'Night Practice',
+    use:'dark first',
+    why:'Built dark and lightened second, for practice after the house is asleep. Amber and teal on near-black; the light variant exists so a student who forces light mode still gets a designed page rather than an inversion.',
+    light:{paper:'#F4F4F2',surface:'#FFFFFF',surface2:'#EAEAE6',ink:'#17181A',ink2:'#4A4D52',ink3:'#787C82',
+      line:'#DEDEDA',lineStrong:'#C5C5C0',accent:'#A8681B',accentInk:'#8A5514',accentSoft:'#F6EAD8',
+      second:'#1F6E77',secondSoft:'#E0EFF0',onAccent:'#FFFFFF'},
+    dark:{paper:'#0E0F12',surface:'#15171B',surface2:'#1C1F25',ink:'#EDEAE4',ink2:'#B0B4BC',ink3:'#7E838C',
+      line:'#232830',lineStrong:'#323842',accent:'#E0A548',accentInk:'#EFBA68',accentSoft:'#2B2213',
+      second:'#63B7C4',secondSoft:'#12292E',onAccent:'#14100A'}
+  }
+];
+
+const VARS = [
+  ['paper','--paper'],['surface','--surface'],['surface2','--surface-2'],
+  ['ink','--ink'],['ink2','--ink-2'],['ink3','--ink-3'],
+  ['line','--line'],['lineStrong','--line-strong'],
+  ['accent','--brass'],['accentInk','--brass-ink'],['accentSoft','--brass-soft'],
+  ['second','--peacock'],['secondSoft','--peacock-soft']
+];
+
+const MINI = `
+  <div class="mini-bar">
+    <span class="mini-dot"></span>
+    <span class="mini-brand">RP Sajeev Music</span>
+    <span class="mini-nav"><span>Students</span><span class="on">Songs</span><span>Schedule</span></span>
+  </div>
+  <div class="mini-body">
+    <p class="mini-h">Vatapi Ganapatim <span class="mini-ml">വാതാപി ഗണപതിം</span></p>
+    <div class="mini-card">
+      <div class="mini-row">
+        <span class="mini-title">Pallavi, slow</span>
+        <span class="mini-meta">0:47 · 1.1 MB</span>
+      </div>
+      <div class="mini-pills" style="margin-top:7px">
+        <span class="mini-pill b">Pallavi</span>
+        <span class="mini-pill">everyone</span>
+      </div>
+    </div>
+    <div class="mini-note"><b>Anupallavi — gamaka</b>Hold it longer than the notation suggests.</div>
+    <div class="mini-locked">🔒 Charanam, reference — not yet shared</div>
+    <div class="mini-btns">
+      <span class="mini-btn pri">Save lesson</span>
+      <span class="mini-btn">Mark finished</span>
+    </div>
+  </div>`;
+
+const bar = document.querySelector('.themebar');
+const lightEl = document.getElementById('mini-light');
+const darkEl = document.getElementById('mini-dark');
+lightEl.innerHTML = MINI;
+darkEl.innerHTML = MINI;
+
+function paint(el, set){
+  el.style.setProperty('--p-paper', set.paper);
+  el.style.setProperty('--p-surface', set.surface);
+  el.style.setProperty('--p-surface-2', set.surface2);
+  el.style.setProperty('--p-ink', set.ink);
+  el.style.setProperty('--p-ink-2', set.ink2);
+  el.style.setProperty('--p-ink-3', set.ink3);
+  el.style.setProperty('--p-line', set.line);
+  el.style.setProperty('--p-line-strong', set.lineStrong);
+  el.style.setProperty('--p-accent', set.accent);
+  el.style.setProperty('--p-accent-ink', set.accentInk);
+  el.style.setProperty('--p-accent-soft', set.accentSoft);
+  el.style.setProperty('--p-second', set.second);
+  el.style.setProperty('--p-second-soft', set.secondSoft);
+  el.style.setProperty('--p-on-accent', set.onAccent);
+}
+
+function cssFor(t){
+  const block = (set, indent) =>
+    VARS.map(([k, v]) => indent + v + ':' + set[k] + ';').join('\n');
+  return ':root{\n' + block(t.light, '  ') +
+    '\n}\n\n@media (prefers-color-scheme:dark){\n  :root:not([data-theme="light"]){\n' +
+    block(t.dark, '    ') +
+    '\n  }\n}\n\n:root[data-theme="dark"]{\n' + block(t.dark, '  ') + '\n}';
+}
+
+let current = THEMES[0];
+
+function select(t){
+  current = t;
+  paint(lightEl, t.light);
+  paint(darkEl, t.dark);
+  document.getElementById('t-name').textContent = t.name;
+  document.getElementById('t-use').textContent = t.use;
+  document.getElementById('t-why').textContent = t.why;
+  document.getElementById('cssout').textContent = cssFor(t);
+  document.getElementById('copybtn').textContent = 'Copy';
+  bar.querySelectorAll('.tbtn').forEach(function(b){
+    b.setAttribute('aria-pressed', String(b.dataset.id === t.id));
+  });
+}
+
+THEMES.forEach(function(t){
+  const b = document.createElement('button');
+  b.className = 'tbtn';
+  b.type = 'button';
+  b.dataset.id = t.id;
+  b.setAttribute('aria-pressed', 'false');
+  b.innerHTML = '<i style="background:' + t.light.accent + '"></i>' + t.name;
+  b.addEventListener('click', function(){ select(t); });
+  bar.appendChild(b);
+});
+
+document.getElementById('copybtn').addEventListener('click', function(){
+  const btn = this;
+  const text = cssFor(current);
+  try {
+    navigator.clipboard.writeText(text).then(
+      function(){ btn.textContent = 'Copied'; },
+      function(){ btn.textContent = 'Select it below'; }
+    );
+  } catch (e) {
+    btn.textContent = 'Select it below';
+  }
+});
+
+select(THEMES[0]);
+</script>

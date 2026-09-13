@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Weekly backup, run by launchd.
+
+  Install:
+    cp scripts/com.rpsajeev.backup.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.rpsajeev.backup.plist
+
+  Run it now, without waiting for Monday:
+    launchctl start com.rpsajeev.backup
+    tail -f ~/Library/Logs/sruti-backup.log
+
+  Stop it:
+    launchctl unload ~/Library/LaunchAgents/com.rpsajeev.backup.plist
+
+  If the Mac is asleep at 1am, launchd runs the job when it next wakes.
+  It does not skip the week.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.rpsajeev.backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/Users/ratish/Documents/sruti/scripts/backup-to-drive.sh</string>
+  </array>
+
+  <!-- launchd starts with almost no PATH, so node and npx have to be
+       findable. -lc above loads your login shell, which covers nvm;
+       this covers a plain nodejs.org install. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- Monday 01:00 local time. Weekday 1 is Monday. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>1</integer>
+    <key>Hour</key><integer>1</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/ratish/Library/Logs/sruti-backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ratish/Library/Logs/sruti-backup.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

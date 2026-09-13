@@ -22,6 +22,80 @@ const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
 const site = (c: { env: Env }) => c.env.SITE_NAME || 'RP Sajeev Music';
 
+/* ==================================================================
+ * Is it up, and can it reach its two stores?
+ *
+ * Signed out on purpose, so an external monitor can watch it without
+ * credentials. It answers with booleans and nothing else — no counts,
+ * no names — because anyone can call it.
+ *
+ * Both checks are the cheapest possible: one row from D1, one listing
+ * of a single object from R2. A 503 here means the app is up but blind,
+ * which is the failure worth being woken for.
+ * ================================================================== */
+
+app.get('/healthz', async (c) => {
+  const started = Date.now();
+  let db = false;
+  let media = false;
+
+  try {
+    const r = await c.env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>();
+    db = r?.ok === 1;
+  } catch {
+    db = false;
+  }
+
+  try {
+    await c.env.MEDIA.list({ limit: 1 });
+    media = true;
+  } catch {
+    media = false;
+  }
+
+  const ok = db && media;
+  return c.json(
+    { ok, db, media, ms: Date.now() - started, at: new Date().toISOString() },
+    ok ? 200 : 503,
+    { 'cache-control': 'no-store' },
+  );
+});
+
+/**
+ * Each person's own colours. Stored on the user, so the choice follows
+ * them from the practice room laptop to the phone.
+ *
+ * One form posts either a palette or a mode — whichever button was
+ * pressed — and we return to the page they were on. `back` comes from
+ * the Referer header and only its path is used: a full URL from
+ * anywhere else would be an open redirect.
+ */
+app.post('/settings/theme', requireUser, async (c) => {
+  const f = await c.req.formData();
+  const user = c.get('user');
+
+  const palette = String(f.get('palette') ?? '');
+  const mode = String(f.get('theme_mode') ?? '');
+
+  if (palette && V.isPalette(palette)) {
+    await c.env.DB.prepare('UPDATE users SET palette = ? WHERE id = ?').bind(palette, user.id).run();
+  } else if (mode && V.isMode(mode)) {
+    await c.env.DB.prepare('UPDATE users SET theme_mode = ? WHERE id = ?').bind(mode, user.id).run();
+  }
+
+  let back = user.role === 'teacher' ? '/t' : '/me';
+  const ref = c.req.header('referer');
+  if (ref) {
+    try {
+      const u = new URL(ref);
+      if (u.origin === new URL(c.req.url).origin) back = u.pathname + u.search;
+    } catch {
+      /* a malformed Referer is not worth an error page */
+    }
+  }
+  return c.redirect(back);
+});
+
 /* ================================================================== *
  * Sign in
  * ================================================================== */
@@ -928,8 +1002,12 @@ app.get('/t/class/:slotId/:date', requireTeacher, async (c) => {
 
   // `date` is the date the class was originally due, which is how an exception
   // is keyed — so a rescheduled class keeps working from its original link.
+  // That is what `by: 'originalDate'` asks for: expand trims by the date a
+  // class *lands* on by default, which would throw away the very occurrence
+  // this page exists to show.
   const occ = expand([slot], await loadExceptions(c.env, date, date), date, 1, {
     includeSkipped: true,
+    by: 'originalDate',
   }).find((o) => o.originalDate === date);
   if (!occ) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
@@ -1079,15 +1157,21 @@ async function loadSong(env: Env, studentId: string, sectionId: string) {
     .first<Section & { group_name: string | null }>();
   if (!section) return null;
 
-  // Everything shared on this song, plus anything private to this student.
+  // Every recording on the song, each marked with whether this student may
+  // hear it. The ones they may not are still listed — locked — so they can see
+  // what the song holds and ask for it, and so the teacher can hand one over
+  // from the same screen instead of hunting for it in the catalogue.
   const recordings = await env.DB.prepare(
-    `SELECT * FROM recordings WHERE section_id = ?1
-       AND (visibility = 'shared'
-            OR id IN (SELECT recording_id FROM recording_shares WHERE student_id = ?2))
-     ORDER BY sort_order, created_at`,
+    `SELECT r.*,
+       CASE WHEN r.visibility = 'shared'
+              OR EXISTS (SELECT 1 FROM recording_shares rs
+                          WHERE rs.recording_id = r.id AND rs.student_id = ?2)
+            THEN 0 ELSE 1 END AS locked
+     FROM recordings r WHERE r.section_id = ?1
+     ORDER BY r.sort_order, r.created_at`,
   )
     .bind(sectionId, studentId)
-    .all<Recording>();
+    .all<Recording & { locked: number }>();
   const notes = await env.DB.prepare(
     `SELECT * FROM notes WHERE section_id = ?1
        AND (visibility = 'shared'
@@ -1335,16 +1419,19 @@ app.post('/t/recordings/:id/move', requireTeacher, async (c) => {
     .first<Recording>();
   if (!rec) return c.redirect('/t');
 
+  /* The song page groups recordings by the part they cover, so "up" has
+     to mean "up within Pallavi" — swapping with a neighbour in another
+     part looks, to the teacher, like the button did nothing at all. */
   const neighbour = await c.env.DB.prepare(
     dir === 'up'
-      ? `SELECT * FROM recordings WHERE section_id=?1
+      ? `SELECT * FROM recordings WHERE section_id=?1 AND COALESCE(part,'') = ?4
            AND (sort_order < ?2 OR (sort_order = ?2 AND created_at < ?3))
          ORDER BY sort_order DESC, created_at DESC LIMIT 1`
-      : `SELECT * FROM recordings WHERE section_id=?1
+      : `SELECT * FROM recordings WHERE section_id=?1 AND COALESCE(part,'') = ?4
            AND (sort_order > ?2 OR (sort_order = ?2 AND created_at > ?3))
          ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
   )
-    .bind(rec.section_id, rec.sort_order, rec.created_at)
+    .bind(rec.section_id, rec.sort_order, rec.created_at, rec.part ?? '')
     .first<Recording>();
 
   if (neighbour) {
@@ -1408,6 +1495,71 @@ app.get('/media/:id', requireUser, async (c) => {
 
   headers.set('content-length', String(obj.size));
   return new Response(obj.body, { headers });
+});
+
+/**
+ * Hand one recording to one student, or take it back, from the student's own
+ * song page.
+ *
+ * Sharing an item that is already for everyone is a no-op. Locking one that is
+ * for everyone is not: it becomes 'chosen' and every *other* student assigned
+ * the song is written into the share table, so nobody else loses it. That is
+ * why this doesn't go through setShares — an empty list there means "everyone",
+ * which is the opposite of what locking the only student means.
+ */
+app.post('/t/recordings/:id/share', requireTeacher, async (c) => {
+  const f = await c.req.formData();
+  const studentId = String(f.get('student_id') ?? '');
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<Recording>();
+  if (!rec || !studentId) return c.redirect('/t');
+
+  if (rec.visibility !== 'shared') {
+    await c.env.DB.prepare(
+      'INSERT OR IGNORE INTO recording_shares (recording_id, student_id, created_at) VALUES (?,?,?)',
+    )
+      .bind(rec.id, studentId, now())
+      .run();
+  }
+  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${rec.section_id}`;
+  return c.redirect(`${back}?msg=` + encodeURIComponent('Unlocked for this student.'));
+});
+
+app.post('/t/recordings/:id/unshare', requireTeacher, async (c) => {
+  const f = await c.req.formData();
+  const studentId = String(f.get('student_id') ?? '');
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<Recording>();
+  if (!rec || !studentId) return c.redirect('/t');
+
+  if (rec.visibility === 'shared') {
+    const others = await c.env.DB.prepare(
+      `SELECT student_id FROM assignments
+        WHERE section_id = ? AND archived_at IS NULL AND student_id <> ?`,
+    )
+      .bind(rec.section_id, studentId)
+      .all<{ student_id: string }>();
+    const ts = now();
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM recording_shares WHERE recording_id = ?').bind(rec.id),
+      ...(others.results ?? []).map((r) =>
+        c.env.DB.prepare(
+          'INSERT OR IGNORE INTO recording_shares (recording_id, student_id, created_at) VALUES (?,?,?)',
+        ).bind(rec.id, r.student_id, ts),
+      ),
+      c.env.DB.prepare("UPDATE recordings SET visibility = 'chosen' WHERE id = ?").bind(rec.id),
+    ]);
+  } else {
+    await c.env.DB.prepare(
+      'DELETE FROM recording_shares WHERE recording_id = ? AND student_id = ?',
+    )
+      .bind(rec.id, studentId)
+      .run();
+  }
+  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${rec.section_id}`;
+  return c.redirect(`${back}?msg=` + encodeURIComponent('Locked for this student.'));
 });
 
 /* ================================================================== *
@@ -1491,7 +1643,57 @@ app.get('/img/:id', requireUser, async (c) => {
   headers.set('cache-control', 'private, max-age=86400');
   headers.set('etag', obj.httpEtag);
   if (!headers.get('content-type')) headers.set('content-type', note.image_mime ?? 'image/png');
+  // ?download=1 turns the same URL into a save-to-disk, named after the note.
+  if (c.req.query('download')) {
+    const ext = extFor(note.image_mime ?? 'image/png');
+    headers.set(
+      'content-disposition',
+      `attachment; filename="${slugify(note.title || 'note')}.${ext}"`,
+    );
+  }
   return new Response(obj.body, { headers });
+});
+
+/**
+ * The note itself as a text file — heading, body, and where it came from.
+ * Notation screenshots download from /img/:id?download=1; this is for the
+ * words, which are often the part worth keeping beside a practice file.
+ */
+app.get('/note/:id/download', requireUser, async (c) => {
+  const user = c.get('user');
+  const note = await c.env.DB.prepare(
+    `SELECT n.*, s.title AS song_title, r.title AS rec_title FROM notes n
+       JOIN sections s ON s.id = n.section_id
+       LEFT JOIN recordings r ON r.id = n.recording_id
+      WHERE n.id = ?`,
+  )
+    .bind(c.req.param('id'))
+    .first<Note & { song_title: string; rec_title: string | null }>();
+  if (!note) return c.notFound();
+  if (user.role !== 'teacher' && !(await studentMaySee(c.env, user.id, note, 'note')))
+    return c.text('Not yours.', 403);
+
+  const lines = [
+    note.title || 'Note',
+    '='.repeat((note.title || 'Note').length),
+    '',
+    `Song: ${note.song_title}`,
+    ...(note.rec_title ? [`Recording: ${note.rec_title}`] : []),
+    `Written: ${note.created_at.slice(0, 10)}`,
+    '',
+    note.body ?? '',
+    ...(note.image_key ? ['', '(This note also has an image — download it separately.)'] : []),
+    '',
+  ];
+
+  return new Response(lines.join('\n'), {
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'content-disposition': `attachment; filename="${slugify(
+        `${note.song_title}-${note.title || 'note'}`,
+      )}.txt"`,
+    },
+  });
 });
 
 /* ================================================================== */

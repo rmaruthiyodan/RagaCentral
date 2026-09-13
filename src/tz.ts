@@ -161,7 +161,22 @@ export function expand(
   exceptions: SlotException[],
   fromDate: string,
   days: number,
-  opts: { includeSkipped?: boolean } = {},
+  opts: {
+    includeSkipped?: boolean;
+    /**
+     * Which date the window applies to.
+     *
+     * 'date' (the default) answers "what lands in these days" — what a
+     * calendar shows. A class moved out of the window is not in it; one
+     * moved in, is.
+     *
+     * 'originalDate' answers "the class that was due on these days,
+     * wherever it ended up". The class page needs this: its link is
+     * keyed by the date the class was originally due, which is also how
+     * an exception is keyed, so the link survives a reschedule.
+     */
+    by?: 'date' | 'originalDate';
+  } = {},
 ): Occurrence[] {
   const exByKey = new Map(exceptions.map((e) => [`${e.slot_id}|${e.on_date}`, e]));
   const out: Occurrence[] = [];
@@ -221,8 +236,9 @@ export function expand(
   }
 
   // A class moved forward can land out of order, so sort by when it happens.
+  const key = opts.by === 'originalDate' ? 'originalDate' : 'date';
   return out
-    .filter((o) => o.date >= fromDate && o.date <= lastDate)
+    .filter((o) => o[key] >= fromDate && o[key] <= lastDate)
     .sort((a, b) => a.instant.getTime() - b.instant.getTime());
 }
 

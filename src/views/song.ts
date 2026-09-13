@@ -148,6 +148,8 @@ function noteBlock(
   ${n.image_key ? `<img class="note-img" src="/img/${esc(n.id)}" alt="Note attachment" loading="lazy">` : ''}
 
   <div class="note-tools">
+    <a class="note-dl" href="/note/${esc(n.id)}/download">Download note</a>
+    ${n.image_key ? `<a class="note-dl" href="/img/${esc(n.id)}?download=1">Download image</a>` : ''}
     <details class="inline-edit">
       <summary>Edit</summary>
       <div class="inline-edit-body">
@@ -269,7 +271,14 @@ function recordingBlock(
   const p = `r${r.id}-`;
   const noteCount = o.notes.length;
 
-  return `<details class="rec" data-disc="rec:${esc(r.id)}"${o.open ? ' open' : ''}>
+  /* The reorder form lives outside the <details> and the buttons reach it
+     by id. A <form> is not valid inside a <summary>, and anything that is
+     inside the details is hidden while it's closed — which is exactly
+     when you want to reorder, without opening every take first. */
+  return `<form id="mv-${esc(r.id)}" method="post" action="/t/recordings/${esc(r.id)}/move" class="mv-form">
+  <input type="hidden" name="back" value="${esc(o.back)}">
+</form>
+<details class="rec" data-disc="rec:${esc(r.id)}"${o.open ? ' open' : ''}>
   <summary>
     <span class="disc-mark" aria-hidden="true"></span>
     <span class="rec-sum">
@@ -287,6 +296,14 @@ function recordingBlock(
         </span>
       </span>
       ${r.description ? `<span class="rec-sum-desc">${esc(r.description)}</span>` : ''}
+    </span>
+    <span class="rec-order">
+      <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="up"
+        data-keep-open title="Move up within ${esc(r.part || 'this song')}"
+        ${idx === 0 ? 'disabled' : ''}>&uarr;</button>
+      <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="down"
+        data-keep-open title="Move down within ${esc(r.part || 'this song')}"
+        ${idx === total - 1 ? 'disabled' : ''}>&darr;</button>
     </span>
   </summary>
 
@@ -310,18 +327,6 @@ function recordingBlock(
         <span class="loop-state" data-loop-state></span>
       </div>
       <div class="ctrl-group" style="margin-left:auto">
-        <div class="reorder">
-          <form method="post" action="/t/recordings/${esc(r.id)}/move">
-            <input type="hidden" name="dir" value="up">
-            <input type="hidden" name="back" value="${esc(o.back)}">
-            <button class="btn btn-sm" type="submit" title="Move up"${idx === 0 ? ' disabled' : ''}>&uarr;</button>
-          </form>
-          <form method="post" action="/t/recordings/${esc(r.id)}/move">
-            <input type="hidden" name="dir" value="down">
-            <input type="hidden" name="back" value="${esc(o.back)}">
-            <button class="btn btn-sm" type="submit" title="Move down"${idx === total - 1 ? ' disabled' : ''}>&darr;</button>
-          </form>
-        </div>
         <a class="btn btn-sm" href="/media/${esc(r.id)}?download=1">Download</a>
       </div>
     </div>
