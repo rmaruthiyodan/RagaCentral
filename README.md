@@ -36,6 +36,7 @@ public/
   player.js         speed control and A–B loop
   recorder.js       browser recording, MP3 encoding, uploads
   disclose.js       remembers which collapsible sections you left open
+  dictate.js        speak a lesson note; re-encodes to 16 kHz mono WAV
   vendor/           lame.min.js — the MP3 encoder, loaded only on the record screen
 schema.sql          the tables
 indexes.sql         the indexes — applied after the columns, see below
@@ -58,6 +59,16 @@ wrangler.toml       Cloudflare configuration
 ```
 
 ---
+
+## The other documents
+
+| | |
+|---|---|
+| `PRD.md` | What the product is, who it is for, what it must do and why. The decisions and what they cost, what is deliberately absent, and what comes next. |
+| `docs-design-book.html` | How it is built — architecture, data model, access rules, the time-zone engine, the interface system. Open it in a browser. |
+| `BACKUP.md` | The backup strategy, the setup, and the restore procedure. |
+| `OPERATIONS.md` | Deploying, monitoring, and the weekly jobs. |
+| `DOCKER.md` | Running the whole thing locally in a container. |
 
 ## Setting it up
 
