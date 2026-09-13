@@ -15,9 +15,11 @@
 # failed, and is safe to run again — every step checks for what it is
 # about to create.
 #
-# Your Cloudflare password and your Google client secret are typed by
-# you into prompts that do not echo, and are handed straight to
-# wrangler. This script never writes them to disk or prints them.
+# Your Cloudflare password is never typed here — `wrangler login` handles
+# that in a browser, before you run this. The Google client secret is
+# typed into a prompt that does not echo and handed straight to wrangler;
+# the session secret is generated and piped to wrangler without ever
+# being displayed. Nothing secret is written to disk or printed.
 # =====================================================================
 
 set -euo pipefail
@@ -50,7 +52,7 @@ require_login() {
   That opens a browser. Sign in, approve, then run this script again."
   fi
   local who
-  who=$(printf '%s' "$out" | grep -Eio '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | head -1)
+  who=$(printf '%s' "$out" | grep -Eio '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | head -1 || true)
   ok "${who:-logged in}"
 }
 
@@ -118,7 +120,7 @@ setup_r2() {
 set_teacher_email() {
   say "The first teacher"
   local current
-  current=$(grep -E '^BOOTSTRAP_TEACHER_EMAIL' wrangler.toml | sed 's/.*= *"//;s/"//')
+  current=$(grep -E '^BOOTSTRAP_TEACHER_EMAIL' wrangler.toml | sed 's/.*= *"//;s/"//' || true)
   if [ "$current" != "teacher@example.com" ] && [ -n "$current" ]; then
     ok "already set to $current"
     return
@@ -175,9 +177,9 @@ deploy_and_check() {
   say "Deploying"
   local out
   out=$(wr deploy 2>&1) || { printf '%s\n' "$out"; die "Deploy failed — the output is above."; }
-  printf '%s\n' "$out" | grep -Ei 'https://' | sed 's/^/    /'
+  printf '%s\n' "$out" | grep -Ei 'https://' | sed 's/^/    /' || true
 
-  URL=$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9.-]*workers\.dev' | head -1)
+  URL=$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9.-]*workers\.dev' | head -1 || true)
   [ -n "$URL" ] || { warn "deployed, but could not read the address out of the output"; return; }
 
   say "Is it answering?"
