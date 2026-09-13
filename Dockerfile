@@ -11,6 +11,21 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
+# The slim base ships no CA bundle, and workerd verifies TLS against the
+# system trust store rather than Node's built-in one. Without this, every
+# outbound HTTPS call the Worker makes dies with
+#
+#   TLS peer's certificate is not trusted; reason = unable to get local
+#   issuer certificate
+#
+# which is how "speak a lesson note" failed the first time it tried to
+# reach a real host. Nothing in the app noticed until then, because until
+# then the Worker never called out to anything.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && update-ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 ENV WRANGLER_SEND_METRICS=false \
     CI=true \
     NODE_ENV=development

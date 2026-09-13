@@ -140,31 +140,35 @@ async function viaSarvam(
   if (!env.SARVAM_API_KEY)
     throw new DictateError('SARVAM_API_KEY is not set — `npx wrangler secret put SARVAM_API_KEY`.');
 
-  const file = new Blob([audio], { type: mime || 'audio/webm' });
   const name = `note.${extFor(mime)}`;
+  const type = mime || 'audio/webm';
 
   /* `codemix` is the mode that matters here: he speaks Malayalam with
      the Carnatic terms and the odd English word left in, and that is
      what the note should say. A pure-Malayalam mode would transliterate
-     "gamaka" into the script and read oddly. */
-  const [ml, en] = await Promise.all([
-    callSarvam(env, file, name, { mode: 'codemix', language_code: 'ml-IN' }, keyterms),
-    callSarvam(env, file, name, { mode: 'translate', language_code: 'ml-IN' }, keyterms),
-  ]);
+     "gamaka" into the script and read oddly.
+
+     One after the other, each with its own Blob: two requests reading a
+     single Blob at the same time is a stream two things are pulling on,
+     and the second second of latency is cheaper than finding out which
+     runtime minds. */
+  const ml = await callSarvam(env, audio, type, name, { mode: 'codemix', language_code: 'ml-IN' }, keyterms);
+  const en = await callSarvam(env, audio, type, name, { mode: 'translate', language_code: 'ml-IN' }, keyterms);
 
   return { ml: ml.trim(), en: en.trim(), provider: 'sarvam' };
 }
 
 async function callSarvam(
   env: Env,
-  file: Blob,
+  audio: ArrayBuffer,
+  type: string,
   name: string,
   opts: Record<string, string>,
   keyterms: string[],
 ): Promise<string> {
   const model = env.SARVAM_MODEL || 'saaras:v3';
   const body = new FormData();
-  body.append('file', file, name);
+  body.append('file', new Blob([audio], { type }), name);
   body.append('model', model);
   for (const [k, v] of Object.entries(opts)) body.append(k, v);
   // keyterms are a v4 feature; sending them to v3 is ignored, not an error.
@@ -187,7 +191,17 @@ async function callSarvam(
     );
   } catch (e) {
     if (e instanceof DictateError) throw e;
-    throw new DictateError(`Could not reach Sarvam: ${(e as Error).message}`);
+    const msg = (e as Error).message || String(e);
+    /* A container built on a slim base has no CA bundle, and the runtime
+       cannot verify anyone's certificate. It reads as a mysterious
+       internal error unless you say what it is. */
+    if (/certificate|TLS|self.signed|local issuer/i.test(msg))
+      throw new DictateError(
+        'Could not verify Sarvam\'s certificate. The container is missing its CA ' +
+          'certificates — rebuild with `docker compose build --no-cache` on the current ' +
+          'Dockerfile, which installs them.',
+      );
+    throw new DictateError(`Could not reach Sarvam: ${msg}`);
   }
 
   if (!res.ok) {
