@@ -1,0 +1,102 @@
+name: Dev
+
+# Pushes to dev get the same checks as main, then go to the dev site —
+# never to production. Production is deployed from main by deploy.yml,
+# and this workflow names no production resource anywhere, which is the
+# property that makes the separation real rather than a convention.
+on:
+  push:
+    branches: [dev]
+    paths-ignore:
+      - '**.md'
+      - 'docs-design-book.html'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Time-zone tests
+        run: npm test
+
+      # A dropped %s or a stray apostrophe in the Malayalam breaks a page
+      # in a way TypeScript cannot see, because to it every line is a
+      # string. deploy.yml should gain this too.
+      - name: Malayalam glossary
+        run: npm run check:i18n
+
+      - name: Refuse destructive SQL
+        run: |
+          if grep -rniE '^\s*(DROP|ALTER +TABLE +[a-z_]+ +(DROP|RENAME))' \
+               schema.sql indexes.sql backfill.sql; then
+            echo "::error::A destructive statement is in the schema files. Apply it by hand."
+            exit 1
+          fi
+
+  deploy-dev:
+    needs: check
+    # Only for pushes to dev — a pull request from a fork must never be
+    # able to deploy anything, even to dev.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The dev environment is inert until the database and bucket exist.
+      # Rather than fail every push until then, say what is missing and
+      # finish green — the checks above are the part that matters daily.
+      - name: Is there a dev environment yet?
+        id: ready
+        run: |
+          if grep -q 'PUT_YOUR_DEV_D1_DATABASE_ID_HERE' wrangler.toml; then
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::No dev environment yet. Run ./scripts/first-deploy.sh dev once, commit the id it writes, and this step starts deploying."
+          else
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bring the dev database up to date
+        if: steps.ready.outputs.ready == 'yes'
+        run: npm run db:dev
+
+      - name: Deploy to dev
+        if: steps.ready.outputs.ready == 'yes'
+        run: npm run deploy:dev
+
+      - name: Check dev came back up
+        if: steps.ready.outputs.ready == 'yes' && vars.DEV_SITE_URL != ''
+        run: |
+          for i in 1 2 3 4 5; do
+            sleep 5
+            body=$(curl -sS --max-time 10 "${{ vars.DEV_SITE_URL }}/healthz" || true)
+            echo "$body"
+            case "$body" in *'"ok":true'*) exit 0 ;; esac
+          done
+          echo "::error::dev did not answer healthily"
+          exit 1

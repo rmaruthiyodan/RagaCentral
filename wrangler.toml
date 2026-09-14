@@ -51,3 +51,50 @@ DICTATE_PROVIDER = "workers-ai"
 #   GOOGLE_CLIENT_SECRET
 #   SESSION_SECRET      (any long random string)
 #   SARVAM_API_KEY      only if DICTATE_PROVIDER = "sarvam"
+
+# ===================================================================
+# dev — a second everything, so the site your teacher uses is never
+# the thing you are experimenting on.
+#
+# A Wrangler environment does NOT inherit the bindings above: vars,
+# databases and buckets have to be repeated here, which is tedious and
+# is also the safety property. There is no way to accidentally point
+# dev at the live database, because the live database is not named in
+# this block.
+#
+#   npm run deploy:dev     put the current code on the dev site
+#   npm run db:dev         bring the dev database up to date
+#
+# Create the two resources once with:
+#
+#   ./scripts/first-deploy.sh dev
+#
+# Until then this block is inert — nothing reads it unless you pass
+# --env dev.
+# ===================================================================
+[env.dev]
+name = "sruti-dev"
+
+[env.dev.assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "sruti-dev"
+database_id = "PUT_YOUR_DEV_D1_DATABASE_ID_HERE"
+
+[[env.dev.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "sruti-media-dev"
+
+[env.dev.ai]
+binding = "AI"
+
+[env.dev.vars]
+BOOTSTRAP_TEACHER_EMAIL = "mailratish@gmail.com"
+BOOTSTRAP_ADMIN_EMAIL = "mailratish@gmail.com"
+# Says so on every page, so a screenshot from dev is never mistaken for
+# the real thing.
+SITE_NAME = "RP Sajeev Music (dev)"
+DICTATE_PROVIDER = "workers-ai"

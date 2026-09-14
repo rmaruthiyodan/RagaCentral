@@ -22,6 +22,8 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # This workflow only ever runs on main, so production is the point.
+      SRUTI_ALLOW_PROD: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,7 +41,12 @@ jobs:
       # Real DST transitions in New York, London and Sydney, date
       # rollover, and a class moved across a week boundary.
       - name: Time-zone tests
-        run: node --experimental-strip-types test-tz.mjs
+        run: npm test
+
+      # A dropped %s or a stray apostrophe in the Malayalam breaks a page
+      # in a way TypeScript cannot see — to it, every line is a string.
+      - name: Malayalam glossary
+        run: npm run check:i18n
 
       # A safety net, not a substitute for reading the diff: a schema
       # change that would drop or rewrite a column has to be done by
