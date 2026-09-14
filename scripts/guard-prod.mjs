@@ -19,6 +19,10 @@
  * that goes wrong is fixed by deploying again a minute later. A
  * migration applied to the wrong database has already happened.
  *
+ * There is no dev deployment to divert you to — dev is tested in Docker,
+ * on the machine you are sitting at. So production is the only remote
+ * thing there is, which is the reason to be sure you meant it.
+ *
  * Set SRUTI_ALLOW_PROD=1 for CI, which is on no branch at all.
  * ================================================================== */
 
@@ -49,9 +53,8 @@ console.error(`
 ${RED}Hold on.${OFF} You are about to run ${BOLD}${what}${OFF} against ${BOLD}production${OFF}
 — the site your teacher and students are using — while ${where}.
 
-  ${YEL}If you meant dev:${OFF}
-      npm run deploy:dev        the dev site
-      npm run db:dev            the dev database
+  ${YEL}To try a change, run it on your own machine:${OFF}
+      docker compose up --build          then http://localhost:8787
 
   Production is only ever deployed from main, normally by pushing
   and letting the workflow do it.

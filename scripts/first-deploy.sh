@@ -4,7 +4,6 @@
 #
 #   ./scripts/first-deploy.sh setup     everything up to a live site
 #   ./scripts/first-deploy.sh google    sign-in, once Google has a client
-#   ./scripts/first-deploy.sh dev       a separate dev site to break safely
 #
 # The split is not arbitrary. Google needs to be told the exact address
 # that is allowed to receive a sign-in, and nobody knows that address
@@ -215,88 +214,6 @@ deploy_and_check() {
 
 # ---------------------------------------------------------------------
 
-# The dev environment: a second database and bucket, so the site the
-# teacher uses is never the thing being experimented on. Free — D1 and
-# R2 free tiers are per account, not per database.
-cmd_dev() {
-  require_login
-
-  say "Dev database"
-  local id
-  id=$(wr d1 list --json 2>/dev/null \
-       | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-           try{const r=JSON.parse(s).find(d=>d.name==="sruti-dev");if(r)process.stdout.write(r.uuid)}catch{}
-         })' || true)
-  if [ -n "$id" ]; then
-    ok "sruti-dev already exists"
-  else
-    note "creating it…"
-    wr d1 create sruti-dev >/dev/null 2>&1 || true
-    id=$(wr d1 list --json 2>/dev/null \
-         | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-             try{const r=JSON.parse(s).find(d=>d.name==="sruti-dev");if(r)process.stdout.write(r.uuid)}catch{}
-           })' || true)
-    [ -n "$id" ] || die "Created sruti-dev but could not read its id back. Run 'npx wrangler d1 list' and paste it into the [env.dev] block in wrangler.toml."
-    ok "created"
-  fi
-
-  if grep -q 'PUT_YOUR_DEV_D1_DATABASE_ID_HERE' wrangler.toml; then
-    node -e '
-      const fs=require("fs"); const f="wrangler.toml";
-      fs.writeFileSync(f, fs.readFileSync(f,"utf8").replace("PUT_YOUR_DEV_D1_DATABASE_ID_HERE", process.argv[1]));
-    ' "$id"
-    ok "wrote the id into the [env.dev] block"
-    warn "commit that — it is what turns the dev workflow on"
-  else
-    ok "wrangler.toml already has a dev id"
-  fi
-
-  say "Dev bucket"
-  if wr r2 bucket list 2>/dev/null | grep -q 'sruti-media-dev'; then
-    ok "sruti-media-dev already exists"
-  else
-    wr r2 bucket create sruti-media-dev >/dev/null 2>&1 \
-      && ok "created sruti-media-dev" \
-      || die "Could not create the dev bucket. R2 is on for the account already, so this is unusual — the output above will say why."
-  fi
-
-  say "Dev secrets"
-  note "Dev is a separate Worker, so it has its own secrets: nothing"
-  note "is shared with production, including the session secret."
-  if wr secret list --env dev 2>/dev/null | grep -q 'SESSION_SECRET'; then
-    ok "SESSION_SECRET already set on dev"
-  else
-    node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64"))' \
-      | wr secret put SESSION_SECRET --env dev >/dev/null
-    ok "generated a dev session secret"
-  fi
-
-  cat <<EOF
-
-$BOLD Dev exists. Two things left, both yours.$OFF
-
- 1. Google sign-in on dev needs its own redirect URI. In the same OAuth
-    client you already made, add:
-
-$BOLD       https://sruti-dev.<your-subdomain>.workers.dev/auth/callback$OFF
-
-    then set the pair on dev:
-
-       npx wrangler secret put GOOGLE_CLIENT_ID --env dev
-       npx wrangler secret put GOOGLE_CLIENT_SECRET --env dev
-
- 2. Commit the dev database id this just wrote into wrangler.toml.
-    Until it is committed, the dev workflow checks your pushes but does
-    not deploy them.
-
- Then:
-
-       npm run db:dev        bring the dev database up
-       npm run deploy:dev    put the current code on it
-
-EOF
-}
-
 # ---------------------------------------------------------------------
 
 cmd_setup() {
@@ -374,12 +291,10 @@ cmd_google() {
 case "${1:-}" in
   setup)  cmd_setup ;;
   google) cmd_google ;;
-  dev)    cmd_dev ;;
   *) cat <<EOF
 Usage:
   ./scripts/first-deploy.sh setup     create everything and deploy
   ./scripts/first-deploy.sh google    add sign-in, after Google has a client
-  ./scripts/first-deploy.sh dev       create the separate dev environment
 
 Run setup first. It tells you what to do in Google, then you run google.
 Both are safe to run more than once.
