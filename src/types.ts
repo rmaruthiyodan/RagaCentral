@@ -6,6 +6,8 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   SESSION_SECRET: string;
   BOOTSTRAP_TEACHER_EMAIL: string;
+  /** The one account that becomes admin on its first sign-in. */
+  BOOTSTRAP_ADMIN_EMAIL?: string;
   SITE_NAME: string;
 
   /* Speaking a lesson note. All optional: with none of them set the
@@ -40,6 +42,9 @@ export interface User {
   lang: string | null;
   status_note: string | null;
   status_changed_at: string | null;
+  /** Above every project. `role` and `status` above are no longer read —
+      a person's role and standing now live on their project membership. */
+  is_admin: number;
 }
 
 export interface Group {
@@ -104,7 +109,13 @@ export interface Note {
   created_at: string;
 }
 
-export type Vars = { user: User };
+export type Vars = {
+  user: User;
+  /* Which project this request is acting in, proved against the database
+     in src/projects.ts. Absent on the routes that exist outside any
+     project: signing in, the waiting page, and the admin's own screens. */
+  acting?: import('./projects').Acting;
+};
 
 // Shared context shape so helpers and route handlers agree.
 export type AppEnv = { Bindings: Env; Variables: Vars };
