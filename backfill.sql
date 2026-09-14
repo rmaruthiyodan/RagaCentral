@@ -32,3 +32,46 @@ SELECT n.id, n.student_id, n.created_at
  WHERE n.visibility = 'private';
 
 UPDATE notes SET visibility = 'chosen' WHERE visibility = 'private';
+
+-- ===================================================================
+-- 2026-09-14 · one project becomes many.
+--
+-- Everything that existed before this change belongs to one teacher, so
+-- it becomes project 'p_first'. Idempotence comes from the project's
+-- fixed id and from every UPDATE being restricted to rows that have no
+-- project yet — a second run matches nothing, because the first run
+-- gave them all one.
+--
+-- Ordering matters in one place only: the project row must exist before
+-- anything can point at it.
+-- ===================================================================
+
+INSERT OR IGNORE INTO projects (id, name, status, note, created_at)
+VALUES (
+  'p_first',
+  'RP Sajeev Music',
+  'active',
+  'Everything that existed before projects were introduced.',
+  datetime('now')
+);
+
+-- Everyone who already had an account joins it, keeping the role and the
+-- standing they had. users.role and users.status stop being read after
+-- this; this statement is the one place their old values still matter.
+INSERT OR IGNORE INTO project_members
+  (id, project_id, user_id, role, status, status_note, status_changed_at,
+   approved_at, approved_by, joined_at)
+SELECT 'pm_' || u.id, 'p_first', u.id,
+       CASE WHEN u.role = 'teacher' THEN 'teacher' ELSE 'student' END,
+       u.status, u.status_note, u.status_changed_at,
+       u.approved_at, u.approved_by, u.created_at
+  FROM users u;
+
+-- Every piece of content that has no project yet is that project's.
+UPDATE groups      SET project_id = 'p_first' WHERE project_id IS NULL;
+UPDATE sections    SET project_id = 'p_first' WHERE project_id IS NULL;
+UPDATE assignments SET project_id = 'p_first' WHERE project_id IS NULL;
+UPDATE recordings  SET project_id = 'p_first' WHERE project_id IS NULL;
+UPDATE notes       SET project_id = 'p_first' WHERE project_id IS NULL;
+UPDATE sessions    SET project_id = 'p_first' WHERE project_id IS NULL;
+UPDATE class_slots SET project_id = 'p_first' WHERE project_id IS NULL;

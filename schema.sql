@@ -1,5 +1,61 @@
 -- Sruti — schema
--- Everyone who signs in with Google lands in `users` as pending until a teacher approves them.
+--
+-- A PROJECT is one teacher's practice: their students, their song
+-- catalogue, their recordings, their schedule. Nothing crosses between
+-- projects. An admin sits above them all and can switch into any one.
+--
+-- Identity is global and membership is per-project, because one Google
+-- account can be a student of two teachers, or a teacher here and a
+-- student there. So `users` holds who someone IS — their name, photo,
+-- time zone, phone, colours, language — and `project_members` holds what
+-- they ARE IN A PROJECT: teacher or student, active or paused, and when
+-- they were approved.
+--
+-- users.role and users.status are left in place but no longer read.
+-- Removing a column means rebuilding the table, which the four-step
+-- upgrade deliberately cannot do; they are dead weight, not truth.
+-- project_members.role and project_members.status are the truth.
+
+CREATE TABLE IF NOT EXISTS projects (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,                       -- "RP Sajeev Music"
+  name_ml     TEXT,                                -- Malayalam script, optional
+  status      TEXT NOT NULL DEFAULT 'active',      -- active | archived
+  note        TEXT,                                -- the admin's own note about it
+  created_by  TEXT REFERENCES users(id),
+  created_at  TEXT NOT NULL,
+  archived_at TEXT
+);
+
+-- One person's place in one project. A person can have several rows here,
+-- with a different role and a different status in each.
+CREATE TABLE IF NOT EXISTS project_members (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL DEFAULT 'student',     -- teacher | student
+  status      TEXT NOT NULL DEFAULT 'pending',     -- pending | active | paused | graduated | ended | disabled
+  status_note TEXT,
+  status_changed_at TEXT,
+  approved_at TEXT,
+  approved_by TEXT REFERENCES users(id),
+  joined_at   TEXT NOT NULL,
+  UNIQUE(project_id, user_id)
+);
+
+-- What an admin changed while acting inside someone else's project.
+-- Written only when the actor is an admin who is not a teacher of that
+-- project — a teacher working in their own project is not audited, since
+-- there would be nobody to answer to.
+CREATE TABLE IF NOT EXISTS admin_log (
+  id          TEXT PRIMARY KEY,
+  at          TEXT NOT NULL,
+  actor_id    TEXT NOT NULL REFERENCES users(id),
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  action      TEXT NOT NULL,                       -- 'student.status', 'project.create', …
+  detail      TEXT,                                -- one readable sentence
+  path        TEXT                                 -- the request that did it
+);
 
 CREATE TABLE IF NOT EXISTS users (
   id           TEXT PRIMARY KEY,
@@ -19,12 +75,19 @@ CREATE TABLE IF NOT EXISTS users (
   theme_mode   TEXT,                               -- auto | light | dark
   lang         TEXT,                               -- en | ml (the interface; song titles and notes are unaffected)
   status_note  TEXT,                               -- why they paused/ended
-  status_changed_at TEXT
+  status_changed_at TEXT,
+  -- Above every project. Set on one account by BOOTSTRAP_ADMIN_EMAIL,
+  -- and by another admin thereafter.
+  is_admin     INTEGER NOT NULL DEFAULT 0
 );
 
 -- Teacher-defined groupings for the song catalogue. Whatever he actually uses:
 -- "Sarali varisai", "Geethams", "Kalyani", "Arangetram set" — his call, not ours.
 CREATE TABLE IF NOT EXISTS groups (
+  -- Which project this belongs to. Nullable only because the four-step
+  -- upgrade cannot add a NOT NULL column to a table that already has
+  -- rows; backfill.sql fills it and every query requires it.
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   name_ml     TEXT,                                -- Malayalam script, optional
@@ -34,6 +97,10 @@ CREATE TABLE IF NOT EXISTS groups (
 
 -- A song. Shared across all students; who learns it is decided in `assignments`.
 CREATE TABLE IF NOT EXISTS sections (
+  -- Which project this belongs to. Nullable only because the four-step
+  -- upgrade cannot add a NOT NULL column to a table that already has
+  -- rows; backfill.sql fills it and every query requires it.
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
   id          TEXT PRIMARY KEY,
   group_id    TEXT REFERENCES groups(id) ON DELETE SET NULL,
   title       TEXT NOT NULL,                       -- transliteration, e.g. "Vatapi Ganapatim"
@@ -47,6 +114,10 @@ CREATE TABLE IF NOT EXISTS sections (
 
 -- Which songs a given student is currently working on.
 CREATE TABLE IF NOT EXISTS assignments (
+  -- Which project this belongs to. Nullable only because the four-step
+  -- upgrade cannot add a NOT NULL column to a table that already has
+  -- rows; backfill.sql fills it and every query requires it.
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
   id           TEXT PRIMARY KEY,
   student_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   section_id   TEXT NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
@@ -59,6 +130,10 @@ CREATE TABLE IF NOT EXISTS assignments (
 
 -- One take of one song for one student. The file itself lives in R2 under r2_key.
 CREATE TABLE IF NOT EXISTS recordings (
+  -- Which project this belongs to. Nullable only because the four-step
+  -- upgrade cannot add a NOT NULL column to a table that already has
+  -- rows; backfill.sql fills it and every query requires it.
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
   section_id    TEXT NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
   student_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -79,6 +154,10 @@ CREATE TABLE IF NOT EXISTS recordings (
 
 -- Typed notes or a pasted screenshot. Either loose under the song, or pinned to one recording.
 CREATE TABLE IF NOT EXISTS notes (
+  -- Which project this belongs to. Nullable only because the four-step
+  -- upgrade cannot add a NOT NULL column to a table that already has
+  -- rows; backfill.sql fills it and every query requires it.
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
   section_id    TEXT NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
   student_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -99,6 +178,10 @@ CREATE TABLE IF NOT EXISTS notes (
 -- The lesson log: one row per class, with the resume point for next time.
 
 CREATE TABLE IF NOT EXISTS sessions (
+  -- Which project this belongs to. Nullable only because the four-step
+  -- upgrade cannot add a NOT NULL column to a table that already has
+  -- rows; backfill.sql fills it and every query requires it.
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
   student_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   held_on       TEXT NOT NULL,                     -- YYYY-MM-DD, the day of the class
@@ -129,6 +212,10 @@ CREATE TABLE IF NOT EXISTS session_sections (
 -- A recurring weekly class, or a one-off. The time is always a wall time in
 -- India, because that is where the teacher is and India has no daylight saving.
 CREATE TABLE IF NOT EXISTS class_slots (
+  -- Which project this belongs to. Nullable only because the four-step
+  -- upgrade cannot add a NOT NULL column to a table that already has
+  -- rows; backfill.sql fills it and every query requires it.
+  project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
   student_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind          TEXT NOT NULL DEFAULT 'weekly',   -- weekly | once

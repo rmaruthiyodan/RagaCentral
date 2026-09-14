@@ -24,3 +24,19 @@ CREATE INDEX IF NOT EXISTS idx_slots_weekday ON class_slots(kind, weekday);
 CREATE INDEX IF NOT EXISTS idx_slotex_slot ON slot_exceptions(slot_id, on_date);
 CREATE INDEX IF NOT EXISTS idx_recshares_student ON recording_shares(student_id);
 CREATE INDEX IF NOT EXISTS idx_noteshares_student ON note_shares(student_id);
+
+/* ------------------------------------------------------------------ *
+ * Multi-project. Every list a teacher looks at is now "…for THIS
+ * project", so the project column leads each of these. The membership
+ * lookup runs on every single request, which is why it gets two.
+ * ------------------------------------------------------------------ */
+CREATE INDEX IF NOT EXISTS idx_pm_user     ON project_members(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_pm_project  ON project_members(project_id, role, status);
+CREATE INDEX IF NOT EXISTS idx_groups_proj ON groups(project_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_sect_proj   ON sections(project_id, group_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_assign_proj ON assignments(project_id, student_id);
+CREATE INDEX IF NOT EXISTS idx_rec_proj    ON recordings(project_id, section_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_notes_proj  ON notes(project_id, section_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_sess_proj   ON sessions(project_id, student_id, held_on DESC);
+CREATE INDEX IF NOT EXISTS idx_slots_proj  ON class_slots(project_id, student_id);
+CREATE INDEX IF NOT EXISTS idx_adminlog    ON admin_log(project_id, at DESC);
