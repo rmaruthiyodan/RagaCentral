@@ -66,6 +66,9 @@ app.get('/healthz', async (c) => {
          nothing happened" without reading container logs, and it works
          the same deployed as it does in Docker. */
       dictate: dictateWhy(c.env),
+      /* Same idea as `dictate`: answer "I set it up and sign-in is broken"
+         without anyone reading logs. Names only, never values. */
+      signin: signinWhy(c.env),
       ms: Date.now() - started,
       at: new Date().toISOString(),
     },
@@ -131,6 +134,19 @@ app.get('/waiting', async (c) => {
 });
 
 app.get('/auth/google', (c) => {
+  /* An unset secret is `undefined`, and URLSearchParams turns that into the
+     five letters "undefined" — so the browser lands on Google's
+     "Error 401: invalid_client" page, which says nothing about what is
+     actually wrong. Say it here instead, where we know. */
+  if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET)
+    return c.redirect(
+      '/?error=' +
+        encodeURIComponent(
+          'Google sign-in is not configured yet: the GOOGLE_CLIENT_ID and ' +
+            'GOOGLE_CLIENT_SECRET secrets are not set on this deployment. ' +
+            'See /healthz.',
+        ),
+    );
   const state = newId();
   setOAuthState(c, state);
   return c.redirect(googleAuthUrl(c, state));
@@ -1520,6 +1536,24 @@ async function catalogueTerms(env: Env): Promise<string[]> {
  * The same decision as dictateEnabled, but it says why — which is the
  * question people actually have when the button isn't there.
  */
+/**
+ * Whether Google sign-in can work, and if not, which half is missing.
+ * Never prints a value — only whether a name has one.
+ */
+export function signinWhy(env: Env): string {
+  const id = (env.GOOGLE_CLIENT_ID || '').trim();
+  const secret = (env.GOOGLE_CLIENT_SECRET || '').trim();
+  if (!id && !secret) return 'off (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set)';
+  if (!id) return 'off (GOOGLE_CLIENT_SECRET is set but GOOGLE_CLIENT_ID is not)';
+  if (!secret) return 'off (GOOGLE_CLIENT_ID is set but GOOGLE_CLIENT_SECRET is not)';
+  /* A Google client id always ends this way. Getting the secret and the id
+     the wrong way round is a common slip and produces the same
+     "invalid_client" page as setting neither. */
+  if (!id.endsWith('.apps.googleusercontent.com'))
+    return 'suspect (GOOGLE_CLIENT_ID does not end in .apps.googleusercontent.com — is it the secret by mistake?)';
+  return 'ok';
+}
+
 export function dictateWhy(env: Env): string {
   if ((env.DICTATE || '').toLowerCase() === 'off') return 'off (DICTATE=off)';
   const p = (env.DICTATE_PROVIDER || 'workers-ai').trim();
