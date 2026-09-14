@@ -10,7 +10,7 @@ assets = { directory = "./public", binding = "ASSETS" }
 [[d1_databases]]
 binding = "DB"
 database_name = "sruti"
-database_id = "PUT_YOUR_D1_DATABASE_ID_HERE"
+database_id = "31fe8aa6-9900-4844-ad5e-4035c57a4dc7"
 
 # Audio, video and note screenshots. 10 GB free, downloads free forever.
 [[r2_buckets]]
@@ -30,9 +30,15 @@ binding = "AI"
 
 [vars]
 # The Google account that becomes the first teacher on its first sign-in.
+# Once projects exist this is only consulted for a database with nobody in
+# it at all; BOOTSTRAP_ADMIN_EMAIL below is what makes somebody an admin.
 # Everyone else who signs in waits for approval.
-BOOTSTRAP_TEACHER_EMAIL = "teacher@example.com"
+BOOTSTRAP_TEACHER_EMAIL = "mailratish@gmail.com"
 SITE_NAME = "RP Sajeev Music"
+
+# The one account that becomes the admin — above every project, able to
+# create them and switch into any of them. Left empty, nobody is admin.
+BOOTSTRAP_ADMIN_EMAIL = "mailratish@gmail.com"
 
 # Which engine turns a spoken lesson note into text.
 #   workers-ai  Whisper, inside Cloudflare, free at this volume. The default.
