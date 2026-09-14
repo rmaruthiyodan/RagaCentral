@@ -177,41 +177,28 @@ gates() {
   npm run -s check:i18n >/dev/null; ok "Malayalam glossary"
 }
 
-# The first deploy on a brand-new account fails for a reason that has
-# nothing to do with this app: the account has not yet claimed the
-# workers.dev subdomain that every Worker's address hangs off. Wrangler
-# reports it as a stack trace, so translate it.
+# Wrangler asks "Would you like to register a workers.dev subdomain now?"
+# the first time an account deploys — but only when it can see a terminal.
+# It tests `process.stdin.isTTY && process.stdout.isTTY`, so capturing the
+# output with $(...) makes stdout a pipe, the question is auto-answered
+# "no", and it dies with a registration-declined error and a dashboard link
+# that 404s. So this runs the deploy with the terminal attached and asks
+# for the address afterwards, rather than reading it out of captured text.
 deploy_and_check() {
   say "Deploying"
-  local out
-  if ! out=$(wr deploy 2>&1); then
-    if printf '%s' "$out" | grep -qi 'register a workers\.dev subdomain\|workers/onboarding'; then
-      local link
-      link=$(printf '%s' "$out" | grep -Eo 'https://dash\.cloudflare\.com/[^ ]*workers/onboarding' | head -1 || true)
-      die "Your Cloudflare account has not claimed a workers.dev subdomain yet.
+  note "If this is the account's first deploy, wrangler will ask you to pick"
+  note "a workers.dev subdomain. Say yes — it is free, and it is the address"
+  note "the site will live at. Short is good; students will see it."
+  echo
+  wr deploy || die "Deploy failed — the output is above."
 
-  Every Worker is served at <worker-name>.<your-subdomain>.workers.dev, and
-  the subdomain half is chosen once per account. Yours has not been picked.
-
-  Claim one here:
-
-    ${link:-https://dash.cloudflare.com/ (Workers & Pages, then Get started)}
-
-  Pick something short you would not mind students seeing — it is shared by
-  everything in the account, and this app would land on
-  sruti.<what-you-pick>.workers.dev. It can be changed later in the
-  dashboard, but changing it breaks the Google sign-in redirect, so it is
-  worth picking one you will keep.
-
-  Then run this script again."
-    fi
-    printf '%s\n' "$out"
-    die "Deploy failed — the output is above."
-  fi
-  printf '%s\n' "$out" | grep -Ei 'https://' | sed 's/^/    /' || true
-
-  URL=$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9.-]*workers\.dev' | head -1 || true)
-  [ -n "$URL" ] || { warn "deployed, but could not read the address out of the output"; return; }
+  echo
+  note "Wrangler printed the address just above, ending in .workers.dev"
+  printf '    Paste it here to check the site is answering (or Enter to skip): '
+  read -r URL || URL=""
+  URL="${URL%/}"
+  [ -n "$URL" ] || { warn "skipped the check — open the address in a browser yourself"; return; }
+  case "$URL" in https://*) ;; *) URL="https://$URL" ;; esac
 
   say "Is it answering?"
   local i=0
@@ -222,7 +209,7 @@ deploy_and_check() {
     fi
     i=$((i+1)); sleep 3
   done
-  warn "no healthy answer from $URL/healthz yet — give it a minute and try that URL in a browser"
+  warn "no healthy answer from $URL/healthz yet — give it a minute and try it in a browser"
 }
 
 # ---------------------------------------------------------------------
