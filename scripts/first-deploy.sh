@@ -177,10 +177,37 @@ gates() {
   npm run -s check:i18n >/dev/null; ok "Malayalam glossary"
 }
 
+# The first deploy on a brand-new account fails for a reason that has
+# nothing to do with this app: the account has not yet claimed the
+# workers.dev subdomain that every Worker's address hangs off. Wrangler
+# reports it as a stack trace, so translate it.
 deploy_and_check() {
   say "Deploying"
   local out
-  out=$(wr deploy 2>&1) || { printf '%s\n' "$out"; die "Deploy failed — the output is above."; }
+  if ! out=$(wr deploy 2>&1); then
+    if printf '%s' "$out" | grep -qi 'register a workers\.dev subdomain\|workers/onboarding'; then
+      local link
+      link=$(printf '%s' "$out" | grep -Eo 'https://dash\.cloudflare\.com/[^ ]*workers/onboarding' | head -1 || true)
+      die "Your Cloudflare account has not claimed a workers.dev subdomain yet.
+
+  Every Worker is served at <worker-name>.<your-subdomain>.workers.dev, and
+  the subdomain half is chosen once per account. Yours has not been picked.
+
+  Claim one here:
+
+    ${link:-https://dash.cloudflare.com/ (Workers & Pages, then Get started)}
+
+  Pick something short you would not mind students seeing — it is shared by
+  everything in the account, and this app would land on
+  sruti.<what-you-pick>.workers.dev. It can be changed later in the
+  dashboard, but changing it breaks the Google sign-in redirect, so it is
+  worth picking one you will keep.
+
+  Then run this script again."
+    fi
+    printf '%s\n' "$out"
+    die "Deploy failed — the output is above."
+  fi
   printf '%s\n' "$out" | grep -Ei 'https://' | sed 's/^/    /' || true
 
   URL=$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9.-]*workers\.dev' | head -1 || true)
