@@ -25,6 +25,9 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 
+const YEL = '\u001b[33m';
+const OFF = '\u001b[0m';
+
 /* Tables that carry project_id. The child tables (session_sections,
    slot_exceptions, recording_shares, note_shares) reach a project only
    through their parent, so a query touching one of those must join to
@@ -46,6 +49,19 @@ const touches = new RegExp(
   'i',
 );
 
+/* `users` is the trap. It has no project_id — identity is global, and a
+   person can be in two projects — so the rule above cannot see it, and
+   a query that reads or writes a user by id will happily cross into
+   another practice. That is worse than anything the scoped tables can
+   leak, because it is a person's name, email and phone rather than a
+   row of song metadata.
+   A users query inside the app therefore has to reach the project some
+   other way: by joining project_members. Sign-in is the exception and
+   lives in auth.ts, which is not checked. */
+const touchesUsers =
+  /\b(?:FROM|JOIN|UPDATE|INTO|DELETE\s+FROM)\s+(?:main\.)?"?users"?\b/i;
+const reachesProject = /\bproject_members\b|\bproject_id\b/i;
+
 let bad = 0;
 let ok = 0;
 const waived = [];
@@ -59,16 +75,25 @@ for (const file of FILES) {
   }
   const lines = src.split('\n');
 
-  /* Template literals and ordinary strings that look like SQL. Good
-     enough: every query in this codebase is written as one literal
-     passed to .prepare(). */
-  const re = /(`(?:[^`\\]|\\.)*`|'(?:[^'\\]|\\.)*')/g;
-  let m;
-  while ((m = re.exec(src))) {
-    const sql = m[1];
-    if (!touches.test(sql)) continue;
+  /* Comments have to go first. An apostrophe in prose — song's,
+     teacher's — otherwise opens a "string" that swallows the real code
+     after it, and the statements inside that span are never examined.
+     The checker then reports zero problems for a reason that has
+     nothing to do with the code being right. Blank them out rather than
+     deleting, so line numbers still point at the truth. */
+  const blanked = src
+    .replace(/\/\*[\s\S]*?\*\//g, (m2) => m2.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (m2, p1) => p1 + ' '.repeat(m2.length - p1.length));
 
-    const lineNo = src.slice(0, m.index).split('\n').length;
+  const re = /(`(?:[^`\\]|\\.)*`|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g;
+  let m;
+  while ((m = re.exec(blanked))) {
+    const sql = m[1];
+    const isScoped = touches.test(sql);
+    const isUsers = touchesUsers.test(sql);
+    if (!isScoped && !isUsers) continue;
+
+    const lineNo = blanked.slice(0, m.index).split('\n').length;
     const before = lines.slice(Math.max(0, lineNo - 3), lineNo).join('\n');
     const waiver = /unscoped:\s*(.+)/.exec(sql) || /unscoped:\s*(.+)/.exec(before);
 
@@ -76,6 +101,18 @@ for (const file of FILES) {
       waived.push(`${file}:${lineNo}  ${waiver[1].replace(/\*\/.*$/, '').trim()}`);
       continue;
     }
+    if (isUsers && !isScoped) {
+      if (reachesProject.test(sql)) {
+        ok++;
+        continue;
+      }
+      bad++;
+      const firstU = sql.replace(/\s+/g, ' ').slice(1, 110);
+      console.log(`\n  ${file}:${lineNo}  ${YEL}[users]${OFF}`);
+      console.log(`    ${firstU}…`);
+      continue;
+    }
+
     if (/\bproject_id\b/.test(sql)) {
       ok++;
       continue;

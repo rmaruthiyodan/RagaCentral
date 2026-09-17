@@ -14,6 +14,7 @@ import {
   currentUser, startSession, endSession, googleAuthUrl, setOAuthState,
   takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher, requireTeacherJson,
 } from './auth';
+import { pid } from './projects';
 import { newId, now, extFor, slugify } from './util';
 import { isLang } from './i18n';
 import { transcribe, DictateError, CARNATIC_TERMS } from './transcribe';
@@ -219,18 +220,18 @@ app.get('/t', requireTeacher, async (c) => {
     : "u.status = 'active'";
 
   const counts = `SELECT u.*,
-        (SELECT COUNT(*) FROM assignments a WHERE a.student_id = u.id AND a.archived_at IS NULL) AS song_count,
-        (SELECT COUNT(*) FROM recordings r WHERE r.student_id = u.id) AS rec_count,
-        (SELECT MAX(r.created_at) FROM recordings r WHERE r.student_id = u.id) AS last_activity
+        (SELECT COUNT(*) FROM assignments a WHERE a.student_id = u.id AND a.archived_at IS NULL AND a.project_id = ?1) AS song_count,
+        (SELECT COUNT(*) FROM recordings r WHERE r.student_id = u.id AND r.project_id = ?1) AS rec_count,
+        (SELECT MAX(r.created_at) FROM recordings r WHERE r.student_id = u.id AND r.project_id = ?1) AS last_activity
        FROM users u
        WHERE ${statusFilter} AND u.role = 'student'`;
   const order = " ORDER BY CASE u.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, u.name COLLATE NOCASE";
   const students = q
     ? await db
-        .prepare(`${counts} AND (u.name LIKE ?1 OR u.email LIKE ?1 OR u.location LIKE ?1 OR u.phone LIKE ?1)${order}`)
-        .bind(`%${q}%`)
+        .prepare(`${counts} AND (u.name LIKE ?2 OR u.email LIKE ?2 OR u.location LIKE ?2 OR u.phone LIKE ?2)${order}`)
+        .bind(pid(c), `%${q}%`)
         .all<StudentRow>()
-    : await db.prepare(counts + order).all<StudentRow>();
+    : await db.prepare(counts + order).bind(pid(c)).all<StudentRow>();
 
   const hidden = await db
     .prepare("SELECT COUNT(*) AS n FROM users WHERE role='student' AND status IN ('paused','graduated','ended')")
@@ -242,9 +243,10 @@ app.get('/t', requireTeacher, async (c) => {
 
   const used = await db
     .prepare(
-      `SELECT (SELECT COALESCE(SUM(size_bytes),0) FROM recordings)
-            + (SELECT COALESCE(SUM(image_bytes),0) FROM notes) AS b`,
+      `SELECT (SELECT COALESCE(SUM(size_bytes),0) FROM recordings WHERE project_id = ?1)
+            + (SELECT COALESCE(SUM(image_bytes),0) FROM notes WHERE project_id = ?1) AS b`,
     )
+    .bind(pid(c))
     .first<{ b: number }>();
 
   return c.html(
@@ -400,23 +402,26 @@ app.post('/t/invite', requireTeacher, async (c) => {
 app.get('/t/catalogue', requireTeacher, async (c) => {
   const db = c.env.DB;
   const q = (c.req.query('q') ?? '').trim();
-  const groups = await db.prepare('SELECT * FROM groups ORDER BY sort_order, name COLLATE NOCASE').all<Group>();
+  const groups = await db
+    .prepare('SELECT * FROM groups WHERE project_id = ?1 ORDER BY sort_order, name COLLATE NOCASE')
+    .bind(pid(c))
+    .all<Group>();
 
   // One LIKE across every field a teacher might remember a song by. SQLite's
   // LIKE is case-insensitive for ASCII, and Malayalam has no case, so the
   // same clause serves both scripts.
-  const base = `SELECT s.*, (SELECT COUNT(*) FROM assignments a WHERE a.section_id = s.id AND a.archived_at IS NULL) AS assigned_count
-     FROM sections s`;
+  const base = `SELECT s.*, (SELECT COUNT(*) FROM assignments a WHERE a.section_id = s.id AND a.archived_at IS NULL AND a.project_id = ?1) AS assigned_count
+     FROM sections s WHERE s.project_id = ?1`;
   const order = ' ORDER BY s.sort_order, s.title COLLATE NOCASE';
   const sections = q
     ? await db
         .prepare(
-          `${base} WHERE s.title LIKE ?1 OR s.title_ml LIKE ?1 OR s.raga LIKE ?1
-             OR s.taala LIKE ?1 OR s.composer LIKE ?1${order}`,
+          `${base} AND (s.title LIKE ?2 OR s.title_ml LIKE ?2 OR s.raga LIKE ?2
+             OR s.taala LIKE ?2 OR s.composer LIKE ?2)${order}`,
         )
-        .bind(`%${q}%`)
+        .bind(pid(c), `%${q}%`)
         .all<Section & { assigned_count: number }>()
-    : await db.prepare(base + order).all<Section & { assigned_count: number }>();
+    : await db.prepare(base + order).bind(pid(c)).all<Section & { assigned_count: number }>();
 
   return c.html(
     V.teacherCatalogue(c.get('user'), groups.results ?? [], sections.results ?? [], site(c), c.req.query('msg'), q),
@@ -430,9 +435,9 @@ app.post('/t/sections/:id', requireTeacher, async (c) => {
   if (!title) return c.redirect('/t/catalogue');
   const str = (k: string) => String(f.get(k) ?? '').trim() || null;
   await c.env.DB.prepare(
-    `UPDATE sections SET group_id=?, title=?, title_ml=?, raga=?, taala=?, composer=? WHERE id=?`,
+    `UPDATE sections SET group_id=?, title=?, title_ml=?, raga=?, taala=?, composer=? WHERE id=? AND project_id=?`,
   )
-    .bind(str('group_id'), title, str('title_ml'), str('raga'), str('taala'), str('composer'), c.req.param('id'))
+    .bind(str('group_id'), title, str('title_ml'), str('raga'), str('taala'), str('composer'), c.req.param('id'), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || '/t/catalogue';
   return c.redirect(`${back}?msg=` + encodeURIComponent(`"${title}" updated.`));
@@ -441,8 +446,8 @@ app.post('/t/sections/:id', requireTeacher, async (c) => {
 /** Change a recording's name, which part it covers, and who can hear it. */
 app.post('/t/recordings/:id', requireTeacher, async (c) => {
   const f = await c.req.formData();
-  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
-    .bind(c.req.param('id'))
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec) return c.redirect('/t');
 
@@ -468,7 +473,7 @@ app.post('/t/recordings/:id', requireTeacher, async (c) => {
   }
   if (f.has('visibility')) {
     const ids = postedShareIds(f);
-    const visibility = await setShares(c.env, 'recording', rec.id, String(f.get('visibility')), ids);
+    const visibility = await setShares(c.env, pid(c), 'recording', rec.id, String(f.get('visibility')), ids);
     sets.push('visibility = ?');
     vals.push(visibility);
     msg =
@@ -478,8 +483,9 @@ app.post('/t/recordings/:id', requireTeacher, async (c) => {
   }
 
   if (sets.length) {
-    await c.env.DB.prepare(`UPDATE recordings SET ${sets.join(', ')} WHERE id = ?`)
-      .bind(...vals, rec.id)
+    // Scoped on project_id as well as id: a recording in another project matches nothing.
+    await c.env.DB.prepare(`UPDATE recordings SET ${sets.join(', ')} WHERE id = ? AND project_id = ?`)
+      .bind(...vals, rec.id, pid(c))
       .run();
   }
   const back = String(f.get('back') ?? '') || `/t/song/${rec.section_id}`;
@@ -489,8 +495,8 @@ app.post('/t/recordings/:id', requireTeacher, async (c) => {
 /** Edit a note's text and who can see it. */
 app.post('/t/notes/:id', requireTeacher, async (c) => {
   const f = await c.req.formData();
-  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?')
-    .bind(c.req.param('id'))
+  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Note>();
   if (!note) return c.redirect('/t');
 
@@ -514,7 +520,7 @@ app.post('/t/notes/:id', requireTeacher, async (c) => {
   }
   if (f.has('visibility')) {
     const ids = postedShareIds(f);
-    const visibility = await setShares(c.env, 'note', note.id, String(f.get('visibility')), ids);
+    const visibility = await setShares(c.env, pid(c), 'note', note.id, String(f.get('visibility')), ids);
     sets.push('visibility = ?');
     vals.push(visibility);
     msg =
@@ -524,8 +530,8 @@ app.post('/t/notes/:id', requireTeacher, async (c) => {
   }
 
   if (sets.length) {
-    await c.env.DB.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ?`)
-      .bind(...vals, note.id)
+    await c.env.DB.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ? AND project_id = ?`)
+      .bind(...vals, note.id, pid(c))
       .run();
   }
   const back = String(f.get('back') ?? '') || `/t/song/${note.section_id}`;
@@ -536,28 +542,28 @@ app.post('/t/notes/:id', requireTeacher, async (c) => {
 app.post('/t/notes/:id/move', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const dir = String(f.get('dir')) === 'up' ? 'up' : 'down';
-  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?')
-    .bind(c.req.param('id'))
+  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Note>();
   if (!note) return c.redirect('/t');
 
   // A note moves within its own list: the notes on the same recording, or the
   // song-wide ones. Before, everything was compared against the song-wide list,
   // so a note attached to a recording had no neighbour and never moved.
-  const scope = note.recording_id ? 'recording_id = ?4' : 'recording_id IS NULL';
+  const scope = note.recording_id ? 'recording_id = ?5' : 'recording_id IS NULL';
   const neighbour = await c.env.DB.prepare(
     dir === 'up'
-      ? `SELECT * FROM notes WHERE section_id=?1 AND ${scope}
+      ? `SELECT * FROM notes WHERE section_id=?1 AND project_id=?4 AND ${scope}
            AND (sort_order < ?2 OR (sort_order = ?2 AND created_at < ?3))
          ORDER BY sort_order DESC, created_at DESC LIMIT 1`
-      : `SELECT * FROM notes WHERE section_id=?1 AND ${scope}
+      : `SELECT * FROM notes WHERE section_id=?1 AND project_id=?4 AND ${scope}
            AND (sort_order > ?2 OR (sort_order = ?2 AND created_at > ?3))
          ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
   )
     .bind(
       ...(note.recording_id
-        ? [note.section_id, note.sort_order, note.created_at, note.recording_id]
-        : [note.section_id, note.sort_order, note.created_at]),
+        ? [note.section_id, note.sort_order, note.created_at, pid(c), note.recording_id]
+        : [note.section_id, note.sort_order, note.created_at, pid(c)]),
     )
     .first<Note>();
 
@@ -566,8 +572,8 @@ app.post('/t/notes/:id/move', requireTeacher, async (c) => {
     const b = neighbour.sort_order;
     const [newA, newB] = a === b ? (dir === 'up' ? [b - 1, b] : [b + 1, b]) : [b, a];
     await c.env.DB.batch([
-      c.env.DB.prepare('UPDATE notes SET sort_order = ? WHERE id = ?').bind(newA, note.id),
-      c.env.DB.prepare('UPDATE notes SET sort_order = ? WHERE id = ?').bind(newB, neighbour.id),
+      c.env.DB.prepare('UPDATE notes SET sort_order = ? WHERE id = ? AND project_id = ?').bind(newA, note.id, pid(c)),
+      c.env.DB.prepare('UPDATE notes SET sort_order = ? WHERE id = ? AND project_id = ?').bind(newB, neighbour.id, pid(c)),
     ]);
   }
   const back = String(f.get('back') ?? '') || `/t/song/${note.section_id}`;
@@ -578,15 +584,21 @@ app.post('/t/groups', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const name = String(f.get('name') ?? '').trim();
   if (!name) return c.redirect('/t/catalogue');
-  const max = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) AS m FROM groups').first<{ m: number }>();
-  await c.env.DB.prepare('INSERT INTO groups (id, name, name_ml, sort_order, created_at) VALUES (?,?,?,?,?)')
-    .bind(newId('g'), name, String(f.get('name_ml') ?? '').trim() || null, (max?.m ?? 0) + 10, now())
+  const max = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) AS m FROM groups WHERE project_id = ?')
+    .bind(pid(c))
+    .first<{ m: number }>();
+  await c.env.DB.prepare(
+    'INSERT INTO groups (project_id, id, name, name_ml, sort_order, created_at) VALUES (?,?,?,?,?,?)',
+  )
+    .bind(pid(c), newId('g'), name, String(f.get('name_ml') ?? '').trim() || null, (max?.m ?? 0) + 10, now())
     .run();
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent(`Group "${name}" added.`));
 });
 
 app.post('/t/groups/:id/delete', requireTeacher, async (c) => {
-  await c.env.DB.prepare('DELETE FROM groups WHERE id = ?').bind(c.req.param('id')).run();
+  await c.env.DB.prepare('DELETE FROM groups WHERE id = ? AND project_id = ?')
+    .bind(c.req.param('id'), pid(c))
+    .run();
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent('Group deleted. Its songs are now ungrouped.'));
 });
 
@@ -594,13 +606,15 @@ app.post('/t/sections', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const title = String(f.get('title') ?? '').trim();
   if (!title) return c.redirect('/t/catalogue');
-  const max = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) AS m FROM sections').first<{ m: number }>();
+  const max = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) AS m FROM sections WHERE project_id = ?')
+    .bind(pid(c))
+    .first<{ m: number }>();
   const str = (k: string) => String(f.get(k) ?? '').trim() || null;
   await c.env.DB.prepare(
-    `INSERT INTO sections (id, group_id, title, title_ml, raga, taala, composer, sort_order, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO sections (project_id, id, group_id, title, title_ml, raga, taala, composer, sort_order, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
   )
-    .bind(newId('s'), str('group_id'), title, str('title_ml'), str('raga'), str('taala'), str('composer'), (max?.m ?? 0) + 10, now())
+    .bind(pid(c), newId('s'), str('group_id'), title, str('title_ml'), str('raga'), str('taala'), str('composer'), (max?.m ?? 0) + 10, now())
     .run();
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent(`"${title}" added to the catalogue.`));
 });
@@ -612,18 +626,23 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
 
   const section = await db
     .prepare(`SELECT s.*, g.name AS group_name FROM sections s
-              LEFT JOIN groups g ON g.id = s.group_id WHERE s.id = ?`)
-    .bind(id)
+              LEFT JOIN groups g ON g.id = s.group_id AND g.project_id = ?2
+              WHERE s.id = ?1 AND s.project_id = ?2`)
+    .bind(id, pid(c))
     .first<Section & { group_name: string | null }>();
   if (!section) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
-  const groups = await db.prepare('SELECT * FROM groups ORDER BY sort_order, name COLLATE NOCASE').all<Group>();
+  const groups = await db
+    .prepare('SELECT * FROM groups WHERE project_id = ? ORDER BY sort_order, name COLLATE NOCASE')
+    .bind(pid(c))
+    .all<Group>();
 
   const recordings = await db
     .prepare(`SELECT r.*, u.name AS student_name FROM recordings r
               LEFT JOIN users u ON u.id = r.student_id
-              WHERE r.section_id = ? ORDER BY r.sort_order, r.created_at`)
-    .bind(id)
+              WHERE r.section_id = ?1 AND r.project_id = ?2
+              ORDER BY r.sort_order, r.created_at`)
+    .bind(id, pid(c))
     .all<Recording & { student_name: string | null }>();
 
   // Every note on the song — the ones pinned to a recording and the song-wide
@@ -631,21 +650,22 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
   const notes = await db
     .prepare(`SELECT n.*, u.name AS student_name FROM notes n
               LEFT JOIN users u ON u.id = n.student_id
-              WHERE n.section_id = ?
+              WHERE n.section_id = ?1 AND n.project_id = ?2
               ORDER BY n.sort_order, n.created_at`)
-    .bind(id)
+    .bind(id, pid(c))
     .all<Note & { student_name: string | null }>();
 
   const roster = await db
     .prepare(
       `SELECT u.id, u.name, u.avatar_url, u.status, a.completed_at,
-        (SELECT COUNT(*) FROM recording_shares rs JOIN recordings r ON r.id = rs.recording_id
+        (SELECT COUNT(*) FROM recording_shares rs
+           JOIN recordings r ON r.id = rs.recording_id AND r.project_id = ?2
           WHERE r.section_id = ?1 AND rs.student_id = u.id) AS rec_count
        FROM assignments a JOIN users u ON u.id = a.student_id
-       WHERE a.section_id = ?1 AND a.archived_at IS NULL
+       WHERE a.section_id = ?1 AND a.project_id = ?2 AND a.archived_at IS NULL
        ORDER BY u.name COLLATE NOCASE`,
     )
-    .bind(id)
+    .bind(id, pid(c))
     .all<SongStudent>();
   const rows = roster.results ?? [];
 
@@ -653,15 +673,16 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
     .prepare(
       `SELECT id, name, avatar_url, status, NULL AS completed_at, 0 AS rec_count FROM users
        WHERE role = 'student' AND status = 'active'
-         AND id NOT IN (SELECT student_id FROM assignments WHERE section_id = ?1 AND archived_at IS NULL)
+         AND id NOT IN (SELECT student_id FROM assignments
+                         WHERE section_id = ?1 AND project_id = ?2 AND archived_at IS NULL)
        ORDER BY name COLLATE NOCASE`,
     )
-    .bind(id)
+    .bind(id, pid(c))
     .all<SongStudent>();
 
   const [recShares, noteShares] = await Promise.all([
-    sharesFor(c.env, 'recording', id),
-    sharesFor(c.env, 'note', id),
+    sharesFor(c.env, pid(c), 'recording', id),
+    sharesFor(c.env, pid(c), 'note', id),
   ]);
 
   const data: SongPageData = {
@@ -685,11 +706,11 @@ app.post('/t/song/:id/assign', requireTeacher, async (c) => {
   const studentId = String(f.get('student_id') ?? '');
   if (!studentId) return c.redirect(`/t/song/${sectionId}`);
   await c.env.DB.prepare(
-    `INSERT INTO assignments (id, student_id, section_id, assigned_by, assigned_at)
-     VALUES (?,?,?,?,?)
+    `INSERT INTO assignments (project_id, id, student_id, section_id, assigned_by, assigned_at)
+     VALUES (?,?,?,?,?,?)
      ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL, completed_at = NULL`,
   )
-    .bind(newId('a'), studentId, sectionId, c.get('user').id, now())
+    .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
     .run();
   return c.redirect(`/t/song/${sectionId}?msg=` + encodeURIComponent('Assigned.'));
 });
@@ -699,9 +720,15 @@ app.post('/t/catalogue/seed', requireTeacher, async (c) => {
   const db = c.env.DB;
   let added = 0;
 
-  const existingGroups = await db.prepare('SELECT id, name FROM groups').all<{ id: string; name: string }>();
+  const existingGroups = await db
+    .prepare('SELECT id, name FROM groups WHERE project_id = ?')
+    .bind(pid(c))
+    .all<{ id: string; name: string }>();
   const groupByName = new Map((existingGroups.results ?? []).map((g) => [g.name.toLowerCase(), g.id]));
-  const existingSongs = await db.prepare('SELECT title, raga FROM sections').all<{ title: string; raga: string | null }>();
+  const existingSongs = await db
+    .prepare('SELECT title, raga FROM sections WHERE project_id = ?')
+    .bind(pid(c))
+    .all<{ title: string; raga: string | null }>();
   const haveSong = new Set(
     (existingSongs.results ?? []).map((s) => `${s.title.toLowerCase()}|${(s.raga ?? '').toLowerCase()}`),
   );
@@ -714,8 +741,8 @@ app.post('/t/catalogue/seed', requireTeacher, async (c) => {
     if (!gid) {
       gid = newId('g');
       await db
-        .prepare('INSERT INTO groups (id, name, sort_order, created_at) VALUES (?,?,?,?)')
-        .bind(gid, g.name, groupOrder, now())
+        .prepare('INSERT INTO groups (project_id, id, name, sort_order, created_at) VALUES (?,?,?,?,?)')
+        .bind(pid(c), gid, g.name, groupOrder, now())
         .run();
       groupByName.set(g.name.toLowerCase(), gid);
     }
@@ -729,10 +756,10 @@ app.post('/t/catalogue/seed', requireTeacher, async (c) => {
       inserts.push(
         db
           .prepare(
-            `INSERT INTO sections (id, group_id, title, raga, taala, composer, sort_order, created_at)
-             VALUES (?,?,?,?,?,?,?,?)`,
+            `INSERT INTO sections (project_id, id, group_id, title, raga, taala, composer, sort_order, created_at)
+             VALUES (?,?,?,?,?,?,?,?,?)`,
           )
-          .bind(newId('s'), gid, song.title, song.raga, song.taala, song.composer, songOrder, now()),
+          .bind(pid(c), newId('s'), gid, song.title, song.raga, song.taala, song.composer, songOrder, now()),
       );
       added++;
     }
@@ -763,30 +790,31 @@ app.post('/t/catalogue/seed', requireTeacher, async (c) => {
  * ------------------------------------------------------------------ */
 async function moveInList(
   env: Env,
+  projectId: string,
   table: 'groups' | 'sections',
   id: string,
   dir: 'up' | 'down',
   nameCol: 'name' | 'title',
   scope?: { col: string; val: string | null },
 ): Promise<void> {
-  const row = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`)
-    .bind(id)
+  const row = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ? AND project_id = ?`)
+    .bind(id, projectId)
     .first<{ id: string; sort_order: number } & Record<string, unknown>>();
   if (!row) return;
 
-  const where = scope ? ` AND COALESCE(${scope.col},'') = ?4` : '';
-  const binds: unknown[] = [row.sort_order, String(row[nameCol] ?? ''), id];
+  const where = scope ? ` AND COALESCE(${scope.col},'') = ?5` : '';
+  const binds: unknown[] = [row.sort_order, String(row[nameCol] ?? ''), id, projectId];
   if (scope) binds.push(scope.val ?? '');
 
   const neighbour = await env.DB.prepare(
     dir === 'up'
       ? `SELECT id, sort_order FROM ${table}
            WHERE (sort_order < ?1 OR (sort_order = ?1 AND ${nameCol} COLLATE NOCASE < ?2))
-             AND id <> ?3${where}
+             AND id <> ?3 AND project_id = ?4${where}
          ORDER BY sort_order DESC, ${nameCol} COLLATE NOCASE DESC LIMIT 1`
       : `SELECT id, sort_order FROM ${table}
            WHERE (sort_order > ?1 OR (sort_order = ?1 AND ${nameCol} COLLATE NOCASE > ?2))
-             AND id <> ?3${where}
+             AND id <> ?3 AND project_id = ?4${where}
          ORDER BY sort_order ASC, ${nameCol} COLLATE NOCASE ASC LIMIT 1`,
   )
     .bind(...(binds as [number, string, string, ...unknown[]]))
@@ -797,24 +825,24 @@ async function moveInList(
   const b = neighbour.sort_order;
   const [newA, newB] = a === b ? (dir === 'up' ? [b - 1, b] : [b + 1, b]) : [b, a];
   await env.DB.batch([
-    env.DB.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`).bind(newA, id),
-    env.DB.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`).bind(newB, neighbour.id),
+    env.DB.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ? AND project_id = ?`).bind(newA, id, projectId),
+    env.DB.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ? AND project_id = ?`).bind(newB, neighbour.id, projectId),
   ]);
 }
 
 app.post('/t/groups/:id/move', requireTeacher, async (c) => {
   const dir = String((await c.req.formData()).get('dir')) === 'up' ? 'up' : 'down';
-  await moveInList(c.env, 'groups', c.req.param('id'), dir, 'name');
+  await moveInList(c.env, pid(c), 'groups', c.req.param('id'), dir, 'name');
   return c.redirect('/t/catalogue');
 });
 
 app.post('/t/sections/:id/move', requireTeacher, async (c) => {
   const dir = String((await c.req.formData()).get('dir')) === 'up' ? 'up' : 'down';
-  const s = await c.env.DB.prepare('SELECT group_id FROM sections WHERE id = ?')
-    .bind(c.req.param('id'))
+  const s = await c.env.DB.prepare('SELECT group_id FROM sections WHERE id = ? AND project_id = ?')
+    .bind(c.req.param('id'), pid(c))
     .first<{ group_id: string | null }>();
   if (s)
-    await moveInList(c.env, 'sections', c.req.param('id'), dir, 'title', {
+    await moveInList(c.env, pid(c), 'sections', c.req.param('id'), dir, 'title', {
       col: 'group_id',
       val: s.group_id,
     });
@@ -825,14 +853,17 @@ app.post('/t/sections/:id/delete', requireTeacher, async (c) => {
   const id = c.req.param('id');
   const db = c.env.DB;
   // Remove the media from R2 first — an orphaned object costs storage forever.
-  const recs = await db.prepare('SELECT r2_key FROM recordings WHERE section_id = ?').bind(id).all<{ r2_key: string }>();
+  const recs = await db
+    .prepare('SELECT r2_key FROM recordings WHERE section_id = ? AND project_id = ?')
+    .bind(id, pid(c))
+    .all<{ r2_key: string }>();
   const imgs = await db
-    .prepare('SELECT image_key FROM notes WHERE section_id = ? AND image_key IS NOT NULL')
-    .bind(id)
+    .prepare('SELECT image_key FROM notes WHERE section_id = ? AND project_id = ? AND image_key IS NOT NULL')
+    .bind(id, pid(c))
     .all<{ image_key: string }>();
   const keys = [...(recs.results ?? []).map((r) => r.r2_key), ...(imgs.results ?? []).map((i) => i.image_key)];
   if (keys.length) await c.env.MEDIA.delete(keys);
-  await db.prepare('DELETE FROM sections WHERE id = ?').bind(id).run();
+  await db.prepare('DELETE FROM sections WHERE id = ? AND project_id = ?').bind(id, pid(c)).run();
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent('Song deleted, along with its recordings.'));
 });
 
@@ -843,10 +874,12 @@ app.post('/t/sections/:id/delete', requireTeacher, async (c) => {
 /* ---------------- schedule ---------------- */
 
 /** Slots for one student, or for everyone when studentId is omitted. */
-async function loadSlots(env: Env, studentId?: string): Promise<Slot[]> {
+async function loadSlots(env: Env, projectId: string, studentId?: string): Promise<Slot[]> {
   const q = studentId
-    ? env.DB.prepare('SELECT * FROM class_slots WHERE student_id = ? ORDER BY weekday, time_ist').bind(studentId)
-    : env.DB.prepare('SELECT * FROM class_slots ORDER BY weekday, time_ist');
+    ? env.DB.prepare(
+        'SELECT * FROM class_slots WHERE project_id = ?1 AND student_id = ?2 ORDER BY weekday, time_ist',
+      ).bind(projectId, studentId)
+    : env.DB.prepare('SELECT * FROM class_slots WHERE project_id = ?1 ORDER BY weekday, time_ist').bind(projectId);
   return ((await q.all<Slot>()).results ?? []);
 }
 
@@ -864,17 +897,21 @@ function stillScheduled(status: string | undefined, date: string, today: string)
   return status === 'active' || date < today;
 }
 
-async function loadExceptions(env: Env, from: string, to: string): Promise<SlotException[]> {
+async function loadExceptions(env: Env, projectId: string, from: string, to: string): Promise<SlotException[]> {
   // A moved class can land outside the window it came from, and one moved
   // *into* the window came from a date outside it, so the range is widened
   // generously either side rather than matched exactly. It has to cover the
   // padding expand() scans with, or a class moved across a week boundary is
   // read without its exception and appears on both dates.
+  // slot_exceptions carries no project_id of its own: it reaches a project
+  // only through the slot it changes, so the scope goes on that join.
   const r = await env.DB.prepare(
-    `SELECT slot_id, on_date, action, new_date, new_time_ist, reason
-     FROM slot_exceptions WHERE on_date BETWEEN ? AND ?`,
+    `SELECT x.slot_id, x.on_date, x.action, x.new_date, x.new_time_ist, x.reason
+     FROM slot_exceptions x
+     JOIN class_slots cs ON cs.id = x.slot_id AND cs.project_id = ?3
+     WHERE x.on_date BETWEEN ?1 AND ?2`,
   )
-    .bind(addDays(from, -21), addDays(to, 21))
+    .bind(addDays(from, -21), addDays(to, 21), projectId)
     .all<SlotException>();
   return r.results ?? [];
 }
@@ -884,19 +921,19 @@ async function loadExceptions(env: Env, from: string, to: string): Promise<SlotE
  * touched folded in. SEP is an unlikely-in-a-song-title separator so the
  * concatenated lists can be split apart again for display.
  */
-async function sessionsFor(env: Env, studentId: string): Promise<SessionRow[]> {
+async function sessionsFor(env: Env, projectId: string, studentId: string): Promise<SessionRow[]> {
   const r = await env.DB.prepare(
     `SELECT s.*,
        (SELECT group_concat(sec.title, ?2) FROM session_sections ss
-          JOIN sections sec ON sec.id = ss.section_id
+          JOIN sections sec ON sec.id = ss.section_id AND sec.project_id = ?3
          WHERE ss.session_id = s.id) AS section_titles,
        (SELECT group_concat(ss.section_id, ?2) FROM session_sections ss
          WHERE ss.session_id = s.id) AS section_ids
      FROM sessions s
-     WHERE s.student_id = ?1
+     WHERE s.student_id = ?1 AND s.project_id = ?3
      ORDER BY s.held_on DESC, s.created_at DESC`,
   )
-    .bind(studentId, SEP)
+    .bind(studentId, SEP, projectId)
     .all<SessionRow>();
   return r.results ?? [];
 }
@@ -920,28 +957,39 @@ function readSessionForm(f: FormData) {
 }
 
 /** Replace the songs attached to a session. */
-async function setSessionSections(env: Env, sessionId: string, sectionIds: string[]) {
-  await env.DB.prepare('DELETE FROM session_sections WHERE session_id = ?').bind(sessionId).run();
+async function setSessionSections(env: Env, projectId: string, sessionId: string, sectionIds: string[]) {
+  // session_sections has no project_id: both ends are checked against their
+  // parents instead, so neither a foreign lesson nor a foreign song can be
+  // touched from here.
+  await env.DB.prepare(
+    `DELETE FROM session_sections WHERE session_id = ?1
+       AND EXISTS (SELECT 1 FROM sessions s WHERE s.id = ?1 AND s.project_id = ?2)`,
+  )
+    .bind(sessionId, projectId)
+    .run();
   if (!sectionIds.length) return;
   const stmt = env.DB.prepare(
-    'INSERT OR IGNORE INTO session_sections (session_id, section_id) VALUES (?, ?)',
+    `INSERT OR IGNORE INTO session_sections (session_id, section_id)
+     SELECT ?1, ?2
+      WHERE EXISTS (SELECT 1 FROM sessions s WHERE s.id = ?1 AND s.project_id = ?3)
+        AND EXISTS (SELECT 1 FROM sections sec WHERE sec.id = ?2 AND sec.project_id = ?3)`,
   );
-  await env.DB.batch(sectionIds.map((id) => stmt.bind(sessionId, id)));
+  await env.DB.batch(sectionIds.map((id) => stmt.bind(sessionId, id, projectId)));
 }
 
-async function assignedFor(env: Env, studentId: string): Promise<AssignedRow[]> {
+async function assignedFor(env: Env, projectId: string, studentId: string): Promise<AssignedRow[]> {
   const r = await env.DB.prepare(
     `SELECT s.*, g.name AS group_name, a.completed_at AS completed_at,
-       (SELECT COUNT(*) FROM recordings x WHERE x.section_id = s.id AND x.student_id = ?1) AS rec_count,
-       (SELECT COUNT(*) FROM notes n  WHERE n.section_id = s.id AND n.student_id = ?1) AS note_count,
-       (SELECT MAX(x.created_at) FROM recordings x WHERE x.section_id = s.id AND x.student_id = ?1) AS last_added
+       (SELECT COUNT(*) FROM recordings x WHERE x.section_id = s.id AND x.student_id = ?1 AND x.project_id = ?2) AS rec_count,
+       (SELECT COUNT(*) FROM notes n  WHERE n.section_id = s.id AND n.student_id = ?1 AND n.project_id = ?2) AS note_count,
+       (SELECT MAX(x.created_at) FROM recordings x WHERE x.section_id = s.id AND x.student_id = ?1 AND x.project_id = ?2) AS last_added
      FROM assignments a
-     JOIN sections s ON s.id = a.section_id
-     LEFT JOIN groups g ON g.id = s.group_id
-     WHERE a.student_id = ?1 AND a.archived_at IS NULL
+     JOIN sections s ON s.id = a.section_id AND s.project_id = ?2
+     LEFT JOIN groups g ON g.id = s.group_id AND g.project_id = ?2
+     WHERE a.student_id = ?1 AND a.project_id = ?2 AND a.archived_at IS NULL
      ORDER BY COALESCE(g.sort_order, 9999), s.sort_order, s.title COLLATE NOCASE`,
   )
-    .bind(studentId)
+    .bind(studentId, projectId)
     .all<AssignedRow>();
   return r.results ?? [];
 }
@@ -952,12 +1000,12 @@ async function studentOr404(env: Env, id: string): Promise<User | null> {
   return (await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>()) ?? null;
 }
 
-async function tabCounts(env: Env, studentId: string): Promise<Stu.TabCounts> {
+async function tabCounts(env: Env, projectId: string, studentId: string): Promise<Stu.TabCounts> {
   const r = await env.DB.prepare(
-    `SELECT (SELECT COUNT(*) FROM assignments WHERE student_id = ?1 AND archived_at IS NULL) AS songs,
-            (SELECT COUNT(*) FROM sessions WHERE student_id = ?1) AS lessons`,
+    `SELECT (SELECT COUNT(*) FROM assignments WHERE student_id = ?1 AND project_id = ?2 AND archived_at IS NULL) AS songs,
+            (SELECT COUNT(*) FROM sessions WHERE student_id = ?1 AND project_id = ?2) AS lessons`,
   )
-    .bind(studentId)
+    .bind(studentId, projectId)
     .first<Stu.TabCounts>();
   return r ?? { songs: 0, lessons: 0 };
 }
@@ -967,30 +1015,30 @@ async function tabCounts(env: Env, studentId: string): Promise<Stu.TabCounts> {
  * has none: their weekly pattern is kept, but nothing is scheduled from it
  * until they come back.
  */
-async function upcomingFor(env: Env, studentId: string, days = 28): Promise<Occurrence[]> {
+async function upcomingFor(env: Env, projectId: string, studentId: string, days = 28): Promise<Occurrence[]> {
   const student = await env.DB.prepare('SELECT status FROM users WHERE id = ?')
     .bind(studentId)
     .first<{ status: string }>();
   if (student && student.status !== 'active') return [];
 
-  const slots = await loadSlots(env, studentId);
+  const slots = await loadSlots(env, projectId, studentId);
   if (!slots.length) return [];
   const from = istToday();
-  return expand(slots, await loadExceptions(env, from, addDays(from, days - 1)), from, days);
+  return expand(slots, await loadExceptions(env, projectId, from, addDays(from, days - 1)), from, days);
 }
 
 app.get('/t/s/:id', requireTeacher, async (c) => {
   const student = await studentOr404(c.env, c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
-  const assigned = await assignedFor(c.env, student.id);
+  const assigned = await assignedFor(c.env, pid(c), student.id);
   return c.html(
     Stu.overviewTab(
       c.get('user'),
       student,
-      await tabCounts(c.env, student.id),
+      await tabCounts(c.env, pid(c), student.id),
       {
-        sessions: await sessionsFor(c.env, student.id),
-        upcoming: await upcomingFor(c.env, student.id),
+        sessions: await sessionsFor(c.env, pid(c), student.id),
+        upcoming: await upcomingFor(c.env, pid(c), student.id),
         learning: assigned.filter((a) => !a.completed_at),
       },
       site(c),
@@ -1004,15 +1052,18 @@ app.get('/t/s/:id/songs', requireTeacher, async (c) => {
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   const catalogue = await c.env.DB.prepare(
     `SELECT s.*, g.name AS group_name FROM sections s
-     LEFT JOIN groups g ON g.id = s.group_id
+     LEFT JOIN groups g ON g.id = s.group_id AND g.project_id = ?1
+     WHERE s.project_id = ?1
      ORDER BY COALESCE(g.sort_order, 9999), s.sort_order, s.title COLLATE NOCASE`,
-  ).all<Section & { group_name: string | null }>();
+  )
+    .bind(pid(c))
+    .all<Section & { group_name: string | null }>();
   return c.html(
     Stu.songsTab(
       c.get('user'),
       student,
-      await tabCounts(c.env, student.id),
-      await assignedFor(c.env, student.id),
+      await tabCounts(c.env, pid(c), student.id),
+      await assignedFor(c.env, pid(c), student.id),
       catalogue.results ?? [],
       site(c),
       c.req.query('msg'),
@@ -1027,9 +1078,9 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
   const today = istToday();
   const mp = c.req.query('month');
   const month = mp && /^\d{4}-\d{2}$/.test(mp) ? `${mp}-01` : `${today.slice(0, 7)}-01`;
-  const slots = await loadSlots(c.env, student.id);
+  const slots = await loadSlots(c.env, pid(c), student.id);
   let monthOccs = slots.length
-    ? expand(slots, await loadExceptions(c.env, month, addDays(month, 41)), month, 42, {
+    ? expand(slots, await loadExceptions(c.env, pid(c), month, addDays(month, 41)), month, 42, {
         includeSkipped: true,
       })
     : [];
@@ -1045,10 +1096,10 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
     Stu.lessonsTab(
       c.get('user'),
       student,
-      await tabCounts(c.env, student.id),
+      await tabCounts(c.env, pid(c), student.id),
       {
-        sessions: await sessionsFor(c.env, student.id),
-        assigned: await assignedFor(c.env, student.id),
+        sessions: await sessionsFor(c.env, pid(c), student.id),
+        assigned: await assignedFor(c.env, pid(c), student.id),
         month,
         monthOccs,
         prevMonth: shift(-1),
@@ -1068,10 +1119,10 @@ app.get('/t/s/:id/schedule', requireTeacher, async (c) => {
     Stu.scheduleTab(
       c.get('user'),
       student,
-      await tabCounts(c.env, student.id),
+      await tabCounts(c.env, pid(c), student.id),
       {
-        slots: (await loadSlots(c.env, student.id)) as unknown as ClassSlot[],
-        upcoming: await upcomingFor(c.env, student.id, 42),
+        slots: (await loadSlots(c.env, pid(c), student.id)) as unknown as ClassSlot[],
+        upcoming: await upcomingFor(c.env, pid(c), student.id, 42),
       },
       site(c),
       c.req.query('msg'),
@@ -1083,7 +1134,7 @@ app.get('/t/s/:id/settings', requireTeacher, async (c) => {
   const student = await studentOr404(c.env, c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   return c.html(
-    Stu.settingsTab(c.get('user'), student, await tabCounts(c.env, student.id), site(c), c.req.query('msg')),
+    Stu.settingsTab(c.get('user'), student, await tabCounts(c.env, pid(c), student.id), site(c), c.req.query('msg')),
   );
 });
 
@@ -1094,8 +1145,8 @@ app.get('/t/class/:slotId/:date', requireTeacher, async (c) => {
   const date = c.req.param('date');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.redirect('/t/schedule/week');
 
-  const slot = await c.env.DB.prepare('SELECT * FROM class_slots WHERE id = ?')
-    .bind(slotId)
+  const slot = await c.env.DB.prepare('SELECT * FROM class_slots WHERE id = ?1 AND project_id = ?2')
+    .bind(slotId, pid(c))
     .first<Slot>();
   if (!slot) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
@@ -1111,7 +1162,7 @@ app.get('/t/class/:slotId/:date', requireTeacher, async (c) => {
   // That is what `by: 'originalDate'` asks for: expand trims by the date a
   // class *lands* on by default, which would throw away the very occurrence
   // this page exists to show.
-  const occ = expand([slot], await loadExceptions(c.env, date, date), date, 1, {
+  const occ = expand([slot], await loadExceptions(c.env, pid(c), date, date), date, 1, {
     includeSkipped: true,
     by: 'originalDate',
   }).find((o) => o.originalDate === date);
@@ -1120,21 +1171,21 @@ app.get('/t/class/:slotId/:date', requireTeacher, async (c) => {
   const lastLesson =
     (await c.env.DB.prepare(
       `SELECT s.*, NULL AS section_titles, NULL AS section_ids FROM sessions s
-       WHERE s.student_id = ?1 AND s.held_on < ?2
+       WHERE s.student_id = ?1 AND s.held_on < ?2 AND s.project_id = ?3
        ORDER BY s.held_on DESC, s.created_at DESC LIMIT 1`,
     )
-      .bind(student.id, occ.date)
+      .bind(student.id, occ.date, pid(c))
       .first<SessionRow>()) ?? null;
 
   const alreadyLogged =
     (await c.env.DB.prepare(
       `SELECT s.*, NULL AS section_titles, NULL AS section_ids FROM sessions s
-       WHERE s.student_id = ?1 AND s.held_on = ?2 LIMIT 1`,
+       WHERE s.student_id = ?1 AND s.held_on = ?2 AND s.project_id = ?3 LIMIT 1`,
     )
-      .bind(student.id, occ.date)
+      .bind(student.id, occ.date, pid(c))
       .first<SessionRow>()) ?? null;
 
-  const songs = (await assignedFor(c.env, student.id)).filter((a) => !a.completed_at);
+  const songs = (await assignedFor(c.env, pid(c), student.id)).filter((a) => !a.completed_at);
 
   return c.html(
     classPage(
@@ -1156,14 +1207,14 @@ app.post('/t/s/:id/sessions', requireTeacher, async (c) => {
   const id = newId('ls');
   await c.env.DB.prepare(
     `INSERT INTO sessions
-       (id, student_id, held_on, status, covered, left_off, next_focus,
+       (project_id, id, student_id, held_on, status, covered, left_off, next_focus,
         covered_ml, left_off_ml, next_focus_ml, duration_min, created_by, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   )
-    .bind(id, studentId, d.held_on, d.status, d.covered, d.left_off, d.next_focus,
+    .bind(pid(c), id, studentId, d.held_on, d.status, d.covered, d.left_off, d.next_focus,
           d.covered_ml, d.left_off_ml, d.next_focus_ml, d.duration_min, c.get('user').id, now())
     .run();
-  await setSessionSections(c.env, id, d.sectionIds);
+  await setSessionSections(c.env, pid(c), id, d.sectionIds);
 
   const back = String(f.get('back') ?? '') || `/t/s/${studentId}/lessons`;
   return c.redirect(
@@ -1178,43 +1229,44 @@ app.post('/t/s/:id/sessions', requireTeacher, async (c) => {
 
 app.post('/t/sessions/:id', requireTeacher, async (c) => {
   const id = c.req.param('id');
-  const existing = await c.env.DB.prepare('SELECT student_id FROM sessions WHERE id = ?')
-    .bind(id)
+  const existing = await c.env.DB.prepare('SELECT student_id FROM sessions WHERE id = ?1 AND project_id = ?2')
+    .bind(id, pid(c))
     .first<{ student_id: string }>();
   if (!existing) return c.redirect('/t');
 
   const d = readSessionForm(await c.req.formData());
   await c.env.DB.prepare(
     `UPDATE sessions SET held_on=?, status=?, covered=?, left_off=?, next_focus=?,
-       covered_ml=?, left_off_ml=?, next_focus_ml=?, duration_min=?, updated_at=? WHERE id=?`,
+       covered_ml=?, left_off_ml=?, next_focus_ml=?, duration_min=?, updated_at=?
+     WHERE id=? AND project_id=?`,
   )
     .bind(d.held_on, d.status, d.covered, d.left_off, d.next_focus,
-          d.covered_ml, d.left_off_ml, d.next_focus_ml, d.duration_min, now(), id)
+          d.covered_ml, d.left_off_ml, d.next_focus_ml, d.duration_min, now(), id, pid(c))
     .run();
-  await setSessionSections(c.env, id, d.sectionIds);
+  await setSessionSections(c.env, pid(c), id, d.sectionIds);
 
   return c.redirect(`/t/s/${existing.student_id}/lessons?msg=` + encodeURIComponent('Lesson updated.'));
 });
 
 app.post('/t/sessions/:id/complete', requireTeacher, async (c) => {
   const id = c.req.param('id');
-  const row = await c.env.DB.prepare('SELECT student_id FROM sessions WHERE id = ?')
-    .bind(id)
+  const row = await c.env.DB.prepare('SELECT student_id FROM sessions WHERE id = ?1 AND project_id = ?2')
+    .bind(id, pid(c))
     .first<{ student_id: string }>();
   if (!row) return c.redirect('/t');
-  await c.env.DB.prepare("UPDATE sessions SET status='completed', updated_at=? WHERE id=?")
-    .bind(now(), id)
+  await c.env.DB.prepare("UPDATE sessions SET status='completed', updated_at=? WHERE id=? AND project_id=?")
+    .bind(now(), id, pid(c))
     .run();
   return c.redirect(`/t/s/${row.student_id}/lessons?msg=` + encodeURIComponent('Lesson marked finished.'));
 });
 
 app.post('/t/sessions/:id/delete', requireTeacher, async (c) => {
   const id = c.req.param('id');
-  const row = await c.env.DB.prepare('SELECT student_id FROM sessions WHERE id = ?')
-    .bind(id)
+  const row = await c.env.DB.prepare('SELECT student_id FROM sessions WHERE id = ?1 AND project_id = ?2')
+    .bind(id, pid(c))
     .first<{ student_id: string }>();
   if (!row) return c.redirect('/t');
-  await c.env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM sessions WHERE id = ? AND project_id = ?').bind(id, pid(c)).run();
   return c.redirect(`/t/s/${row.student_id}/lessons?msg=` + encodeURIComponent('Lesson deleted from the log.'));
 });
 
@@ -1224,11 +1276,11 @@ app.post('/t/s/:id/assign', requireTeacher, async (c) => {
   const sectionId = String(f.get('section_id') ?? '');
   if (!sectionId) return c.redirect(`/t/s/${studentId}`);
   await c.env.DB.prepare(
-    `INSERT INTO assignments (id, student_id, section_id, assigned_by, assigned_at)
-     VALUES (?,?,?,?,?)
+    `INSERT INTO assignments (project_id, id, student_id, section_id, assigned_by, assigned_at)
+     VALUES (?,?,?,?,?,?)
      ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL`,
   )
-    .bind(newId('a'), studentId, sectionId, c.get('user').id, now())
+    .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
     .run();
   const back = String(f.get('back') ?? '') || `/t/s/${studentId}/songs`;
   return c.redirect(`${back}?msg=` + encodeURIComponent('Song assigned.'));
@@ -1240,9 +1292,9 @@ app.post('/t/s/:id/complete-song', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const done = String(f.get('undo')) !== '1';
   await c.env.DB.prepare(
-    'UPDATE assignments SET completed_at = ? WHERE student_id = ? AND section_id = ?',
+    'UPDATE assignments SET completed_at = ? WHERE student_id = ? AND section_id = ? AND project_id = ?',
   )
-    .bind(done ? now() : null, studentId, String(f.get('section_id') ?? ''))
+    .bind(done ? now() : null, studentId, String(f.get('section_id') ?? ''), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || `/t/s/${studentId}`;
   return c.redirect(`${back}?msg=` + encodeURIComponent(done ? 'Marked as finished.' : 'Back in progress.'));
@@ -1251,8 +1303,10 @@ app.post('/t/s/:id/complete-song', requireTeacher, async (c) => {
 app.post('/t/s/:id/unassign', requireTeacher, async (c) => {
   const studentId = c.req.param('id');
   const f = await c.req.formData();
-  await c.env.DB.prepare('UPDATE assignments SET archived_at = ? WHERE student_id = ? AND section_id = ?')
-    .bind(now(), studentId, String(f.get('section_id') ?? ''))
+  await c.env.DB.prepare(
+    'UPDATE assignments SET archived_at = ? WHERE student_id = ? AND section_id = ? AND project_id = ?',
+  )
+    .bind(now(), studentId, String(f.get('section_id') ?? ''), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || `/t/s/${studentId}/songs`;
   return c.redirect(`${back}?msg=` + encodeURIComponent('Removed from their list. Recordings kept.'));
@@ -1262,12 +1316,13 @@ app.post('/t/s/:id/unassign', requireTeacher, async (c) => {
  * The song workspace
  * ================================================================== */
 
-async function loadSong(env: Env, studentId: string, sectionId: string) {
+async function loadSong(env: Env, projectId: string, studentId: string, sectionId: string) {
   const section = await env.DB.prepare(
     `SELECT s.*, g.name AS group_name FROM sections s
-     LEFT JOIN groups g ON g.id = s.group_id WHERE s.id = ?`,
+     LEFT JOIN groups g ON g.id = s.group_id AND g.project_id = ?2
+     WHERE s.id = ?1 AND s.project_id = ?2`,
   )
-    .bind(sectionId)
+    .bind(sectionId, projectId)
     .first<Section & { group_name: string | null }>();
   if (!section) return null;
 
@@ -1281,18 +1336,18 @@ async function loadSong(env: Env, studentId: string, sectionId: string) {
               OR EXISTS (SELECT 1 FROM recording_shares rs
                           WHERE rs.recording_id = r.id AND rs.student_id = ?2)
             THEN 0 ELSE 1 END AS locked
-     FROM recordings r WHERE r.section_id = ?1
+     FROM recordings r WHERE r.section_id = ?1 AND r.project_id = ?3
      ORDER BY r.sort_order, r.created_at`,
   )
-    .bind(sectionId, studentId)
+    .bind(sectionId, studentId, projectId)
     .all<Recording & { locked: number }>();
   const notes = await env.DB.prepare(
-    `SELECT * FROM notes WHERE section_id = ?1
+    `SELECT * FROM notes WHERE section_id = ?1 AND project_id = ?3
        AND (visibility = 'shared'
             OR id IN (SELECT note_id FROM note_shares WHERE student_id = ?2))
      ORDER BY sort_order, created_at`,
   )
-    .bind(sectionId, studentId)
+    .bind(sectionId, studentId, projectId)
     .all<Note>();
 
   return { section, recordings: recordings.results ?? [], notes: notes.results ?? [] };
@@ -1303,7 +1358,7 @@ app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {
     .bind(c.req.param('sid'))
     .first<User>();
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
-  const data = await loadSong(c.env, student.id, c.req.param('secid'));
+  const data = await loadSong(c.env, pid(c), student.id, c.req.param('secid'));
   if (!data) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
   return c.html(
@@ -1322,7 +1377,7 @@ app.get('/me', requireUser, async (c) => {
   const user = c.get('user');
   if (user.role === 'teacher') return c.redirect('/t');
   const q = (c.req.query('q') ?? '').trim().toLowerCase();
-  const all = await assignedFor(c.env, user.id);
+  const all = await assignedFor(c.env, pid(c), user.id);
   const assigned = q
     ? all.filter((a) =>
         [a.title, a.title_ml, a.raga, a.taala, a.composer, a.group_name]
@@ -1332,12 +1387,12 @@ app.get('/me', requireUser, async (c) => {
 
   // The next few classes, on the student's own clock.
   const from = istToday();
-  const slots = await loadSlots(c.env, user.id);
+  const slots = await loadSlots(c.env, pid(c), user.id);
   const occs = slots.length
-    ? expand(slots, await loadExceptions(c.env, from, addDays(from, 27)), from, 28)
+    ? expand(slots, await loadExceptions(c.env, pid(c), from, addDays(from, 27)), from, 28)
     : [];
 
-  return c.html(V.studentHome(user, assigned, await sessionsFor(c.env, user.id), site(c), q, occs));
+  return c.html(V.studentHome(user, assigned, await sessionsFor(c.env, pid(c), user.id), site(c), q, occs));
 });
 
 app.get('/me/:secid', requireUser, async (c) => {
@@ -1346,13 +1401,13 @@ app.get('/me/:secid', requireUser, async (c) => {
 
   // A student may only open a song that is actually assigned to them.
   const ok = await c.env.DB.prepare(
-    'SELECT 1 AS x FROM assignments WHERE student_id = ? AND section_id = ? AND archived_at IS NULL',
+    'SELECT 1 AS x FROM assignments WHERE student_id = ? AND section_id = ? AND archived_at IS NULL AND project_id = ?',
   )
-    .bind(user.id, c.req.param('secid'))
+    .bind(user.id, c.req.param('secid'), pid(c))
     .first();
   if (!ok) return c.html(V.notFound(user, site(c)), 404);
 
-  const data = await loadSong(c.env, user.id, c.req.param('secid'));
+  const data = await loadSong(c.env, pid(c), user.id, c.req.param('secid'));
   if (!data) return c.html(V.notFound(user, site(c)), 404);
   return c.html(V.songPage({ viewer: user, student: user, ...data, siteName: site(c) }));
 });
@@ -1374,24 +1429,31 @@ const MAX_UPLOAD = 90 * 1024 * 1024; // Workers caps request bodies at 100 MB.
  */
 async function studentMaySee(
   env: Env,
+  projectId: string,
   studentId: string,
   item: { id: string; section_id: string; visibility: string },
   kind: 'recording' | 'note',
 ): Promise<boolean> {
   if (item.visibility !== 'shared') {
+    // The share tables carry no project_id, so each is joined to its parent
+    // and scoped there.
     const given = await env.DB.prepare(
       kind === 'recording'
-        ? 'SELECT 1 AS x FROM recording_shares WHERE recording_id = ? AND student_id = ?'
-        : 'SELECT 1 AS x FROM note_shares WHERE note_id = ? AND student_id = ?',
+        ? `SELECT 1 AS x FROM recording_shares rs
+             JOIN recordings r ON r.id = rs.recording_id AND r.project_id = ?3
+            WHERE rs.recording_id = ?1 AND rs.student_id = ?2`
+        : `SELECT 1 AS x FROM note_shares ns
+             JOIN notes n ON n.id = ns.note_id AND n.project_id = ?3
+            WHERE ns.note_id = ?1 AND ns.student_id = ?2`,
     )
-      .bind(item.id, studentId)
+      .bind(item.id, studentId, projectId)
       .first();
     if (!given) return false;
   }
   const assigned = await env.DB.prepare(
-    'SELECT 1 AS x FROM assignments WHERE student_id = ? AND section_id = ? AND archived_at IS NULL',
+    'SELECT 1 AS x FROM assignments WHERE student_id = ? AND section_id = ? AND archived_at IS NULL AND project_id = ?',
   )
-    .bind(studentId, item.section_id)
+    .bind(studentId, item.section_id, projectId)
     .first();
   return !!assigned;
 }
@@ -1406,6 +1468,7 @@ async function studentMaySee(
  */
 async function setShares(
   env: Env,
+  projectId: string,
   kind: 'recording' | 'note',
   itemId: string,
   visibility: string,
@@ -1413,16 +1476,26 @@ async function setShares(
 ): Promise<'shared' | 'chosen'> {
   const table = kind === 'recording' ? 'recording_shares' : 'note_shares';
   const col = kind === 'recording' ? 'recording_id' : 'note_id';
+  // The share table reaches a project only through the item it shares, so
+  // every write here is gated on that item being in the acting project.
+  const parent = kind === 'recording' ? 'recordings' : 'notes';
   const chosen = visibility === 'chosen' && studentIds.length > 0;
 
-  const stmts = [env.DB.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).bind(itemId)];
+  const stmts = [
+    env.DB.prepare(
+      `DELETE FROM ${table} WHERE ${col} = ?1
+         AND EXISTS (SELECT 1 FROM ${parent} p WHERE p.id = ?1 AND p.project_id = ?2)`,
+    ).bind(itemId, projectId),
+  ];
   if (chosen) {
     const ts = now();
     for (const sid of studentIds) {
       stmts.push(
         env.DB.prepare(
-          `INSERT OR IGNORE INTO ${table} (${col}, student_id, created_at) VALUES (?,?,?)`,
-        ).bind(itemId, sid, ts),
+          `INSERT OR IGNORE INTO ${table} (${col}, student_id, created_at)
+           SELECT ?1, ?2, ?3
+            WHERE EXISTS (SELECT 1 FROM ${parent} p WHERE p.id = ?1 AND p.project_id = ?4)`,
+        ).bind(itemId, sid, ts, projectId),
       );
     }
   }
@@ -1433,6 +1506,7 @@ async function setShares(
 /** The students an item was given to, as ids. */
 async function sharesFor(
   env: Env,
+  projectId: string,
   kind: 'recording' | 'note',
   sectionId: string,
 ): Promise<Map<string, string[]>> {
@@ -1440,15 +1514,17 @@ async function sharesFor(
     kind === 'recording'
       ? await env.DB.prepare(
           `SELECT s.recording_id AS item_id, s.student_id FROM recording_shares s
-             JOIN recordings r ON r.id = s.recording_id WHERE r.section_id = ?`,
+             JOIN recordings r ON r.id = s.recording_id AND r.project_id = ?2
+            WHERE r.section_id = ?1`,
         )
-          .bind(sectionId)
+          .bind(sectionId, projectId)
           .all<{ item_id: string; student_id: string }>()
       : await env.DB.prepare(
           `SELECT s.note_id AS item_id, s.student_id FROM note_shares s
-             JOIN notes n ON n.id = s.note_id WHERE n.section_id = ?`,
+             JOIN notes n ON n.id = s.note_id AND n.project_id = ?2
+            WHERE n.section_id = ?1`,
         )
-          .bind(sectionId)
+          .bind(sectionId, projectId)
           .all<{ item_id: string; student_id: string }>();
 
   const map = new Map<string, string[]>();
@@ -1499,7 +1575,7 @@ app.post('/t/api/dictate', requireTeacherJson, async (c) => {
      plus the titles and ragas of the songs this teacher actually
      teaches. Sarvam takes them as keyterms and gets them right; Whisper
      takes them as a prompt and does a little better than nothing. */
-  const keyterms = [...CARNATIC_TERMS, ...(await catalogueTerms(c.env))];
+  const keyterms = [...CARNATIC_TERMS, ...(await catalogueTerms(c.env, pid(c)))];
 
   try {
     const t = await transcribe(c.env, await file.arrayBuffer(), file.type, keyterms);
@@ -1517,19 +1593,25 @@ app.post('/t/api/dictate', requireTeacherJson, async (c) => {
 });
 
 /** Song titles and ragas, deduped, as vocabulary hints. Cheap and cached. */
-let termCache: { at: number; terms: string[] } | null = null;
-async function catalogueTerms(env: Env): Promise<string[]> {
-  if (termCache && Date.now() - termCache.at < 10 * 60_000) return termCache.terms;
+const termCache = new Map<string, { at: number; terms: string[] }>();
+async function catalogueTerms(env: Env, projectId: string): Promise<string[]> {
+  // Keyed by project: one practice's song titles must never be handed to
+  // another's transcriber as vocabulary.
+  const hit = termCache.get(projectId);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.terms;
   const { results } = await env.DB.prepare(
-    'SELECT title, raga FROM sections ORDER BY id LIMIT 300',
-  ).all<{ title: string; raga: string | null }>();
+    'SELECT title, raga FROM sections WHERE project_id = ? ORDER BY id LIMIT 300',
+  )
+    .bind(projectId)
+    .all<{ title: string; raga: string | null }>();
   const set = new Set<string>();
   for (const r of results ?? []) {
     if (r.title) set.add(r.title);
     if (r.raga) set.add(r.raga);
   }
-  termCache = { at: Date.now(), terms: [...set] };
-  return termCache.terms;
+  const terms = [...set];
+  termCache.set(projectId, { at: Date.now(), terms });
+  return terms;
 }
 
 /**
@@ -1612,23 +1694,23 @@ app.post('/api/recordings', requireTeacherJson, async (c) => {
   });
 
   const max = await c.env.DB.prepare(
-    'SELECT COALESCE(MAX(sort_order),0) AS m FROM recordings WHERE section_id = ?',
+    'SELECT COALESCE(MAX(sort_order),0) AS m FROM recordings WHERE section_id = ? AND project_id = ?',
   )
-    .bind(sectionId)
+    .bind(sectionId, pid(c))
     .first<{ m: number }>();
 
   await c.env.DB.prepare(
     `INSERT INTO recordings
-       (id, section_id, student_id, title, kind, r2_key, mime_type, duration_sec, size_bytes,
+       (project_id, id, section_id, student_id, title, kind, r2_key, mime_type, duration_sec, size_bytes,
         source, uploaded_by, sort_order, part, description, visibility, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   )
-    .bind(id, sectionId, studentId, title, kind, key, mime, duration, file.size, source,
+    .bind(pid(c), id, sectionId, studentId, title, kind, key, mime, duration, file.size, source,
       c.get('user').id, (max?.m ?? 0) + 10, String(form.get('part') ?? '').trim() || null,
       String(form.get('description') ?? '').trim() || null, visibility, now())
     .run();
 
-  if (visibility === 'chosen') await setShares(c.env, 'recording', id, 'chosen', shareIds);
+  if (visibility === 'chosen') await setShares(c.env, pid(c), 'recording', id, 'chosen', shareIds);
 
   return c.json({ ok: true, id });
 });
@@ -1640,8 +1722,8 @@ app.post('/api/recordings', requireTeacherJson, async (c) => {
 app.post('/t/recordings/:id/move', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const dir = String(f.get('dir')) === 'up' ? 'up' : 'down';
-  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
-    .bind(c.req.param('id'))
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec) return c.redirect('/t');
 
@@ -1650,14 +1732,14 @@ app.post('/t/recordings/:id/move', requireTeacher, async (c) => {
      part looks, to the teacher, like the button did nothing at all. */
   const neighbour = await c.env.DB.prepare(
     dir === 'up'
-      ? `SELECT * FROM recordings WHERE section_id=?1 AND COALESCE(part,'') = ?4
+      ? `SELECT * FROM recordings WHERE section_id=?1 AND project_id=?5 AND COALESCE(part,'') = ?4
            AND (sort_order < ?2 OR (sort_order = ?2 AND created_at < ?3))
          ORDER BY sort_order DESC, created_at DESC LIMIT 1`
-      : `SELECT * FROM recordings WHERE section_id=?1 AND COALESCE(part,'') = ?4
+      : `SELECT * FROM recordings WHERE section_id=?1 AND project_id=?5 AND COALESCE(part,'') = ?4
            AND (sort_order > ?2 OR (sort_order = ?2 AND created_at > ?3))
          ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
   )
-    .bind(rec.section_id, rec.sort_order, rec.created_at, rec.part ?? '')
+    .bind(rec.section_id, rec.sort_order, rec.created_at, rec.part ?? '', pid(c))
     .first<Recording>();
 
   if (neighbour) {
@@ -1666,8 +1748,8 @@ app.post('/t/recordings/:id/move', requireTeacher, async (c) => {
     const b = neighbour.sort_order;
     const [newA, newB] = a === b ? (dir === 'up' ? [b - 1, b] : [b + 1, b]) : [b, a];
     await c.env.DB.batch([
-      c.env.DB.prepare('UPDATE recordings SET sort_order = ? WHERE id = ?').bind(newA, rec.id),
-      c.env.DB.prepare('UPDATE recordings SET sort_order = ? WHERE id = ?').bind(newB, neighbour.id),
+      c.env.DB.prepare('UPDATE recordings SET sort_order = ? WHERE id = ? AND project_id = ?').bind(newA, rec.id, pid(c)),
+      c.env.DB.prepare('UPDATE recordings SET sort_order = ? WHERE id = ? AND project_id = ?').bind(newB, neighbour.id, pid(c)),
     ]);
   }
   const back = String(f.get('back') ?? '');
@@ -1675,23 +1757,23 @@ app.post('/t/recordings/:id/move', requireTeacher, async (c) => {
 });
 
 app.post('/t/recordings/:id/delete', requireTeacher, async (c) => {
-  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
-    .bind(c.req.param('id'))
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec) return c.redirect('/t');
   await c.env.MEDIA.delete(rec.r2_key);
-  await c.env.DB.prepare('DELETE FROM recordings WHERE id = ?').bind(rec.id).run();
+  await c.env.DB.prepare('DELETE FROM recordings WHERE id = ? AND project_id = ?').bind(rec.id, pid(c)).run();
   return c.redirect(`/t/song/${rec.section_id}?msg=` + encodeURIComponent('Recording deleted.'));
 });
 
 /** Stream media from R2 with Range support so seeking works in the player. */
 app.get('/media/:id', requireUser, async (c) => {
   const user = c.get('user');
-  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
-    .bind(c.req.param('id'))
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec) return c.notFound();
-  if (user.role !== 'teacher' && !(await studentMaySee(c.env, user.id, rec, 'recording')))
+  if (user.role !== 'teacher' && !(await studentMaySee(c.env, pid(c), user.id, rec, 'recording')))
     return c.text('Not yours to play.', 403);
 
   const rangeHeader = c.req.header('range');
@@ -1736,8 +1818,8 @@ app.get('/media/:id', requireUser, async (c) => {
 app.post('/t/recordings/:id/share', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const studentId = String(f.get('student_id') ?? '');
-  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
-    .bind(c.req.param('id'))
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec || !studentId) return c.redirect('/t');
 
@@ -1755,17 +1837,17 @@ app.post('/t/recordings/:id/share', requireTeacher, async (c) => {
 app.post('/t/recordings/:id/unshare', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const studentId = String(f.get('student_id') ?? '');
-  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?')
-    .bind(c.req.param('id'))
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec || !studentId) return c.redirect('/t');
 
   if (rec.visibility === 'shared') {
     const others = await c.env.DB.prepare(
       `SELECT student_id FROM assignments
-        WHERE section_id = ? AND archived_at IS NULL AND student_id <> ?`,
+        WHERE section_id = ? AND project_id = ? AND archived_at IS NULL AND student_id <> ?`,
     )
-      .bind(rec.section_id, studentId)
+      .bind(rec.section_id, pid(c), studentId)
       .all<{ student_id: string }>();
     const ts = now();
     await c.env.DB.batch([
@@ -1775,7 +1857,8 @@ app.post('/t/recordings/:id/unshare', requireTeacher, async (c) => {
           'INSERT OR IGNORE INTO recording_shares (recording_id, student_id, created_at) VALUES (?,?,?)',
         ).bind(rec.id, r.student_id, ts),
       ),
-      c.env.DB.prepare("UPDATE recordings SET visibility = 'chosen' WHERE id = ?").bind(rec.id),
+      // project_id is in this WHERE too: a recording outside the acting project matches nothing.
+      c.env.DB.prepare("UPDATE recordings SET visibility = 'chosen' WHERE id = ? AND project_id = ?").bind(rec.id, pid(c)),
     ]);
   } else {
     await c.env.DB.prepare(
@@ -1827,40 +1910,44 @@ app.post('/t/notes', requireTeacher, async (c) => {
   // Ordered within its own list — the notes on this recording, or the song's.
   const nmax = await c.env.DB.prepare(
     recordingId
-      ? 'SELECT COALESCE(MAX(sort_order),0) AS m FROM notes WHERE section_id = ? AND recording_id = ?'
-      : 'SELECT COALESCE(MAX(sort_order),0) AS m FROM notes WHERE section_id = ? AND recording_id IS NULL',
+      ? 'SELECT COALESCE(MAX(sort_order),0) AS m FROM notes WHERE section_id = ?1 AND project_id = ?2 AND recording_id = ?3'
+      : 'SELECT COALESCE(MAX(sort_order),0) AS m FROM notes WHERE section_id = ?1 AND project_id = ?2 AND recording_id IS NULL',
   )
-    .bind(...(recordingId ? [sectionId, recordingId] : [sectionId]))
+    .bind(...(recordingId ? [sectionId, pid(c), recordingId] : [sectionId, pid(c)]))
     .first<{ m: number }>();
 
   await c.env.DB.prepare(
-    `INSERT INTO notes (id, section_id, student_id, recording_id, title, body, body_ml,
+    `INSERT INTO notes (project_id, id, section_id, student_id, recording_id, title, body, body_ml,
        image_key, image_mime, image_bytes, created_by, sort_order, visibility, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   )
-    .bind(id, sectionId, studentId, recordingId, String(f.get('title') ?? '').trim() || null,
+    .bind(pid(c), id, sectionId, studentId, recordingId, String(f.get('title') ?? '').trim() || null,
       body, bodyMl, imageKey, imageMime, imageBytes,
       c.get('user').id, (nmax?.m ?? 0) + 10, visibility, now())
     .run();
 
-  if (wantChosen) await setShares(c.env, 'note', id, 'chosen', shareIds);
+  if (wantChosen) await setShares(c.env, pid(c), 'note', id, 'chosen', shareIds);
 
   return c.redirect(`${back}?msg=` + encodeURIComponent('Note saved.'));
 });
 
 app.post('/notes/:id/delete', requireTeacher, async (c) => {
-  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(c.req.param('id')).first<Note>();
+  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
+    .first<Note>();
   if (!note) return c.redirect('/t');
   if (note.image_key) await c.env.MEDIA.delete(note.image_key);
-  await c.env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(note.id).run();
+  await c.env.DB.prepare('DELETE FROM notes WHERE id = ? AND project_id = ?').bind(note.id, pid(c)).run();
   return c.redirect(`/t/song/${note.section_id}?msg=` + encodeURIComponent('Note deleted.'));
 });
 
 app.get('/img/:id', requireUser, async (c) => {
   const user = c.get('user');
-  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(c.req.param('id')).first<Note>();
+  const note = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
+    .first<Note>();
   if (!note?.image_key) return c.notFound();
-  if (user.role !== 'teacher' && !(await studentMaySee(c.env, user.id, note, 'note')))
+  if (user.role !== 'teacher' && !(await studentMaySee(c.env, pid(c), user.id, note, 'note')))
     return c.text('Not yours.', 403);
 
   const obj = await c.env.MEDIA.get(note.image_key);
@@ -1890,14 +1977,14 @@ app.get('/note/:id/download', requireUser, async (c) => {
   const user = c.get('user');
   const note = await c.env.DB.prepare(
     `SELECT n.*, s.title AS song_title, r.title AS rec_title FROM notes n
-       JOIN sections s ON s.id = n.section_id
-       LEFT JOIN recordings r ON r.id = n.recording_id
-      WHERE n.id = ?`,
+       JOIN sections s ON s.id = n.section_id AND s.project_id = ?2
+       LEFT JOIN recordings r ON r.id = n.recording_id AND r.project_id = ?2
+      WHERE n.id = ?1 AND n.project_id = ?2`,
   )
-    .bind(c.req.param('id'))
+    .bind(c.req.param('id'), pid(c))
     .first<Note & { song_title: string; rec_title: string | null }>();
   if (!note) return c.notFound();
-  if (user.role !== 'teacher' && !(await studentMaySee(c.env, user.id, note, 'note')))
+  if (user.role !== 'teacher' && !(await studentMaySee(c.env, pid(c), user.id, note, 'note')))
     return c.text('Not yours.', 403);
 
   const lines = [
@@ -1936,8 +2023,8 @@ app.get('/t/schedule', requireTeacher, async (c) => {
   const from = istToday();
   const to = addDays(from, days - 1);
 
-  const slots = await loadSlots(c.env);
-  const exceptions = await loadExceptions(c.env, from, to);
+  const slots = await loadSlots(c.env, pid(c));
+  const exceptions = await loadExceptions(c.env, pid(c), from, to);
   const occs = expand(slots, exceptions, from, days, { includeSkipped: true });
 
   const studentIds = [...new Set(occs.map((o) => o.slot.student_id))];
@@ -1991,8 +2078,8 @@ app.get('/t/schedule/week', requireTeacher, async (c) => {
   const dow = new Date(Date.UTC(ay, am - 1, ad)).getUTCDay();
   const start = addDays(anchor, -dow);
 
-  const slots = await loadSlots(c.env);
-  const exceptions = await loadExceptions(c.env, start, addDays(start, 6));
+  const slots = await loadSlots(c.env, pid(c));
+  const exceptions = await loadExceptions(c.env, pid(c), start, addDays(start, 6));
   const occs = expand(slots, exceptions, start, 7, { includeSkipped: true });
   const students = await studentsFor(c.env, [...new Set(occs.map((o) => o.slot.student_id))]);
 
@@ -2015,8 +2102,8 @@ app.get('/t/schedule/day/:date', requireTeacher, async (c) => {
   const date = c.req.param('date');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.redirect('/t/schedule/week');
 
-  const slots = await loadSlots(c.env);
-  const exceptions = await loadExceptions(c.env, date, date);
+  const slots = await loadSlots(c.env, pid(c));
+  const exceptions = await loadExceptions(c.env, pid(c), date, date);
   const occs = expand(slots, exceptions, date, 1, { includeSkipped: true }).filter((o) => o.date === date);
   const students = await studentsFor(c.env, [...new Set(occs.map((o) => o.slot.student_id))]);
 
@@ -2033,12 +2120,15 @@ app.post('/t/slots/:id/missed', requireTeacher, async (c) => {
   const onDate = String(f.get('on_date') ?? '');
   if (!onDate) return c.redirect('/t/schedule');
   await c.env.DB.prepare(
+    /* slot_exceptions has no project_id — the SELECT ... WHERE EXISTS is how
+       the change is kept to a slot in the acting project. */
     `INSERT INTO slot_exceptions (id, slot_id, on_date, action, reason, created_at)
-     VALUES (?,?,?,'missed',?,?)
+     SELECT ?1, ?2, ?3, 'missed', ?4, ?5
+      WHERE EXISTS (SELECT 1 FROM class_slots cs WHERE cs.id = ?2 AND cs.project_id = ?6)
      ON CONFLICT(slot_id, on_date) DO UPDATE SET
        action='missed', new_date=NULL, new_time_ist=NULL, reason=excluded.reason`,
   )
-    .bind(newId('ex'), c.req.param('id'), onDate, String(f.get('reason') ?? '').trim() || null, now())
+    .bind(newId('ex'), c.req.param('id'), onDate, String(f.get('reason') ?? '').trim() || null, now(), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || '/t/schedule';
   return c.redirect(`${back}?msg=` + encodeURIComponent('Marked as missed. Reschedule it below if you want to.'));
@@ -2050,7 +2140,7 @@ app.get('/t/schedule/slots', requireTeacher, async (c) => {
      WHERE status = 'active' AND role = 'student' ORDER BY name COLLATE NOCASE`,
   ).all<Sched.WithZone & { email: string }>();
 
-  const allSlots = await loadSlots(c.env);
+  const allSlots = await loadSlots(c.env, pid(c));
   const rows: Sched.StudentSlots[] = (students.results ?? []).map((student) => ({
     student,
     slots: allSlots.filter((s) => s.student_id === student.id) as unknown as ClassSlot[],
@@ -2073,11 +2163,11 @@ app.post('/t/students/:id/slots', requireTeacher, async (c) => {
   const dur = Number(f.get('duration_min'));
   await c.env.DB.prepare(
     `INSERT INTO class_slots
-       (id, student_id, kind, weekday, on_date, time_ist, duration_min, label, created_by, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+       (project_id, id, student_id, kind, weekday, on_date, time_ist, duration_min, label, created_by, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
   )
     .bind(
-      newId('cs'), studentId, kind,
+      pid(c), newId('cs'), studentId, kind,
       kind === 'weekly' ? Number(f.get('weekday')) || 0 : null,
       kind === 'once' ? onDate : null,
       time,
@@ -2090,7 +2180,9 @@ app.post('/t/students/:id/slots', requireTeacher, async (c) => {
 });
 
 app.post('/t/slots/:id/delete', requireTeacher, async (c) => {
-  await c.env.DB.prepare('DELETE FROM class_slots WHERE id = ?').bind(c.req.param('id')).run();
+  await c.env.DB.prepare('DELETE FROM class_slots WHERE id = ? AND project_id = ?')
+    .bind(c.req.param('id'), pid(c))
+    .run();
   return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('Slot removed.'));
 });
 
@@ -2100,12 +2192,14 @@ app.post('/t/slots/:id/skip', requireTeacher, async (c) => {
   const onDate = String(f.get('on_date') ?? '');
   if (!onDate) return c.redirect('/t/schedule');
   await c.env.DB.prepare(
+    /* Scoped through the slot: slot_exceptions carries no project_id. */
     `INSERT INTO slot_exceptions (id, slot_id, on_date, action, reason, created_at)
-     VALUES (?,?,?,'skip',?,?)
+     SELECT ?1, ?2, ?3, 'skip', ?4, ?5
+      WHERE EXISTS (SELECT 1 FROM class_slots cs WHERE cs.id = ?2 AND cs.project_id = ?6)
      ON CONFLICT(slot_id, on_date) DO UPDATE SET
        action='skip', new_date=NULL, new_time_ist=NULL, reason=excluded.reason`,
   )
-    .bind(newId('ex'), c.req.param('id'), onDate, String(f.get('reason') ?? '').trim() || null, now())
+    .bind(newId('ex'), c.req.param('id'), onDate, String(f.get('reason') ?? '').trim() || null, now(), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || '/t/schedule';
   return c.redirect(`${back}?msg=` + encodeURIComponent('Marked as no class.'));
@@ -2121,14 +2215,16 @@ app.post('/t/slots/:id/move', requireTeacher, async (c) => {
     return c.redirect('/t/schedule?msg=' + encodeURIComponent('That reschedule did not look right.'));
 
   await c.env.DB.prepare(
+    /* Scoped through the slot: slot_exceptions carries no project_id. */
     `INSERT INTO slot_exceptions (id, slot_id, on_date, action, new_date, new_time_ist, reason, created_at)
-     VALUES (?,?,?,'move',?,?,?,?)
+     SELECT ?1, ?2, ?3, 'move', ?4, ?5, ?6, ?7
+      WHERE EXISTS (SELECT 1 FROM class_slots cs WHERE cs.id = ?2 AND cs.project_id = ?8)
      ON CONFLICT(slot_id, on_date) DO UPDATE SET
        action='move', new_date=excluded.new_date, new_time_ist=excluded.new_time_ist,
        reason=excluded.reason`,
   )
     .bind(newId('ex'), c.req.param('id'), onDate, newDate, newTime,
-      String(f.get('reason') ?? '').trim() || null, now())
+      String(f.get('reason') ?? '').trim() || null, now(), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || '/t/schedule';
   return c.redirect(`${back}?msg=` + encodeURIComponent('Class moved. The student sees the new time on their own clock.'));
@@ -2136,8 +2232,12 @@ app.post('/t/slots/:id/move', requireTeacher, async (c) => {
 
 app.post('/t/slots/:id/restore', requireTeacher, async (c) => {
   const f = await c.req.formData();
-  await c.env.DB.prepare('DELETE FROM slot_exceptions WHERE slot_id = ? AND on_date = ?')
-    .bind(c.req.param('id'), String(f.get('on_date') ?? ''))
+  await c.env.DB.prepare(
+    /* Scoped through the slot: slot_exceptions carries no project_id. */
+    `DELETE FROM slot_exceptions WHERE slot_id = ?1 AND on_date = ?2
+       AND EXISTS (SELECT 1 FROM class_slots cs WHERE cs.id = ?1 AND cs.project_id = ?3)`,
+  )
+    .bind(c.req.param('id'), String(f.get('on_date') ?? ''), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || '/t/schedule';
   return c.redirect(`${back}?msg=` + encodeURIComponent('Back to normal.'));
