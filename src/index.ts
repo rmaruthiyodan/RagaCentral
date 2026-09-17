@@ -267,6 +267,23 @@ const MEMBER_COLS = `u.id, u.google_sub, u.email, u.name, u.avatar_url, u.create
         m.role AS role, m.status AS status, m.status_note AS status_note,
         m.status_changed_at AS status_changed_at, m.approved_at AS approved_at`;
 
+/**
+ * Is this song in the project we are acting in?
+ *
+ * Every route that takes a section_id off a form has to ask. The id is
+ * a guess away, and without this a teacher could file a recording, a
+ * note or an assignment in their own project against another practice's
+ * song — invisible to both sides, counted against the wrong storage
+ * total, and leaving R2 objects that the owning project's delete would
+ * never collect.
+ */
+async function sectionInProject(env: Env, projectId: string, sectionId: string): Promise<boolean> {
+  const r = await env.DB.prepare('SELECT 1 AS ok FROM sections WHERE id = ?1 AND project_id = ?2')
+    .bind(sectionId, projectId)
+    .first<{ ok: number }>();
+  return r?.ok === 1;
+}
+
 /* ------------------------------------------------------------------ *
  * The audit trail
  *
@@ -1075,6 +1092,7 @@ app.post('/t/song/:id/assign', requireTeacher, async (c) => {
     `INSERT INTO assignments (project_id, id, student_id, section_id, assigned_by, assigned_at)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6
       WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)
+        AND EXISTS (SELECT 1 FROM sections sec WHERE sec.id = ?4 AND sec.project_id = ?1)
      ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL, completed_at = NULL`,
   )
     .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
@@ -1683,6 +1701,7 @@ app.post('/t/s/:id/assign', requireTeacher, async (c) => {
     `INSERT INTO assignments (project_id, id, student_id, section_id, assigned_by, assigned_at)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6
       WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)
+        AND EXISTS (SELECT 1 FROM sections sec WHERE sec.id = ?4 AND sec.project_id = ?1)
      ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL`,
   )
     .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
@@ -2083,6 +2102,8 @@ app.post('/api/recordings', requireTeacherJson, async (c) => {
   const visibility = String(form.get('visibility')) === 'chosen' && shareIds.length ? 'chosen' : 'shared';
   if (!(file instanceof File) || !sectionId)
     return c.json({ error: 'Missing file or song.' }, 400);
+  if (!(await sectionInProject(c.env, pid(c), sectionId)))
+    return c.json({ error: 'That song is not in this practice.' }, 404);
   if (file.size === 0) return c.json({ error: 'That file is empty.' }, 400);
   if (file.size > MAX_UPLOAD)
     return c.json({ error: `That file is ${(file.size / 1048576).toFixed(0)} MB. The limit is 90 MB.` }, 413);
@@ -2306,6 +2327,8 @@ app.post('/t/notes', requireTeacher, async (c) => {
   const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${sectionId}`;
 
   if (!sectionId) return c.redirect('/t');
+  if (!(await sectionInProject(c.env, pid(c), sectionId)))
+    return c.html(V.notFound(c.get('user'), site(c)), 404);
 
   let imageKey: string | null = null;
   let imageMime: string | null = null;

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types test-tz.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
-    "check:scope": "node scripts/check-scoping.mjs"
+    "check:scope": "node scripts/check-scoping.mjs",
+    "test:isolation": "node scripts/test-isolation.mjs"
   },
   "keywords": [],
   "author": "",
