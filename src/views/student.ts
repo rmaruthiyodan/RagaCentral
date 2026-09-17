@@ -12,7 +12,7 @@ import { resumeCard, lessonLog } from './sessions';
 import { monthCalendar, zoneOptions } from './schedule';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, monthLabel, type Occurrence } from '../tz';
-import type { User, Section, SessionRow, ClassSlot, AssignedRow } from '../types';
+import type { User, Section, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
 import { t, setLang } from '../i18n';
 
 export type StudentTab = 'overview' | 'songs' | 'lessons' | 'schedule' | 'settings';
@@ -31,7 +31,7 @@ export interface TabCounts {
   lessons: number;
 }
 
-function shell(student: User, tab: StudentTab, counts: TabCounts, body: string): string {
+function shell(student: ProjectPerson, tab: StudentTab, counts: TabCounts, body: string): string {
   const stab = (id: StudentTab, href: string, label: string, badge?: number) =>
     `<a class="stab${tab === id ? ' is-on' : ''}" href="${esc(href)}">${esc(label)}${
       badge ? ` <span class="stab-n">${badge}</span>` : ''
@@ -89,7 +89,7 @@ ${body}`;
 
 export function overviewTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   d: {
     sessions: SessionRow[];
@@ -219,7 +219,7 @@ ${
 
 export function songsTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   assigned: AssignedRow[],
   catalogue: (Section & { group_name: string | null })[],
@@ -339,7 +339,7 @@ ${
 
 export function lessonsTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   d: {
     sessions: SessionRow[];
@@ -396,7 +396,7 @@ ${lessonLog(d.sessions, { isTeacher: true, studentId: student.id, assigned: d.as
 
 export function scheduleTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   d: { slots: ClassSlot[]; upcoming: Occurrence[] },
   siteName: string,
@@ -488,7 +488,7 @@ ${
 
 export function settingsTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   siteName: string,
   msg?: string,

@@ -9,6 +9,11 @@ interface LayoutOpts {
   nav?: 'students' | 'catalogue' | 'approvals' | 'schedule' | 'mine' | null;
   scripts?: string[];
   bodyClass?: string;
+  /** Teacher OF THE PROJECT being viewed. Defaults from `nav`, which is
+      already chosen by the same fact: every teacher screen names a
+      teacher section and a student's own pages say 'mine'. Pass it
+      explicitly only where that is not true. */
+  isTeacher?: boolean;
 }
 
 const FONTS =
@@ -89,7 +94,12 @@ function themePicker(palette: string, mode: string): string {
 export function page(body: string, o: LayoutOpts): string {
   const site = o.siteName || 'RP Sajeev Music';
   const u = o.user;
-  const isTeacher = u?.role === 'teacher';
+  /* Whether to draw the teacher's nav. It must be told, not guessed:
+     `u.role` is the dead global column, so reading it gives a teacher
+     the student nav (their user row still says 'student' because
+     nothing writes it any more) and gives a teacher-of-another-project
+     the teacher nav while they are browsing as a student here. */
+  const isTeacher = o.isTeacher ?? (o.nav !== null && o.nav !== undefined && o.nav !== 'mine');
   const palette = u?.palette && isPalette(u.palette) ? u.palette : 'brass';
   const mode = u?.theme_mode && isMode(u.theme_mode) ? u.theme_mode : 'auto';
 

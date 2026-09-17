@@ -26,8 +26,13 @@ export interface User {
   email: string;
   name: string;
   avatar_url: string | null;
-  role: 'teacher' | 'student';
-  status: 'pending' | 'active' | 'paused' | 'graduated' | 'ended' | 'disabled';
+  /* role and status are NOT here on purpose. They still exist as columns
+     — dropping one means rebuilding the table, which the upgrade path
+     cannot do — but they are dead, and a person's role and standing are
+     per-project now. Leaving them off the type turns every stale read
+     into a compile error instead of a silently wrong answer. The truth
+     is project_members.role and project_members.status; a query that
+     wants them joins for them, and declares them on its own row type. */
   created_at: string;
   approved_at: string | null;
   time_zone: string | null;
@@ -45,6 +50,23 @@ export interface User {
   /** Above every project. `role` and `status` above are no longer read —
       a person's role and standing now live on their project membership. */
   is_admin: number;
+}
+
+/**
+ * A person as seen inside one project: who they are, plus how they stand
+ * here. This is what every teacher screen actually deals with — a name
+ * on a roster is always a name in a practice — and it is the shape the
+ * users-joined-to-project_members queries return.
+ *
+ * The same person can be a ProjectPerson twice over, active under one
+ * teacher and graduated under another, with one `User` underneath.
+ */
+export interface ProjectPerson extends User {
+  role: 'teacher' | 'student';
+  status: 'pending' | 'active' | 'paused' | 'graduated' | 'ended' | 'disabled';
+  status_note: string | null;
+  status_changed_at: string | null;
+  approved_at: string | null;
 }
 
 export interface Group {

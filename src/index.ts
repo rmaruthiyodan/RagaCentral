@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import type { Env, Vars, User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow } from './types';
+import type { Context } from 'hono';
+import type { Env, Vars, AppEnv, User, ProjectPerson, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow } from './types';
 import { SEP } from './views/sessions';
 import * as Sched from './views/schedule';
 import { songPage, type SongStudent, type SongPageData } from './views/song';
@@ -14,7 +15,7 @@ import {
   currentUser, startSession, endSession, googleAuthUrl, setOAuthState,
   takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher, requireTeacherJson,
 } from './auth';
-import { pid } from './projects';
+import { pid, acting, addMember, resolveProject } from './projects';
 import { newId, now, extFor, slugify } from './util';
 import { isLang } from './i18n';
 import { transcribe, DictateError, CARNATIC_TERMS } from './transcribe';
@@ -96,14 +97,19 @@ app.post('/settings/theme', requireUser, async (c) => {
   const language = String(f.get('lang') ?? '');
 
   if (palette && V.isPalette(palette)) {
+    /* unscoped: the signed-in user choosing their own colours, which follow them into every project */
     await c.env.DB.prepare('UPDATE users SET palette = ? WHERE id = ?').bind(palette, user.id).run();
   } else if (mode && V.isMode(mode)) {
+    /* unscoped: the signed-in user choosing their own light/dark mode, which follows them into every project */
     await c.env.DB.prepare('UPDATE users SET theme_mode = ? WHERE id = ?').bind(mode, user.id).run();
   } else if (language && isLang(language)) {
+    /* unscoped: the signed-in user choosing their own interface language, which follows them into every project */
     await c.env.DB.prepare('UPDATE users SET lang = ? WHERE id = ?').bind(language, user.id).run();
   }
 
-  let back = user.role === 'teacher' ? '/t' : '/me';
+  /* '/' works out where this person belongs; user.role is the dead
+     global column and would send a teacher to the student pages. */
+  let back = '/';
   const ref = c.req.header('referer');
   if (ref) {
     try {
@@ -120,17 +126,39 @@ app.post('/settings/theme', requireUser, async (c) => {
  * Sign in
  * ================================================================== */
 
+/**
+ * Where someone belongs the moment they arrive.
+ *
+ * This used to read users.status and users.role. Nothing writes those
+ * any more — standing is per-project — so asking them would send a
+ * student a teacher had just added and activated straight to /waiting,
+ * where the only link is /waiting. A dead end for exactly the person
+ * who had just been let in.
+ *
+ * So ask the same question the guards ask, one hop earlier: is there a
+ * project this person can act in, and are they a teacher of it?
+ */
+async function landingFor(c: Context<AppEnv, any, any>, user: User): Promise<string> {
+  const acting = await resolveProject(c, user);
+  if (acting) return acting.isTeacher ? '/t/schedule/week' : '/me';
+  if (user.is_admin) return '/admin';
+  return '/waiting';
+}
+
 app.get('/', async (c) => {
   const user = await currentUser(c);
-  if (user?.status === 'active') return c.redirect(user.role === 'teacher' ? '/t/schedule/week' : '/me');
-  if (user) return c.redirect('/waiting');
+  if (user) {
+    const to = await landingFor(c, user);
+    return c.redirect(to);
+  }
   return c.html(V.landing(site(c), c.req.query('error')));
 });
 
 app.get('/waiting', async (c) => {
   const user = await currentUser(c);
   if (!user) return c.redirect('/');
-  if (user.status === 'active') return c.redirect(user.role === 'teacher' ? '/t' : '/me');
+  const to = await landingFor(c, user);
+  if (to !== '/waiting') return c.redirect(to);
   return c.html(V.waiting(user, site(c)));
 });
 
@@ -164,8 +192,7 @@ app.get('/auth/callback', async (c) => {
     const profile = await exchangeCode(c, code);
     const user = await upsertUser(c, profile);
     await startSession(c, user.id);
-    if (user.status !== 'active') return c.redirect('/waiting');
-    return c.redirect(user.role === 'teacher' ? '/t/schedule/week' : '/me');
+    return c.redirect(await landingFor(c, user));
   } catch (e) {
     console.error('oauth', e);
     return c.redirect(`/?error=${encodeURIComponent('Could not complete sign-in. Please try again.')}`);
@@ -190,24 +217,43 @@ app.get('/dev/login', async (c) => {
 
   const email = (c.req.query('email') ?? 'teacher@example.com').toLowerCase();
   const role = c.req.query('role') === 'student' ? 'student' : 'teacher';
+  /* unscoped: local-only sign-in, which is identity and happens before any project is resolved — the same job auth.ts does in production */
   let u = await c.env.DB.prepare('SELECT * FROM users WHERE lower(email) = ?').bind(email).first<User>();
   if (!u) {
     const id = newId('u');
     await c.env.DB.prepare(
+      /* unscoped: creating the local-only dev account — identity is global, and it joins a project the same way anyone else does */
       `INSERT INTO users (id, google_sub, email, name, role, status, created_at, approved_at)
        VALUES (?,?,?,?,?, 'active', ?, ?)`,
     )
       .bind(id, `dev-${id}`, email, c.req.query('name') ?? email.split('@')[0], role, now(), now())
       .run();
+    /* unscoped: reading back the local-only dev account just created, to start its session */
     u = (await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>())!;
   }
   await startSession(c, u.id);
-  return c.redirect(u.role === 'teacher' ? '/t' : '/me');
+  return c.redirect('/');
 });
 
 /* ================================================================== *
  * Teacher — students
  * ================================================================== */
+
+/**
+ * The columns a person is made of, read through their membership of the
+ * acting project.
+ *
+ * `users` still has `role` and `status` columns and they are dead — a
+ * person is a student here and a teacher there, paused here and active
+ * there — so they are deliberately not listed. Every query that wants a
+ * role or a standing takes it from `project_members` (aliased `m`), and
+ * every query that uses this has to join `m` to the acting project,
+ * which is also what keeps another practice's people out of the result.
+ */
+const MEMBER_COLS = `u.id, u.google_sub, u.email, u.name, u.avatar_url, u.created_at,
+        u.time_zone, u.location, u.phone, u.palette, u.theme_mode, u.lang, u.is_admin,
+        m.role AS role, m.status AS status, m.status_note AS status_note,
+        m.status_changed_at AS status_changed_at, m.approved_at AS approved_at`;
 
 app.get('/t', requireTeacher, async (c) => {
   const db = c.env.DB;
@@ -216,16 +262,17 @@ app.get('/t', requireTeacher, async (c) => {
   // there — they are never deleted — but they clutter the list he uses weekly.
   const showAll = c.req.query('all') === '1';
   const statusFilter = showAll
-    ? "u.status IN ('active','paused','graduated','ended')"
-    : "u.status = 'active'";
+    ? "m.status IN ('active','paused','graduated','ended')"
+    : "m.status = 'active'";
 
-  const counts = `SELECT u.*,
+  const counts = `SELECT ${MEMBER_COLS},
         (SELECT COUNT(*) FROM assignments a WHERE a.student_id = u.id AND a.archived_at IS NULL AND a.project_id = ?1) AS song_count,
         (SELECT COUNT(*) FROM recordings r WHERE r.student_id = u.id AND r.project_id = ?1) AS rec_count,
         (SELECT MAX(r.created_at) FROM recordings r WHERE r.student_id = u.id AND r.project_id = ?1) AS last_activity
        FROM users u
-       WHERE ${statusFilter} AND u.role = 'student'`;
-  const order = " ORDER BY CASE u.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, u.name COLLATE NOCASE";
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?1
+       WHERE ${statusFilter} AND m.role = 'student'`;
+  const order = " ORDER BY CASE m.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, u.name COLLATE NOCASE";
   const students = q
     ? await db
         .prepare(`${counts} AND (u.name LIKE ?2 OR u.email LIKE ?2 OR u.location LIKE ?2 OR u.phone LIKE ?2)${order}`)
@@ -234,11 +281,16 @@ app.get('/t', requireTeacher, async (c) => {
     : await db.prepare(counts + order).bind(pid(c)).all<StudentRow>();
 
   const hidden = await db
-    .prepare("SELECT COUNT(*) AS n FROM users WHERE role='student' AND status IN ('paused','graduated','ended')")
+    .prepare(
+      `SELECT COUNT(*) AS n FROM project_members
+        WHERE project_id = ?1 AND role = 'student' AND status IN ('paused','graduated','ended')`,
+    )
+    .bind(pid(c))
     .first<{ n: number }>();
 
   const pending = await db
-    .prepare("SELECT COUNT(*) AS n FROM users WHERE status = 'pending'")
+    .prepare("SELECT COUNT(*) AS n FROM project_members WHERE project_id = ?1 AND status = 'pending'")
+    .bind(pid(c))
     .first<{ n: number }>();
 
   const used = await db
@@ -273,29 +325,47 @@ app.post('/t/students', requireTeacher, async (c) => {
   const email = String(f.get('email') ?? '').trim().toLowerCase();
   if (!name || !email) return c.redirect('/t?msg=' + encodeURIComponent('A name and email are both needed.'));
 
+  /* An email address names a person, not a member: the same Google account may
+     already be learning with another teacher, and there is no project to look
+     them up in until they are in one. Only the id and name are taken from the
+     row; addMember below is what admits them here. */
+  /* unscoped: finding the person behind an email address, before any membership exists — addMember below is what puts them in this project */
   const existing = await c.env.DB.prepare('SELECT id, name FROM users WHERE lower(email) = ?')
     .bind(email)
     .first<{ id: string; name: string }>();
   if (existing) {
-    await c.env.DB.prepare(
-      "UPDATE users SET status='active', role='student', approved_at=?, status_changed_at=? WHERE id=?",
-    )
-      .bind(now(), now(), existing.id)
-      .run();
-    return c.redirect('/t?msg=' + encodeURIComponent(`${existing.name} was already here — now active.`));
+    await addMember(c.env, {
+      projectId: pid(c),
+      userId: existing.id,
+      role: 'student',
+      status: 'active',
+      approvedBy: c.get('user').id,
+    });
+    return c.redirect('/t?msg=' + encodeURIComponent(`${existing.name} is on the site already — now active here.`));
   }
 
   const tz = String(f.get('time_zone') ?? '').trim();
+  const newUserId = newId('u');
+  /* Name, email, phone, location and time zone are who someone is rather than
+     what they are here, so they go on `users`, which has no project_id. role
+     and status are left off on purpose: those columns are dead. */
   await c.env.DB.prepare(
-    `INSERT INTO users (id, google_sub, email, name, role, status, created_at, approved_at, approved_by,
-       location, phone, time_zone, status_changed_at)
-     VALUES (?, NULL, ?, ?, 'student', 'active', ?, ?, ?, ?, ?, ?, ?)`,
+    /* unscoped: creating the person — identity is global and has no project_id; the addMember call below is what puts them in this project */
+    `INSERT INTO users (id, google_sub, email, name, created_at, location, phone, time_zone)
+     VALUES (?, NULL, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(newId('u'), email, name, now(), now(), c.get('user').id,
+    .bind(newUserId, email, name, now(),
       String(f.get('location') ?? '').trim() || null,
       String(f.get('phone') ?? '').trim() || null,
-      isValidZone(tz) ? tz : null, now())
+      isValidZone(tz) ? tz : null)
     .run();
+  await addMember(c.env, {
+    projectId: pid(c),
+    userId: newUserId,
+    role: 'student',
+    status: 'active',
+    approvedBy: c.get('user').id,
+  });
   return c.redirect(
     '/t?msg=' + encodeURIComponent(`${name} added. They're in as soon as they sign in with ${email}.`),
   );
@@ -306,10 +376,13 @@ app.post('/t/students/:id/status', requireTeacher, async (c) => {
   const status = String(f.get('status') ?? '');
   if (!STUDENT_STATUSES.includes(status as (typeof STUDENT_STATUSES)[number]))
     return c.redirect('/t');
+  /* Standing is per-project now: a student one teacher has paused stays
+     active with the other, so this writes the membership and never the user. */
   await c.env.DB.prepare(
-    'UPDATE users SET status = ?, status_note = ?, status_changed_at = ? WHERE id = ? AND role = ?',
+    `UPDATE project_members SET status = ?1, status_note = ?2, status_changed_at = ?3
+      WHERE user_id = ?4 AND project_id = ?5 AND role = 'student'`,
   )
-    .bind(status, String(f.get('status_note') ?? '').trim() || null, now(), c.req.param('id'), 'student')
+    .bind(status, String(f.get('status_note') ?? '').trim() || null, now(), c.req.param('id'), pid(c))
     .run();
   const back = String(f.get('back') ?? '') || `/t/s/${c.req.param('id')}`;
   const label =
@@ -325,8 +398,14 @@ app.post('/t/students/:id/details', requireTeacher, async (c) => {
   const tz = String(f.get('time_zone') ?? '').trim();
   if (tz && !isValidZone(tz))
     return c.redirect(`/t/s/${c.req.param('id')}?msg=` + encodeURIComponent('Unknown time zone.'));
+  /* These four are global: editing a phone number changes it everywhere the
+     person appears, which is right for a phone number. That is exactly why
+     the EXISTS matters — only a teacher of a project this person is actually
+     in may edit them at all. */
   await c.env.DB.prepare(
-    'UPDATE users SET name = ?, location = ?, phone = ?, time_zone = ? WHERE id = ?',
+    `UPDATE users SET name = ?1, location = ?2, phone = ?3, time_zone = ?4
+      WHERE id = ?5
+        AND EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = users.id AND m.project_id = ?6)`,
   )
     .bind(
       name,
@@ -334,15 +413,23 @@ app.post('/t/students/:id/details', requireTeacher, async (c) => {
       String(f.get('phone') ?? '').trim() || null,
       tz || null,
       c.req.param('id'),
+      pid(c),
     )
     .run();
   return c.redirect(`/t/s/${c.req.param('id')}?msg=` + encodeURIComponent('Saved.'));
 });
 
 app.get('/t/approvals', requireTeacher, async (c) => {
+  /* People with a pending membership of THIS project — not "users whose
+     global status says pending", which was everybody waiting anywhere. */
   const pending = await c.env.DB.prepare(
-    "SELECT * FROM users WHERE status = 'pending' ORDER BY created_at",
-  ).all<User>();
+    `SELECT ${MEMBER_COLS} FROM users u
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?1
+      WHERE m.status = 'pending'
+      ORDER BY m.joined_at`,
+  )
+    .bind(pid(c))
+    .all<User>();
   return c.html(V.teacherApprovals(c.get('user'), pending.results ?? [], site(c), c.req.query('msg')));
 });
 
@@ -353,15 +440,23 @@ app.post('/t/approvals/:id', requireTeacher, async (c) => {
   const me = c.get('user');
 
   if (action === 'reject') {
-    await c.env.DB.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").bind(id).run();
+    /* Declining someone here closes this door only; a project they are
+       welcome in is none of this teacher's business. */
+    await c.env.DB.prepare(
+      "UPDATE project_members SET status = 'disabled', status_changed_at = ?1 WHERE user_id = ?2 AND project_id = ?3",
+    )
+      .bind(now(), id, pid(c))
+      .run();
     return c.redirect('/t/approvals?msg=' + encodeURIComponent('Request declined.'));
   }
   if (action !== 'student' && action !== 'teacher') return c.redirect('/t/approvals');
 
   await c.env.DB.prepare(
-    "UPDATE users SET status = 'active', role = ?, approved_at = ?, approved_by = ? WHERE id = ?",
+    `UPDATE project_members SET status = 'active', role = ?1, approved_at = ?2, approved_by = ?3,
+       status_changed_at = ?2
+      WHERE user_id = ?4 AND project_id = ?5`,
   )
-    .bind(action, now(), me.id, id)
+    .bind(action, now(), me.id, id, pid(c))
     .run();
   return c.redirect(
     '/t/approvals?msg=' + encodeURIComponent(action === 'teacher' ? 'Added as a teacher.' : 'Student approved.'),
@@ -374,22 +469,39 @@ app.post('/t/invite', requireTeacher, async (c) => {
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   if (!name || !email) return c.redirect('/t/approvals');
 
+  /* Same as adding a student by email on /t: an address names a person, and
+     there is no project to look them up in until they belong to one. */
+  /* unscoped: finding the person behind an email address, before any membership exists — addMember below is what puts them in this project */
   const existing = await c.env.DB.prepare('SELECT id FROM users WHERE lower(email) = ?')
     .bind(email)
     .first<{ id: string }>();
   if (existing) {
-    await c.env.DB.prepare("UPDATE users SET status='active', role='student', approved_at=? WHERE id=?")
-      .bind(now(), existing.id)
-      .run();
-    return c.redirect('/t/approvals?msg=' + encodeURIComponent(`${name} is already here — now approved.`));
+    await addMember(c.env, {
+      projectId: pid(c),
+      userId: existing.id,
+      role: 'student',
+      status: 'active',
+      approvedBy: c.get('user').id,
+    });
+    return c.redirect('/t/approvals?msg=' + encodeURIComponent(`${name} is on the site already — now approved here.`));
   }
 
+  const invitedId = newId('u');
+  /* role and status are left off: those columns are dead, and the membership
+     addMember writes next is where a role and a standing belong. */
   await c.env.DB.prepare(
-    `INSERT INTO users (id, google_sub, email, name, role, status, created_at, approved_at, approved_by)
-     VALUES (?, NULL, ?, ?, 'student', 'active', ?, ?, ?)`,
+    /* unscoped: creating the person — identity is global and has no project_id; the addMember call below is what puts them in this project */
+    `INSERT INTO users (id, google_sub, email, name, created_at) VALUES (?, NULL, ?, ?, ?)`,
   )
-    .bind(newId('u'), email, name, now(), now(), c.get('user').id)
+    .bind(invitedId, email, name, now())
     .run();
+  await addMember(c.env, {
+    projectId: pid(c),
+    userId: invitedId,
+    role: 'student',
+    status: 'active',
+    approvedBy: c.get('user').id,
+  });
   return c.redirect(
     '/t/approvals?msg=' + encodeURIComponent(`${name} added. They're in as soon as they sign in with ${email}.`),
   );
@@ -657,11 +769,13 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
 
   const roster = await db
     .prepare(
-      `SELECT u.id, u.name, u.avatar_url, u.status, a.completed_at,
+      `SELECT u.id, u.name, u.avatar_url, m.status AS status, a.completed_at,
         (SELECT COUNT(*) FROM recording_shares rs
            JOIN recordings r ON r.id = rs.recording_id AND r.project_id = ?2
           WHERE r.section_id = ?1 AND rs.student_id = u.id) AS rec_count
-       FROM assignments a JOIN users u ON u.id = a.student_id
+       FROM assignments a
+       JOIN users u ON u.id = a.student_id
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2
        WHERE a.section_id = ?1 AND a.project_id = ?2 AND a.archived_at IS NULL
        ORDER BY u.name COLLATE NOCASE`,
     )
@@ -671,11 +785,13 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
 
   const assignable = await db
     .prepare(
-      `SELECT id, name, avatar_url, status, NULL AS completed_at, 0 AS rec_count FROM users
-       WHERE role = 'student' AND status = 'active'
-         AND id NOT IN (SELECT student_id FROM assignments
-                         WHERE section_id = ?1 AND project_id = ?2 AND archived_at IS NULL)
-       ORDER BY name COLLATE NOCASE`,
+      `SELECT u.id, u.name, u.avatar_url, m.status AS status, NULL AS completed_at, 0 AS rec_count
+       FROM users u
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2
+       WHERE m.role = 'student' AND m.status = 'active'
+         AND u.id NOT IN (SELECT student_id FROM assignments
+                           WHERE section_id = ?1 AND project_id = ?2 AND archived_at IS NULL)
+       ORDER BY u.name COLLATE NOCASE`,
     )
     .bind(id, pid(c))
     .all<SongStudent>();
@@ -706,8 +822,12 @@ app.post('/t/song/:id/assign', requireTeacher, async (c) => {
   const studentId = String(f.get('student_id') ?? '');
   if (!studentId) return c.redirect(`/t/song/${sectionId}`);
   await c.env.DB.prepare(
+    /* The student id comes off the form, so it is gated on membership of the
+       acting project — otherwise a hand-made POST assigns this teacher's song
+       to somebody else's student. */
     `INSERT INTO assignments (project_id, id, student_id, section_id, assigned_by, assigned_at)
-     VALUES (?,?,?,?,?,?)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6
+      WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)
      ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL, completed_at = NULL`,
   )
     .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
@@ -996,8 +1116,25 @@ async function assignedFor(env: Env, projectId: string, studentId: string): Prom
 
 /* ---------------- one student, across five tabs ---------------- */
 
-async function studentOr404(env: Env, id: string): Promise<User | null> {
-  return (await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>()) ?? null;
+/**
+ * A student of the acting project, or null.
+ *
+ * The membership join is the whole point: without it this was `SELECT *
+ * FROM users WHERE id = ?`, and every tab below would happily render
+ * another teacher's student's name, email, phone and time zone. The role
+ * and standing shown come from that membership too, so a student paused
+ * here still reads as active in the project that has not paused them.
+ */
+async function studentOr404(env: Env, projectId: string, id: string): Promise<ProjectPerson | null> {
+  return (
+    (await env.DB.prepare(
+      `SELECT ${MEMBER_COLS} FROM users u
+         JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2
+        WHERE u.id = ?1 AND m.role = 'student'`,
+    )
+      .bind(id, projectId)
+      .first<ProjectPerson>()) ?? null
+  );
 }
 
 async function tabCounts(env: Env, projectId: string, studentId: string): Promise<Stu.TabCounts> {
@@ -1016,8 +1153,13 @@ async function tabCounts(env: Env, projectId: string, studentId: string): Promis
  * until they come back.
  */
 async function upcomingFor(env: Env, projectId: string, studentId: string, days = 28): Promise<Occurrence[]> {
-  const student = await env.DB.prepare('SELECT status FROM users WHERE id = ?')
-    .bind(studentId)
+  /* "Active" is a standing in this project, so it is read from the
+     membership: a student this teacher paused keeps their classes with the
+     teacher who has not. */
+  const student = await env.DB.prepare(
+    'SELECT status FROM project_members WHERE user_id = ?1 AND project_id = ?2',
+  )
+    .bind(studentId, projectId)
     .first<{ status: string }>();
   if (student && student.status !== 'active') return [];
 
@@ -1028,7 +1170,7 @@ async function upcomingFor(env: Env, projectId: string, studentId: string, days 
 }
 
 app.get('/t/s/:id', requireTeacher, async (c) => {
-  const student = await studentOr404(c.env, c.req.param('id'));
+  const student = await studentOr404(c.env, pid(c), c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   const assigned = await assignedFor(c.env, pid(c), student.id);
   return c.html(
@@ -1048,7 +1190,7 @@ app.get('/t/s/:id', requireTeacher, async (c) => {
 });
 
 app.get('/t/s/:id/songs', requireTeacher, async (c) => {
-  const student = await studentOr404(c.env, c.req.param('id'));
+  const student = await studentOr404(c.env, pid(c), c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   const catalogue = await c.env.DB.prepare(
     `SELECT s.*, g.name AS group_name FROM sections s
@@ -1072,7 +1214,7 @@ app.get('/t/s/:id/songs', requireTeacher, async (c) => {
 });
 
 app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
-  const student = await studentOr404(c.env, c.req.param('id'));
+  const student = await studentOr404(c.env, pid(c), c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
   const today = istToday();
@@ -1113,7 +1255,7 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
 });
 
 app.get('/t/s/:id/schedule', requireTeacher, async (c) => {
-  const student = await studentOr404(c.env, c.req.param('id'));
+  const student = await studentOr404(c.env, pid(c), c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   return c.html(
     Stu.scheduleTab(
@@ -1131,7 +1273,7 @@ app.get('/t/s/:id/schedule', requireTeacher, async (c) => {
 });
 
 app.get('/t/s/:id/settings', requireTeacher, async (c) => {
-  const student = await studentOr404(c.env, c.req.param('id'));
+  const student = await studentOr404(c.env, pid(c), c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   return c.html(
     Stu.settingsTab(c.get('user'), student, await tabCounts(c.env, pid(c), student.id), site(c), c.req.query('msg')),
@@ -1151,9 +1293,12 @@ app.get('/t/class/:slotId/:date', requireTeacher, async (c) => {
   if (!slot) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
   const student = await c.env.DB.prepare(
-    'SELECT id, name, email, avatar_url, time_zone, location, phone, status FROM users WHERE id = ?',
+    `SELECT u.id, u.name, u.email, u.avatar_url, u.time_zone, u.location, u.phone, m.status AS status
+       FROM users u
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2
+      WHERE u.id = ?1`,
   )
-    .bind(slot.student_id)
+    .bind(slot.student_id, pid(c))
     .first<ClassPageData['student']>();
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
 
@@ -1206,10 +1351,13 @@ app.post('/t/s/:id/sessions', requireTeacher, async (c) => {
 
   const id = newId('ls');
   await c.env.DB.prepare(
+    /* :id is a student id from the URL, so the lesson is only written if they
+       are a member of the acting project. */
     `INSERT INTO sessions
        (project_id, id, student_id, held_on, status, covered, left_off, next_focus,
         covered_ml, left_off_ml, next_focus_ml, duration_min, created_by, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14
+      WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)`,
   )
     .bind(pid(c), id, studentId, d.held_on, d.status, d.covered, d.left_off, d.next_focus,
           d.covered_ml, d.left_off_ml, d.next_focus_ml, d.duration_min, c.get('user').id, now())
@@ -1276,8 +1424,11 @@ app.post('/t/s/:id/assign', requireTeacher, async (c) => {
   const sectionId = String(f.get('section_id') ?? '');
   if (!sectionId) return c.redirect(`/t/s/${studentId}`);
   await c.env.DB.prepare(
+    /* :id is a student id straight out of the URL — gated on membership of the
+       acting project, the same as the song page's assign. */
     `INSERT INTO assignments (project_id, id, student_id, section_id, assigned_by, assigned_at)
-     VALUES (?,?,?,?,?,?)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6
+      WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)
      ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL`,
   )
     .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
@@ -1354,9 +1505,7 @@ async function loadSong(env: Env, projectId: string, studentId: string, sectionI
 }
 
 app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {
-  const student = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
-    .bind(c.req.param('sid'))
-    .first<User>();
+  const student = await studentOr404(c.env, pid(c), c.req.param('sid'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   const data = await loadSong(c.env, pid(c), student.id, c.req.param('secid'));
   if (!data) return c.html(V.notFound(c.get('user'), site(c)), 404);
@@ -1364,6 +1513,7 @@ app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {
   return c.html(
     V.songPage({
       viewer: c.get('user'),
+      isTeacher: acting(c).isTeacher,
       student,
       ...data,
       siteName: site(c),
@@ -1375,7 +1525,11 @@ app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {
 
 app.get('/me', requireUser, async (c) => {
   const user = c.get('user');
-  if (user.role === 'teacher') return c.redirect('/t');
+  /* Whether they teach is a fact about them IN THIS PROJECT. Reading the dead
+     users.role instead sent anyone who teaches anywhere to /t, where
+     requireTeacher sent them straight back here — a loop, for exactly the
+     person projects exist for: a teacher over there, a student here. */
+  if (acting(c).isTeacher) return c.redirect('/t');
   const q = (c.req.query('q') ?? '').trim().toLowerCase();
   const all = await assignedFor(c.env, pid(c), user.id);
   const assigned = q
@@ -1397,7 +1551,7 @@ app.get('/me', requireUser, async (c) => {
 
 app.get('/me/:secid', requireUser, async (c) => {
   const user = c.get('user');
-  if (user.role === 'teacher') return c.redirect('/t');
+  if (acting(c).isTeacher) return c.redirect('/t');
 
   // A student may only open a song that is actually assigned to them.
   const ok = await c.env.DB.prepare(
@@ -1409,7 +1563,9 @@ app.get('/me/:secid', requireUser, async (c) => {
 
   const data = await loadSong(c.env, pid(c), user.id, c.req.param('secid'));
   if (!data) return c.html(V.notFound(user, site(c)), 404);
-  return c.html(V.songPage({ viewer: user, student: user, ...data, siteName: site(c) }));
+  return c.html(
+    V.songPage({ viewer: user, student: user, ...data, siteName: site(c), isTeacher: acting(c).isTeacher }),
+  );
 });
 
 /* ================================================================== *
@@ -1773,7 +1929,7 @@ app.get('/media/:id', requireUser, async (c) => {
     .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec) return c.notFound();
-  if (user.role !== 'teacher' && !(await studentMaySee(c.env, pid(c), user.id, rec, 'recording')))
+  if (!acting(c).isTeacher && !(await studentMaySee(c.env, pid(c), user.id, rec, 'recording')))
     return c.text('Not yours to play.', 403);
 
   const rangeHeader = c.req.header('range');
@@ -1824,10 +1980,15 @@ app.post('/t/recordings/:id/share', requireTeacher, async (c) => {
   if (!rec || !studentId) return c.redirect('/t');
 
   if (rec.visibility !== 'shared') {
+    /* student_id arrives on a form, so it is checked the same way the
+       recording is: the SELECT ... WHERE EXISTS hands the take to nobody
+       unless they are a member of the acting project. */
     await c.env.DB.prepare(
-      'INSERT OR IGNORE INTO recording_shares (recording_id, student_id, created_at) VALUES (?,?,?)',
+      `INSERT OR IGNORE INTO recording_shares (recording_id, student_id, created_at)
+       SELECT ?1, ?2, ?3
+        WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?2 AND m.project_id = ?4)`,
     )
-      .bind(rec.id, studentId, now())
+      .bind(rec.id, studentId, now(), pid(c))
       .run();
   }
   const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${rec.section_id}`;
@@ -1947,7 +2108,7 @@ app.get('/img/:id', requireUser, async (c) => {
     .bind(c.req.param('id'), pid(c))
     .first<Note>();
   if (!note?.image_key) return c.notFound();
-  if (user.role !== 'teacher' && !(await studentMaySee(c.env, pid(c), user.id, note, 'note')))
+  if (!acting(c).isTeacher && !(await studentMaySee(c.env, pid(c), user.id, note, 'note')))
     return c.text('Not yours.', 403);
 
   const obj = await c.env.MEDIA.get(note.image_key);
@@ -1984,7 +2145,7 @@ app.get('/note/:id/download', requireUser, async (c) => {
     .bind(c.req.param('id'), pid(c))
     .first<Note & { song_title: string; rec_title: string | null }>();
   if (!note) return c.notFound();
-  if (user.role !== 'teacher' && !(await studentMaySee(c.env, pid(c), user.id, note, 'note')))
+  if (!acting(c).isTeacher && !(await studentMaySee(c.env, pid(c), user.id, note, 'note')))
     return c.text('Not yours.', 403);
 
   const lines = [
@@ -2031,10 +2192,12 @@ app.get('/t/schedule', requireTeacher, async (c) => {
   const students = new Map<string, Sched.WithZone>();
   if (studentIds.length) {
     const rows = await c.env.DB.prepare(
-      `SELECT id, name, avatar_url, time_zone, location, status FROM users
-       WHERE id IN (${studentIds.map(() => '?').join(',')})`,
+      `SELECT u.id, u.name, u.avatar_url, u.time_zone, u.location, m.status AS status
+         FROM users u
+         JOIN project_members m ON m.user_id = u.id AND m.project_id = ?1
+        WHERE u.id IN (${studentIds.map((_, i) => `?${i + 2}`).join(',')})`,
     )
-      .bind(...studentIds)
+      .bind(pid(c), ...studentIds)
       .all<Sched.WithZone>();
     for (const r of rows.results ?? []) students.set(r.id, r);
   }
@@ -2056,14 +2219,20 @@ app.get('/t/schedule', requireTeacher, async (c) => {
 });
 
 /** Load the students behind a set of occurrences, keyed by id. */
-async function studentsFor(env: Env, ids: string[]): Promise<Map<string, Sched.WithZone>> {
+async function studentsFor(
+  env: Env,
+  projectId: string,
+  ids: string[],
+): Promise<Map<string, Sched.WithZone>> {
   const out = new Map<string, Sched.WithZone>();
   if (!ids.length) return out;
   const rows = await env.DB.prepare(
-    `SELECT id, name, avatar_url, time_zone, location, status FROM users
-     WHERE id IN (${ids.map(() => '?').join(',')})`,
+    `SELECT u.id, u.name, u.avatar_url, u.time_zone, u.location, m.status AS status
+       FROM users u
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?1
+      WHERE u.id IN (${ids.map((_, i) => `?${i + 2}`).join(',')})`,
   )
-    .bind(...ids)
+    .bind(projectId, ...ids)
     .all<Sched.WithZone>();
   for (const r of rows.results ?? []) out.set(r.id, r);
   return out;
@@ -2081,7 +2250,7 @@ app.get('/t/schedule/week', requireTeacher, async (c) => {
   const slots = await loadSlots(c.env, pid(c));
   const exceptions = await loadExceptions(c.env, pid(c), start, addDays(start, 6));
   const occs = expand(slots, exceptions, start, 7, { includeSkipped: true });
-  const students = await studentsFor(c.env, [...new Set(occs.map((o) => o.slot.student_id))]);
+  const students = await studentsFor(c.env, pid(c), [...new Set(occs.map((o) => o.slot.student_id))]);
 
   const cells: Sched.DayGroup[] = [];
   for (let i = 0; i < 7; i++) cells.push({ date: addDays(start, i), items: [] });
@@ -2105,7 +2274,7 @@ app.get('/t/schedule/day/:date', requireTeacher, async (c) => {
   const slots = await loadSlots(c.env, pid(c));
   const exceptions = await loadExceptions(c.env, pid(c), date, date);
   const occs = expand(slots, exceptions, date, 1, { includeSkipped: true }).filter((o) => o.date === date);
-  const students = await studentsFor(c.env, [...new Set(occs.map((o) => o.slot.student_id))]);
+  const students = await studentsFor(c.env, pid(c), [...new Set(occs.map((o) => o.slot.student_id))]);
 
   const items = occs
     .map((occ) => ({ occ, student: students.get(occ.slot.student_id)! }))
@@ -2136,9 +2305,14 @@ app.post('/t/slots/:id/missed', requireTeacher, async (c) => {
 
 app.get('/t/schedule/slots', requireTeacher, async (c) => {
   const students = await c.env.DB.prepare(
-    `SELECT id, name, email, avatar_url, time_zone, location FROM users
-     WHERE status = 'active' AND role = 'student' ORDER BY name COLLATE NOCASE`,
-  ).all<Sched.WithZone & { email: string }>();
+    `SELECT u.id, u.name, u.email, u.avatar_url, u.time_zone, u.location
+       FROM users u
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?1
+      WHERE m.status = 'active' AND m.role = 'student'
+      ORDER BY u.name COLLATE NOCASE`,
+  )
+    .bind(pid(c))
+    .all<Sched.WithZone & { email: string }>();
 
   const allSlots = await loadSlots(c.env, pid(c));
   const rows: Sched.StudentSlots[] = (students.results ?? []).map((student) => ({
@@ -2162,9 +2336,12 @@ app.post('/t/students/:id/slots', requireTeacher, async (c) => {
 
   const dur = Number(f.get('duration_min'));
   await c.env.DB.prepare(
+    /* :id is a student id from the URL, so the slot is only created if they
+       are a member of the acting project. */
     `INSERT INTO class_slots
        (project_id, id, student_id, kind, weekday, on_date, time_ist, duration_min, label, created_by, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+     SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11
+      WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)`,
   )
     .bind(
       pid(c), newId('cs'), studentId, kind,
@@ -2250,8 +2427,15 @@ app.post('/t/students/:id/zone', requireTeacher, async (c) => {
   const tz = String(f.get('time_zone') ?? '').trim();
   if (tz && !isValidZone(tz))
     return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('That is not a time zone this server recognises.'));
-  await c.env.DB.prepare('UPDATE users SET time_zone = ?, location = ? WHERE id = ?')
-    .bind(tz || null, String(f.get('location') ?? '').trim() || null, c.req.param('id'))
+  /* Where someone is and what clock they keep are global — they do not change
+     per teacher — so the EXISTS is what keeps a teacher to the people who are
+     actually in their project. */
+  await c.env.DB.prepare(
+    `UPDATE users SET time_zone = ?1, location = ?2
+      WHERE id = ?3
+        AND EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = users.id AND m.project_id = ?4)`,
+  )
+    .bind(tz || null, String(f.get('location') ?? '').trim() || null, c.req.param('id'), pid(c))
     .run();
   return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('Saved.'));
 });
@@ -2260,6 +2444,7 @@ app.post('/me/zone', requireUser, async (c) => {
   const f = await c.req.formData();
   const tz = String(f.get('time_zone') ?? '').trim();
   if (tz && !isValidZone(tz)) return c.redirect('/me');
+  /* unscoped: the signed-in user setting their own location and time zone — one person keeps one clock, whichever teachers they learn from */
   await c.env.DB.prepare('UPDATE users SET time_zone = ?, location = ? WHERE id = ?')
     .bind(tz || null, String(f.get('location') ?? '').trim() || null, c.get('user').id)
     .run();
@@ -2285,6 +2470,7 @@ app.post('/api/tz', requireUser, async (c) => {
   if (!isValidZone(tz)) return c.json({ ok: false }, 400);
 
   const res = await c.env.DB.prepare(
+    /* unscoped: the signed-in user setting their own time zone */
     "UPDATE users SET time_zone = ? WHERE id = ? AND (time_zone IS NULL OR time_zone = '')",
   )
     .bind(tz, c.get('user').id)

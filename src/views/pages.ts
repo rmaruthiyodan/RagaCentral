@@ -5,7 +5,7 @@ import { resumeCard, lessonLog, spoken } from './sessions';
 import { studentSchedule, zoneOptions } from './schedule';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
-import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow } from '../types';
+import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
 import { t, setLang } from '../i18n';
 
 export type { AssignedRow };
@@ -78,7 +78,7 @@ export function waiting(user: User, siteName: string): string {
  * Teacher — students
  * ================================================================== */
 
-export interface StudentRow extends User {
+export interface StudentRow extends ProjectPerson {
   song_count: number;
   rec_count: number;
   last_activity: string | null;
@@ -496,11 +496,15 @@ export function songPage(opts: {
   msg?: string;
   /** Show the speak-it button on the note box. */
   dictate?: boolean;
+  /** Teacher of THIS project — from the acting membership. */
+  isTeacher?: boolean;
 }): string {
   setLang(opts.viewer.lang);
   const { viewer, student, section, recordings, notes, siteName, msg } = opts;
   const dictate = Boolean(opts.dictate);
-  const isTeacher = viewer.role === 'teacher';
+  /* Which way the back link points. Not viewer.role — that is the dead
+     global column, and a teacher of another project is a student here. */
+  const isTeacher = Boolean(opts.isTeacher);
   const backHref = isTeacher ? `/t/s/${student.id}` : '/me';
   const backLabel = isTeacher ? `← ${student.name}` : `← ${t('My songs')}`;
 
@@ -963,7 +967,7 @@ export function notFound(user: User | null, siteName: string): string {
   <p class="lede" style="margin:12px auto 24px">
     ${t("That page doesn't exist, or it isn't yours to open.")}
   </p>
-  <a class="btn" href="${user ? (user.role === 'teacher' ? '/t' : '/me') : '/'}">${t('Go back')}</a>
+  <a class="btn" href="/">${t('Go back')}</a>
 </div>`,
     { title: t('Not found'), user, siteName },
   );
