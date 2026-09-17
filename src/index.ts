@@ -2009,24 +2009,76 @@ function postedShareIds(f: FormData): string[] {
  * retry, never a lesson.
  * ================================================================== */
 
-const MAX_DICTATE = 8 * 1024 * 1024; // ~2 minutes of anything a browser records
+/* How much may arrive in one request.
+ *
+ * The browser sends base64 of a 16 kHz mono MP3 at 32 kbps: two
+ * minutes of that is about 640 KB encoded, so 1.5 MB is generous.
+ *
+ * It is also a hard ceiling rather than a courtesy, because of what
+ * lies on the other side of it. On the free plan a Worker gets 10 ms of
+ * CPU per request, and merely *reading* a body costs time in proportion
+ * to its size — about 11 ms for a 2 MB string, which is over budget
+ * before this route has done anything at all. So the size is checked
+ * from the header, before a byte is read, and an oversized body is
+ * refused rather than parsed. A request that dies of CPU exhaustion
+ * gives the browser a dead connection and the teacher a shrug; a 413
+ * gives him a sentence he can act on.
+ *
+ * The one thing that lands here oversized in practice is a page that
+ * has been open since before this fix, still sending a whole WAV. Hence
+ * the mention of reloading. */
+const MAX_DICTATE = 1_500_000;
 
 app.post('/t/api/dictate', requireTeacherJson, async (c) => {
   if (!dictateEnabled(c.env))
     return c.json({ error: 'Dictation is switched off for this site.' }, 503);
 
-  let form: FormData;
-  try {
-    form = await c.req.formData();
-  } catch {
-    return c.json({ error: 'That clip was too long to send in one go. Try a shorter one.' }, 413);
+  const declared = Number(c.req.header('content-length') ?? 0);
+  if (declared > MAX_DICTATE)
+    return c.json(
+      {
+        error:
+          'That clip is too big to read back. Keep it to a sentence or two — ' +
+          'and if this page has been open a while, reload it first.',
+      },
+      413,
+    );
+
+  const type = (c.req.header('content-type') || '').toLowerCase();
+  let b64 = '';
+  let mime = c.req.header('x-audio-type') || 'audio/mpeg';
+
+  if (type.startsWith('text/') || type.includes('base64')) {
+    /* The fast path, and the only one the current page uses: the body
+       IS the base64, so this is one native read and no parsing. */
+    b64 = (await c.req.text()).trim();
+  } else {
+    /* A multipart upload from an older cached copy of dictate.js.
+       Parsing it costs CPU in proportion to its size, which is why the
+       ceiling above is small enough that the cost is survivable. */
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      return c.json({ error: 'That clip could not be read. Reload the page and try again.' }, 400);
+    }
+    const file = form.get('audio');
+    if (!(file instanceof File) || file.size === 0)
+      return c.json({ error: 'Nothing was recorded.' }, 400);
+    mime = file.type || mime;
+    /* Encoding here is exactly the CPU cost this route exists to avoid,
+       so it is not done at all. Say so plainly: one reload fixes it. */
+    return c.json(
+      {
+        error:
+          'This page is out of date and sent the recording the old way. ' +
+          'Reload the page (⌘⇧R, or Ctrl-Shift-R) and speak it again.',
+      },
+      409,
+    );
   }
 
-  const file = form.get('audio');
-  if (!(file instanceof File) || file.size === 0)
-    return c.json({ error: 'Nothing was recorded.' }, 400);
-  if (file.size > MAX_DICTATE)
-    return c.json({ error: 'That clip is too long — keep it to a sentence or two.' }, 413);
+  if (!b64) return c.json({ error: 'Nothing was recorded.' }, 400);
 
   /* The vocabulary the model has no reason to know: the Carnatic terms,
      plus the titles and ragas of the songs this teacher actually
@@ -2035,7 +2087,7 @@ app.post('/t/api/dictate', requireTeacherJson, async (c) => {
   const keyterms = [...CARNATIC_TERMS, ...(await catalogueTerms(c.env, pid(c)))];
 
   try {
-    const t = await transcribe(c.env, await file.arrayBuffer(), file.type, keyterms);
+    const t = await transcribe(c.env, b64, mime, keyterms);
     if (!t.ml && !t.en)
       return c.json({ error: "Nothing came back — the clip may be silent." }, 422);
     return c.json(t);
