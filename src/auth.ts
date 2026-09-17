@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Env, User, Vars, AppEnv } from './types';
 import { newId, now } from './util';
+import { resolveProject } from './projects';
 
 type Ctx = Context<AppEnv, any, any>;
 
@@ -184,24 +185,35 @@ export async function upsertUser(c: Ctx, p: GoogleProfile): Promise<User> {
     }
   }
 
-  if (!user) {
-    // Nobody at all yet, or this is the nominated teacher's first visit.
-    const anyTeacher = await db
-      .prepare("SELECT id FROM users WHERE role = 'teacher' AND status = 'active' LIMIT 1")
-      .first<{ id: string }>();
-    const isBootstrap =
-      !anyTeacher && email === (c.env.BOOTSTRAP_TEACHER_EMAIL ?? '').toLowerCase().trim();
+  /* The nominated admin, on any visit — not only their first. Someone
+     who signed in before the setting existed would otherwise be locked
+     out of their own installation, and this is cheap to re-check. It
+     only ever grants to the one address named in the config. */
+  const bootstrapAdmin = (c.env.BOOTSTRAP_ADMIN_EMAIL ?? '').toLowerCase().trim();
+  const isBootstrapAdmin = Boolean(bootstrapAdmin) && email === bootstrapAdmin;
 
+  if (!user) {
     const id = newId('u');
-    const role = isBootstrap ? 'teacher' : 'student';
-    const status = isBootstrap ? 'active' : 'pending';
     await db
       .prepare(
-        `INSERT INTO users (id, google_sub, email, name, avatar_url, role, status, created_at, approved_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, google_sub, email, name, avatar_url, role, status, created_at, is_admin)
+         VALUES (?, ?, ?, ?, ?, 'student', 'pending', ?, ?)`,
       )
-      .bind(id, p.sub, p.email, p.name ?? p.email, p.picture ?? null, role, status, now(), isBootstrap ? now() : null)
+      .bind(
+        id,
+        p.sub,
+        p.email,
+        p.name ?? p.email,
+        p.picture ?? null,
+        now(),
+        isBootstrapAdmin ? 1 : 0,
+      )
       .run();
+
+    /* A new account belongs to no project. Someone has to put them in
+       one — a teacher inviting them by email, or an admin adding them.
+       Until then they see the waiting page, which is the same thing
+       that used to happen while a teacher approved them. */
     user = (await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>())!;
   } else {
     // Keep the display name and photo fresh.
@@ -209,6 +221,12 @@ export async function upsertUser(c: Ctx, p: GoogleProfile): Promise<User> {
       .prepare('UPDATE users SET name = ?, avatar_url = ? WHERE id = ?')
       .bind(p.name ?? user.name, p.picture ?? user.avatar_url, user.id)
       .run();
+    user = { ...user, name: p.name ?? user.name, avatar_url: p.picture ?? user.avatar_url };
+  }
+
+  if (isBootstrapAdmin && !user.is_admin) {
+    await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').bind(user.id).run();
+    user = { ...user, is_admin: 1 };
   }
 
   return user;
@@ -216,12 +234,63 @@ export async function upsertUser(c: Ctx, p: GoogleProfile): Promise<User> {
 
 /* ------------------------------------------------------------------ *
  * Route guards
+ *
+ * Since projects, "teacher" is not a fact about a person. It is a fact
+ * about a person IN A PROJECT, so every guard below resolves which
+ * project the request is acting in before it can answer.
+ *
+ * The order is always the same and matters:
+ *
+ *   1. Are you signed in at all?          → the sign-in page
+ *   2. Which project are you acting in?   → the waiting page, or a chooser
+ *   3. May you do this here?              → their own pages
+ *
+ * Skipping step 2 is how one teacher ends up looking at another's
+ * students, so nothing below reads a scoped table without it.
  * ------------------------------------------------------------------ */
 
-export const requireUser: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> = async (c, next) => {
+/** Signed in, and standing in some project. */
+export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   const user = await currentUser(c);
   if (!user) return c.redirect('/');
-  if (user.status !== 'active') return c.redirect('/waiting');
+  c.set('user', user);
+
+  const acting = await resolveProject(c, user);
+  if (!acting) {
+    /* Signed in but in no project: a brand-new account waiting to be
+       added, or someone whose only membership was archived. An admin is
+       the exception — they have somewhere to go without a membership. */
+    if (user.is_admin) return c.redirect('/admin');
+    return c.redirect('/waiting');
+  }
+  if (acting.membership && acting.membership.status !== 'active' && !acting.asAdmin)
+    return c.redirect('/waiting');
+
+  c.set('acting', acting);
+  await next();
+};
+
+/** A teacher of the project being acted in — or an admin who switched into it. */
+export const requireTeacher: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect('/');
+  c.set('user', user);
+
+  const acting = await resolveProject(c, user);
+  if (!acting) return c.redirect(user.is_admin ? '/admin' : '/waiting');
+  if (!acting.isTeacher) return c.redirect('/me');
+  if (acting.membership && acting.membership.status !== 'active' && !acting.asAdmin)
+    return c.redirect('/waiting');
+
+  c.set('acting', acting);
+  await next();
+};
+
+/** Above every project. Creating them, and switching between them. */
+export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect('/');
+  if (!user.is_admin) return c.redirect('/');
   c.set('user', user);
   await next();
 };
@@ -234,23 +303,17 @@ export const requireUser: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> 
  * `res.json()` throws something that reads like a network failure rather
  * than "you are signed out". These say so in the status line.
  */
-export const requireTeacherJson: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> = async (
-  c,
-  next,
-) => {
+export const requireTeacherJson: MiddlewareHandler<AppEnv> = async (c, next) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: 'You are signed out. Reload the page and sign in again.' }, 401);
-  if (user.status !== 'active' || user.role !== 'teacher')
-    return c.json({ error: 'Only a teacher can do that.' }, 403);
   c.set('user', user);
-  await next();
-};
 
-export const requireTeacher: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> = async (c, next) => {
-  const user = await currentUser(c);
-  if (!user) return c.redirect('/');
-  if (user.status !== 'active') return c.redirect('/waiting');
-  if (user.role !== 'teacher') return c.redirect('/me');
-  c.set('user', user);
+  const acting = await resolveProject(c, user);
+  if (!acting || !acting.isTeacher)
+    return c.json({ error: 'Only a teacher can do that.' }, 403);
+  if (acting.membership && acting.membership.status !== 'active' && !acting.asAdmin)
+    return c.json({ error: 'Your account is not active in this project.' }, 403);
+
+  c.set('acting', acting);
   await next();
 };
