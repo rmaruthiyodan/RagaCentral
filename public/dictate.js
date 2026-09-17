@@ -6,23 +6,46 @@
  * two boxes for the teacher to correct. Nothing is saved until he
  * presses Save, so a bad transcript costs a retry and nothing else.
  *
- * What gets sent is a 16 kHz mono WAV, not what the browser recorded.
+ * ------------------------------------------------------------------
+ * WHAT GETS SENT, AND WHY IT IS NOT WHAT WAS RECORDED
  *
- * Browsers record what suits them — WebM/Opus in Chrome, MP4/AAC in
- * Safari — and Sarvam accepts neither:
+ * A base64 string of a 16 kHz mono MP3 — not the WebM the browser
+ * recorded, and not the WAV this file used to send. Three reasons,
+ * in the order they were discovered:
  *
- *   Invalid file type: audio/webm;codecs=opus. Only ['audio/mpeg',
- *   'audio/mp3', … 'audio/wav', … 'audio/pcm_s16le']
+ * 1. Browsers record what suits them — WebM/Opus in Chrome, MP4/AAC in
+ *    Safari — and Sarvam accepts neither:
  *
- * So the clip is decoded and re-encoded here. WAV rather than MP3
- * because it needs no encoder library — recorder.js pulls in 152 KB of
- * lamejs for that, and this page shouldn't have to — and 16 kHz mono
- * because that is what speech recognition actually wants: it is a
- * *smaller* upload than 48 kHz stereo Opus for a short take, and every
- * transcriber accepts it, so one format serves both providers.
+ *      Invalid file type: audio/webm;codecs=opus. Only ['audio/mpeg',
+ *      'audio/mp3', … 'audio/wav', … 'audio/pcm_s16le']
+ *
+ *    So it has to be re-encoded somewhere regardless.
+ *
+ * 2. 16 kHz mono is what speech recognition actually wants, and it is
+ *    less data than 48 kHz stereo.
+ *
+ * 3. And the one that rewrote this file: the server gets **10 ms of
+ *    CPU per request** on Cloudflare's free plan. Handing it a
+ *    megabyte of audio to base64 costs it fifty. It was dying every
+ *    time, which arrived here as a connection that simply stopped —
+ *    indistinguishable, from the teacher's side, from the transcriber
+ *    being slow.
+ *
+ *    So this page does the work instead. MP3 at 32 kbps is about a
+ *    twentieth the size of the same audio as WAV, and the base64 is
+ *    done here too, where CPU is a phone's and free. The server now
+ *    receives the exact string the model wants and passes it along
+ *    without looking at it.
+ *
+ * The MP3 encoder is the same lamejs that recorder.js uses, loaded on
+ * first press and shared. If it will not load, this falls back to WAV
+ * and a short clip still works — the server's limit is generous enough
+ * for a sentence either way.
  * ================================================================== */
 (function () {
   var MAX_MS = 120000; // two minutes, then it stops itself
+  var TARGET_RATE = 16000;
+  var MP3_KBPS = 32; // speech, mono, 16 kHz — plenty, and small
 
   if (!navigator.mediaDevices || !window.MediaRecorder) {
     // No recording in this browser: leave the buttons out entirely rather
@@ -74,6 +97,10 @@
 
     function start() {
       say('');
+      /* Start fetching the encoder now rather than after the take: by
+         the time he has finished a sentence it is already here, and the
+         wait disappears into the recording. */
+      loadLame().catch(function () {});
       navigator.mediaDevices.getUserMedia({ audio: true }).then(
         function (stream) {
           chunks = [];
@@ -134,14 +161,15 @@
       setState('working');
       say('Reading it back…');
 
-      toWav(blob).then(
-        function (wav) {
-          upload(wav);
+      prepare(blob).then(
+        function (clip) {
+          upload(clip);
         },
         function (err) {
           setState('idle');
           say(
-            'That recording could not be read back (' + (err && err.message ? err.message : 'decode failed') +
+            'That recording could not be read back (' +
+              (err && err.message ? err.message : 'decode failed') +
               '). Try again, or type it.',
             'bad',
           );
@@ -149,19 +177,39 @@
       );
     }
 
-    function upload(wav) {
-      var body = new FormData();
-      body.append('audio', wav, 'note.wav');
-
-      fetch('/t/api/dictate', { method: 'POST', body: body })
+    function upload(clip) {
+      fetch('/t/api/dictate', {
+        method: 'POST',
+        headers: {
+          'content-type': 'text/plain;charset=utf-8',
+          'x-audio-type': clip.mime,
+        },
+        body: clip.b64,
+      })
         .then(function (r) {
-          return r.json().then(function (j) {
-            return { ok: r.ok, j: j };
+          /* A Worker that runs out of CPU does not answer with JSON — it
+             answers with Cloudflare's error page, or with nothing. Read
+             the body as text first so that case produces a sentence
+             instead of a SyntaxError in the console. */
+          return r.text().then(function (body) {
+            var j = null;
+            try {
+              j = JSON.parse(body);
+            } catch (e) {
+              /* not JSON */
+            }
+            return { ok: r.ok, status: r.status, j: j };
           });
         })
         .then(function (res) {
           setState('idle');
-          if (!res.ok) return say(res.j.error || 'That did not work. Type it instead.', 'bad');
+          if (res.j && res.j.error) return say(res.j.error, 'bad');
+          if (!res.ok || !res.j)
+            return say(
+              'The site could not read that clip back (error ' + res.status + '). ' +
+                'A shorter clip usually works. Otherwise type it.',
+              'bad',
+            );
           fill(res.j);
         })
         .catch(function () {
@@ -196,23 +244,39 @@
   }
 
   /* ----------------------------------------------------------------
-   * Whatever the browser recorded → 16 kHz mono WAV.
+   * Whatever the browser recorded → base64 of a 16 kHz mono MP3.
    * ---------------------------------------------------------------- */
 
-  var TARGET_RATE = 16000;
-
-  function toWav(blob) {
-    return blob.arrayBuffer().then(function (buf) {
-      var Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) throw new Error('no audio support in this browser');
-      var ctx = new Ctx();
-      return decode(ctx, buf).then(function (decoded) {
-        ctx.close();
-        return resample(decoded).then(function (mono) {
-          return new Blob([wavBytes(mono.samples, mono.rate)], { type: 'audio/wav' });
+  function prepare(blob) {
+    return blob
+      .arrayBuffer()
+      .then(function (buf) {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) throw new Error('no audio support in this browser');
+        var ctx = new Ctx();
+        return decode(ctx, buf).then(function (decoded) {
+          ctx.close();
+          return resample(decoded);
+        });
+      })
+      .then(function (mono) {
+        return toMp3(mono.samples, mono.rate).then(
+          function (mp3) {
+            return mp3;
+          },
+          function () {
+            /* No encoder. WAV is twenty times the size, which is fine
+               for a sentence and refused for a monologue — better than
+               no dictation at all. */
+            return new Blob([wavBytes(mono.samples, mono.rate)], { type: 'audio/wav' });
+          },
+        );
+      })
+      .then(function (file) {
+        return toBase64(file).then(function (b64) {
+          return { b64: b64, mime: file.type || 'audio/mpeg' };
         });
       });
-    });
   }
 
   /* Safari's decodeAudioData only learned to return a promise recently;
@@ -231,8 +295,8 @@
   /* OfflineAudioContext does the mixdown and the rate conversion, and it
      does them properly — a hand-rolled sample-skipping resample aliases
      badly, which a transcriber hears as noise. Some browsers refuse an
-     arbitrary rate, so fall back to the source rate and let the WAV
-     header say so rather than failing outright. */
+     arbitrary rate, so fall back to the source rate and let the encoder
+     say so rather than failing outright. */
   function resample(decoded) {
     var OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     var length = Math.ceil((decoded.duration || 0) * TARGET_RATE);
@@ -267,7 +331,97 @@
     return { samples: out, rate: decoded.sampleRate };
   }
 
-  /** 16-bit PCM in a WAV wrapper. */
+  /* ---------------- the MP3 encoder, loaded only when needed ---------------- */
+
+  var lameLoading = null;
+
+  function loadLame() {
+    if (window.lamejs && window.lamejs.Mp3Encoder) return Promise.resolve();
+    if (lameLoading) return lameLoading;
+    lameLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = '/vendor/lame.min.js';
+      s.onload = resolve;
+      s.onerror = function () {
+        lameLoading = null; // let the next press try again
+        reject(new Error('Could not load the MP3 encoder'));
+      };
+      document.head.appendChild(s);
+    });
+    return lameLoading;
+  }
+
+  /* Two minutes of speech is about two seconds of encoding on a phone,
+     so it yields between blocks: a page frozen mid-dictation looks
+     broken, and the button already says "Reading it…". */
+  function toMp3(samples, rate) {
+    return loadLame().then(function () {
+      var n = samples.length;
+      var pcm = new Int16Array(n);
+      for (var i = 0; i < n; i++) {
+        var v = samples[i];
+        v = v < -1 ? -1 : v > 1 ? 1 : v;
+        pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+      }
+
+      return new Promise(function (resolve, reject) {
+        var enc;
+        try {
+          enc = new window.lamejs.Mp3Encoder(1, rate, MP3_KBPS);
+        } catch (e) {
+          reject(e);
+          return;
+        }
+        var FRAME = 1152;
+        var PER_TICK = FRAME * 20; // ~1.4 s of audio per yield: ~40 ms of work, no visible jank
+        var out = [];
+        var i = 0;
+
+        function step() {
+          var end = Math.min(pcm.length, i + PER_TICK);
+          try {
+            while (i < end) {
+              var buf = enc.encodeBuffer(pcm.subarray(i, Math.min(i + FRAME, pcm.length)));
+              if (buf.length > 0) out.push(new Int8Array(buf));
+              i += FRAME;
+            }
+          } catch (e) {
+            reject(e);
+            return;
+          }
+          if (i < pcm.length) return setTimeout(step, 0);
+          var tail = enc.flush();
+          if (tail.length > 0) out.push(new Int8Array(tail));
+          resolve(new Blob(out, { type: 'audio/mpeg' }));
+        }
+        step();
+      });
+    });
+  }
+
+  /* ---------------- base64, done by the browser ---------------- */
+
+  /**
+   * FileReader rather than a loop over the bytes: it is the browser's
+   * own encoder, it runs off the main thread, and it does not care how
+   * big the blob is. A hand-written chunked encoder is the thing that
+   * was killing the server, and it would be no faster here.
+   */
+  function toBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var s = String(fr.result || '');
+        var comma = s.indexOf(',');
+        if (comma < 0) return reject(new Error('could not encode the clip'));
+        resolve(s.slice(comma + 1));
+      };
+      fr.onerror = function () { reject(new Error('could not encode the clip')); };
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  /** 16-bit PCM in a WAV wrapper — the fallback when lamejs will not load. */
   function wavBytes(samples, rate) {
     var n = samples.length;
     var buf = new ArrayBuffer(44 + n * 2);

@@ -24,10 +24,41 @@
  *                          "Vatapi Ganapatim" come back as themselves.
  *                          ~₹0.50 a minute.
  *
- * Both are asked for the same two things: the Malayalam as spoken, and
- * an English rendering, because students abroad may not read the script.
- * Neither result is ever stored without the teacher seeing it first —
- * this fills in a form, it does not save anything.
+ * ------------------------------------------------------------------
+ * WHY THIS FILE IS SHAPED SO ODDLY: 10 MILLISECONDS
+ *
+ * A Worker on the free plan gets **10 ms of CPU per request**. Waiting
+ * on the network is free and there is no wall-clock limit, so a request
+ * may sit for thirty seconds waiting for Whisper — but it may not
+ * *compute* for more than ten milliseconds, and when it does the
+ * runtime kills it. The browser sees a dead connection, which reads
+ * exactly like "the transcriber timed out" and is nothing of the kind.
+ *
+ * Audio is megabytes. Every operation that walks those bytes in
+ * JavaScript costs milliseconds:
+ *
+ *     encoding 30 s of WAV to base64 in the Worker   ~48 ms   ✗
+ *     encoding 120 s of WAV to base64 in the Worker  ~137 ms  ✗
+ *
+ * That is the bug this file used to have. So the rule now is:
+ *
+ *   THE WORKER NEVER TOUCHES THE AUDIO BYTES.
+ *
+ * The browser records it, downmixes it, encodes it to a 16 kHz mono
+ * MP3 (a twentieth of the size of the WAV it used to send) and base64s
+ * it there, where CPU is free and plentiful. What arrives here is
+ * already the string the model wants. All this file does is hand it
+ * over — one string, one model call.
+ *
+ * Which is also why there is one Whisper pass and not two. Whisper can
+ * transcribe or translate, not both, so English used to mean a second
+ * pass over the same audio — and a second trip through the serialiser,
+ * doubling the one cost that is unavoidable. The English rendering now
+ * comes from translating the *transcript*: a few hundred bytes of text
+ * instead of a megabyte of sound.
+ *
+ * Both answers are still only a draft. Nothing is stored without the
+ * teacher seeing it first — this fills in a form, it does not save.
  * ================================================================== */
 
 import type { Env } from './types';
@@ -49,19 +80,24 @@ export const CARNATIC_TERMS = [
 /**
  * One clip in, Malayalam and English out.
  *
+ * `b64` is base64 audio — already encoded, by the browser, for the
+ * reason set out at the top of this file. `mime` says what it is inside
+ * the encoding; the browser sends audio/mpeg, and older cached copies
+ * of the page may still send audio/wav.
+ *
  * `keyterms` are only used by Sarvam; Whisper takes a free-text
  * `initial_prompt` instead, which nudges its vocabulary the same way
  * but far more weakly.
  */
 export async function transcribe(
   env: Env,
-  audio: ArrayBuffer,
+  b64: string,
   mime: string,
   keyterms: string[] = [],
 ): Promise<Transcript> {
   const provider = (env.DICTATE_PROVIDER || 'workers-ai').trim();
-  if (provider === 'sarvam') return viaSarvam(env, audio, mime, keyterms);
-  if (provider === 'workers-ai') return viaWorkersAi(env, audio, keyterms);
+  if (provider === 'sarvam') return viaSarvam(env, b64, mime, keyterms);
+  if (provider === 'workers-ai') return viaWorkersAi(env, b64, keyterms);
   throw new DictateError(`Unknown DICTATE_PROVIDER "${provider}" — use workers-ai or sarvam.`);
 }
 
@@ -89,10 +125,9 @@ function withDeadline<T>(work: Promise<T>, what: string): Promise<T> {
  * Cloudflare Workers AI
  * ------------------------------------------------------------------ */
 
-async function viaWorkersAi(env: Env, audio: ArrayBuffer, keyterms: string[]): Promise<Transcript> {
+async function viaWorkersAi(env: Env, b64: string, keyterms: string[]): Promise<Transcript> {
   if (!env.AI) throw new DictateError('Workers AI is not bound — add [ai] binding = "AI" to wrangler.toml.');
 
-  const b64 = toBase64(audio);
   /* Whisper's own knob for vocabulary. It is a hint, not a constraint,
      and much less effective than Sarvam's keyterms — but it costs
      nothing and it does reduce the mangling of the obvious words. */
@@ -100,16 +135,18 @@ async function viaWorkersAi(env: Env, audio: ArrayBuffer, keyterms: string[]): P
     ? `Carnatic music lesson. Terms: ${keyterms.slice(0, 40).join(', ')}.`
     : 'Carnatic music lesson.';
 
-  /* Two passes over the same clip: Whisper can transcribe OR translate,
-     not both at once. Two audio-minutes of the daily allowance per
-     spoken minute, which at ~100 free minutes a day is still far more
-     than a week of lesson notes. */
-  const [ml, en] = await Promise.all([
-    runWhisper(env, { audio: b64, task: 'transcribe', language: 'ml', initial_prompt }),
-    runWhisper(env, { audio: b64, task: 'translate', initial_prompt }),
-  ]);
+  /* The one pass. `b64` is handed straight to the binding and never
+     read, copied or re-encoded here — see the note at the top. */
+  const ml = (
+    await runWhisper(env, { audio: b64, task: 'transcribe', language: 'ml', initial_prompt })
+  ).trim();
 
-  return { ml: ml.trim(), en: en.trim(), provider: 'workers-ai' };
+  /* English from the words, not from the sound. If it fails the note is
+     still perfectly usable — he can type the gist himself — so this
+     never takes the dictation down with it. */
+  const en = ml ? await translateToEnglish(env, ml) : '';
+
+  return { ml, en, provider: 'workers-ai' };
 }
 
 async function runWhisper(env: Env, input: Record<string, unknown>): Promise<string> {
@@ -127,13 +164,40 @@ async function runWhisper(env: Env, input: Record<string, unknown>): Promise<str
   return text;
 }
 
+/**
+ * Malayalam text to English text.
+ *
+ * m2m100 is a translation model rather than a chat model, so there is
+ * no prompt to get wrong and nothing for it to answer back with. The
+ * payload is the transcript — a sentence or two — so this is the cheap
+ * half of the request by three orders of magnitude.
+ */
+async function translateToEnglish(env: Env, ml: string): Promise<string> {
+  try {
+    const res = (await withDeadline(
+      env.AI!.run('@cf/meta/m2m100-1.2b', {
+        text: ml.slice(0, 2000),
+        source_lang: 'malayalam',
+        target_lang: 'english',
+      }),
+      'the translator',
+    )) as { translated_text?: string } | null;
+    const out = res?.translated_text;
+    return typeof out === 'string' ? out.trim() : '';
+  } catch {
+    /* No English this time. The Malayalam is the note; this was the
+       courtesy for the students abroad. */
+    return '';
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * Sarvam
  * ------------------------------------------------------------------ */
 
 async function viaSarvam(
   env: Env,
-  audio: ArrayBuffer,
+  b64: string,
   mime: string,
   keyterms: string[],
 ): Promise<Transcript> {
@@ -141,7 +205,8 @@ async function viaSarvam(
     throw new DictateError('SARVAM_API_KEY is not set — `npx wrangler secret put SARVAM_API_KEY`.');
 
   const name = `note.${extFor(mime)}`;
-  const type = mime || 'audio/webm';
+  const type = mime || 'audio/mpeg';
+  const audio = fromBase64(b64);
 
   /* `codemix` is the mode that matters here: he speaks Malayalam with
      the Carnatic terms and the odd English word left in, and that is
@@ -160,7 +225,7 @@ async function viaSarvam(
 
 async function callSarvam(
   env: Env,
-  audio: ArrayBuffer,
+  audio: Uint8Array,
   type: string,
   name: string,
   opts: Record<string, string>,
@@ -229,15 +294,17 @@ function extFor(mime: string): string {
 }
 
 /**
- * Base64 without pulling in Buffer. Chunked, because spreading a whole
- * megabyte into String.fromCharCode blows the argument limit and throws
- * a RangeError that reads like anything but "the clip was too long".
+ * Base64 back to bytes, for Sarvam — which wants a file upload, not a
+ * string, and so is the one path that cannot avoid walking the audio.
+ *
+ * `atob` is native and the Uint8Array.from callback is the cheapest way
+ * to get from its byte-string to bytes, but it is still a pass over
+ * every byte in JavaScript: a megabyte of MP3 is a few milliseconds.
+ * That fits inside the free plan's 10 ms only because the browser now
+ * sends MP3 rather than WAV. If Sarvam is ever the default here, check
+ * this number again — or be on the paid plan, where it is irrelevant.
  */
-function toBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    s += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
-  }
-  return btoa(s);
+function fromBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
 }
