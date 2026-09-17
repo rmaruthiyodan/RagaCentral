@@ -637,6 +637,57 @@ export const ML: Record<string, string> = {
    * status, weekdays, the colour schemes. A key scanner won't find
    * these in the code, so they are listed here by hand.
    * ---------------------------------------------------------------- */
+  /* ---------------------------------------------------------------- *
+   * The admin's screens
+   * ---------------------------------------------------------------- */
+  Practices: 'പരിശീലനകേന്ദ്രങ്ങൾ',
+  'One project is one teacher and the students they teach. Nothing crosses between them.':
+    'ഒരു പ്രോജക്റ്റ് എന്നാൽ ഒരു അധ്യാപകനും അദ്ദേഹം പഠിപ്പിക്കുന്ന വിദ്യാർത്ഥികളും. ഒന്നും പരസ്പരം കടക്കില്ല.',
+  'No practices yet': 'ഇതുവരെ പരിശീലനകേന്ദ്രങ്ങളില്ല',
+  'Add one below, then add the teacher who runs it.':
+    'താഴെ ഒന്ന് ചേർക്കുക, എന്നിട്ട് അത് നടത്തുന്ന അധ്യാപകനെ ചേർക്കുക.',
+  'Add a practice': 'ഒരു പരിശീലനകേന്ദ്രം ചേർക്കുക',
+  Archived: 'സൂക്ഷിച്ചുവെച്ചവ',
+  archived: 'സൂക്ഷിച്ചുവെച്ചു',
+  'Nothing is deleted. An archived practice is hidden and cannot be entered, and can be brought back.':
+    'ഒന്നും മായ്ക്കപ്പെടുന്നില്ല. സൂക്ഷിച്ചുവെച്ച ഒരു കേന്ദ്രം മറഞ്ഞിരിക്കും, അതിൽ കയറാനാവില്ല, എപ്പോൾ വേണമെങ്കിലും തിരികെ കൊണ്ടുവരാം.',
+  'Go in': 'അകത്തു കയറുക',
+  Manage: 'ക്രമീകരിക്കുക',
+  Leave: 'പുറത്തിറങ്ങുക',
+  'no teacher yet': 'ഇതുവരെ അധ്യാപകനില്ല',
+  'This practice has no teacher': 'ഈ കേന്ദ്രത്തിന് അധ്യാപകനില്ല',
+  'Add their Google address below. Until then only you can see inside it.':
+    'താഴെ അവരുടെ ഗൂഗിൾ വിലാസം ചേർക്കുക. അതുവരെ നിങ്ങൾക്ക് മാത്രമേ ഇതിനുള്ളിൽ കാണാനാകൂ.',
+  Teachers: 'അധ്യാപകർ',
+  'Nobody teaches here yet.': 'ഇവിടെ ഇതുവരെ ആരും പഠിപ്പിക്കുന്നില്ല.',
+  'No students here yet.': 'ഇവിടെ ഇതുവരെ വിദ്യാർത്ഥികളില്ല.',
+  'Add teacher': 'അധ്യാപകനെ ചേർക്കുക',
+  'They are in as soon as they sign in with that address. No second step.':
+    'ആ വിലാസം ഉപയോഗിച്ച് പ്രവേശിക്കുന്ന മാത്രയിൽ അവർ അകത്തുണ്ടാകും. രണ്ടാമതൊരു പടിയില്ല.',
+  'Take %s out of this practice? Their recordings and lessons stay.':
+    '%s-നെ ഈ കേന്ദ്രത്തിൽ നിന്ന് ഒഴിവാക്കണോ? അവരുടെ റെക്കോർഡിംഗുകളും ക്ലാസുകളും നിലനിൽക്കും.',
+  'What an admin changed here': 'ഒരു അഡ്മിൻ ഇവിടെ എന്ത് മാറ്റി',
+  'an admin': 'ഒരു അഡ്മിൻ',
+  'Nothing. A teacher working in their own practice is not recorded here — only an admin acting inside it.':
+    'ഒന്നുമില്ല. സ്വന്തം കേന്ദ്രത്തിൽ പണിയെടുക്കുന്ന അധ്യാപകനെ ഇവിടെ രേഖപ്പെടുത്തുന്നില്ല — അതിനുള്ളിൽ പ്രവർത്തിക്കുന്ന അഡ്മിനെ മാത്രം.',
+  'Rename, or write a note': 'പേരു മാറ്റുക, അല്ലെങ്കിൽ ഒരു കുറിപ്പ് എഴുതുക',
+  'Archive this practice': 'ഈ കേന്ദ്രം സൂക്ഷിച്ചുവെക്കുക',
+  'Archive this practice? Nothing is deleted and it can be brought back.':
+    'ഈ കേന്ദ്രം സൂക്ഷിച്ചുവെക്കണോ? ഒന്നും മായ്ക്കപ്പെടുന്നില്ല, എപ്പോൾ വേണമെങ്കിലും തിരികെ കൊണ്ടുവരാം.',
+  'Bring it back': 'തിരികെ കൊണ്ടുവരിക',
+  'Bring this practice back?': 'ഈ കേന്ദ്രം തിരികെ കൊണ്ടുവരണോ?',
+  'Archiving hides a practice and stops anyone entering it. Recordings, lessons and students are untouched.':
+    'സൂക്ഷിച്ചുവെക്കുന്നത് ഒരു കേന്ദ്രത്തെ മറയ്ക്കുകയും ആരെയും അതിൽ കയറാൻ അനുവദിക്കാതിരിക്കുകയും ചെയ്യുന്നു. റെക്കോർഡിംഗുകളും ക്ലാസുകളും വിദ്യാർത്ഥികളും അതേപടി നിലനിൽക്കും.',
+  'Anything you want to remember about this practice':
+    'ഈ കേന്ദ്രത്തെക്കുറിച്ച് ഓർത്തുവെക്കാൻ ആഗ്രഹിക്കുന്നതെന്തും',
+  'You are inside %s as an admin. Anything you change here is recorded.':
+    'നിങ്ങൾ %s-ൽ ഒരു അഡ്മിനായി ഉള്ളിലാണ്. ഇവിടെ മാറ്റുന്നതെല്ലാം രേഖപ്പെടുത്തപ്പെടും.',
+  optional: 'നിർബന്ധമില്ല',
+  '%s person': '%s പേർ',
+  '%s people': '%s പേർ',
+  '%s entry': '%s വരി',
+  '%s entries': '%s വരികൾ',
+
   Active: 'സജീവം',
   Paused: 'നിർത്തിവെച്ചു',
   Graduated: 'പഠിച്ചിറങ്ങി',

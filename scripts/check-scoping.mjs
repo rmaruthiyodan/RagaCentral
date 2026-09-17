@@ -94,7 +94,11 @@ for (const file of FILES) {
     if (!isScoped && !isUsers) continue;
 
     const lineNo = blanked.slice(0, m.index).split('\n').length;
-    const before = lines.slice(Math.max(0, lineNo - 3), lineNo).join('\n');
+    /* Six lines, not three. A waiver worth writing is usually a
+       sentence or two of why, and a three-line window silently missed
+       the first line of every one of them — which reads, from the
+       outside, exactly like a developer who did not bother. */
+    const before = lines.slice(Math.max(0, lineNo - 7), lineNo).join('\n');
     const waiver = /unscoped:\s*(.+)/.exec(sql) || /unscoped:\s*(.+)/.exec(before);
 
     if (waiver) {

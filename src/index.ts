@@ -6,6 +6,7 @@ import * as Sched from './views/schedule';
 import { songPage, type SongStudent, type SongPageData } from './views/song';
 import * as Stu from './views/student';
 import { classPage, type ClassPageData } from './views/klass';
+import type { Visiting } from './views/layout';
 import { STARTER_CATALOGUE, STARTER_COUNT } from './catalogue-seed';
 import {
   expand, istToday, addDays, isValidZone, TEACHER_ZONE,
@@ -18,7 +19,7 @@ import {
 } from './auth';
 import {
   pid, acting, addMember, removeMember, createProject, getProject,
-  setActiveProject, clearActiveProject, recentAdminLog, resolveProject,
+  setActiveProject, clearActiveProject, recentAdminLog, resolveProject, logAdmin,
 } from './projects';
 import { newId, now, extFor, slugify } from './util';
 import { isLang } from './i18n';
@@ -30,6 +31,12 @@ import type { StudentRow } from './views/pages';
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
 const site = (c: { env: Env }) => c.env.SITE_NAME || 'RP Sajeev Music';
+
+/** The banner, when an admin is inside a practice they do not teach. */
+function visiting(c: Context<AppEnv, any, any>): Visiting | null {
+  const a = c.get('acting');
+  return a?.asAdmin ? { name: a.project.name, asAdmin: true } : null;
+}
 
 /* ==================================================================
  * Is it up, and can it reach its two stores?
@@ -259,6 +266,60 @@ const MEMBER_COLS = `u.id, u.google_sub, u.email, u.name, u.avatar_url, u.create
         u.time_zone, u.location, u.phone, u.palette, u.theme_mode, u.lang, u.is_admin,
         m.role AS role, m.status AS status, m.status_note AS status_note,
         m.status_changed_at AS status_changed_at, m.approved_at AS approved_at`;
+
+/* ------------------------------------------------------------------ *
+ * The audit trail
+ *
+ * One middleware rather than a call in each of the thirty-seven teacher
+ * mutations, for the same reason the scoping has a checker: the failure
+ * mode is not getting it wrong, it is forgetting — on the one route
+ * nobody thought about, or the one written next month. A middleware
+ * cannot forget.
+ *
+ * It records the method, the path and the project. Not the form body:
+ * that is where a phone number or a lesson note would be, and an audit
+ * log is not a place to copy a student's data to.
+ *
+ * Only writes, only when an admin is inside a practice they do not
+ * teach, and only when the request actually succeeded — a rejected
+ * change is not a change.
+ * ------------------------------------------------------------------ */
+app.use('/t/*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'POST') return;
+  const a = c.get('acting');
+  if (!a?.asAdmin) return;
+  const status = c.res.status;
+  if (status >= 400) return;
+  await logAdmin(c, a, `${c.req.method} ${new URL(c.req.url).pathname}`, describeChange(c));
+});
+
+/** A short readable line for the log, from the path alone. */
+function describeChange(c: Context<AppEnv, any, any>): string {
+  const p = new URL(c.req.url).pathname;
+  const rules: [RegExp, string][] = [
+    [/^\/t\/students\/[^/]+\/status$/, "Changed a student's status"],
+    [/^\/t\/students\/[^/]+\/details$/, "Edited a student's details"],
+    [/^\/t\/students\/[^/]+\/zone$/, "Changed a student's time zone"],
+    [/^\/t\/students$/, 'Added a student'],
+    [/^\/t\/invite$/, 'Invited someone by email'],
+    [/^\/t\/approvals\//, 'Answered an approval'],
+    [/^\/t\/sessions\/[^/]+\/delete$/, 'Deleted a lesson'],
+    [/^\/t\/sessions\//, 'Edited a lesson'],
+    [/^\/t\/s\/[^/]+\/sessions$/, 'Logged a lesson'],
+    [/^\/t\/recordings\/[^/]+\/delete$/, 'Deleted a recording'],
+    [/^\/t\/recordings\//, 'Changed a recording'],
+    [/^\/t\/notes\/[^/]+\/delete$/, 'Deleted a note'],
+    [/^\/t\/notes/, 'Changed a note'],
+    [/^\/t\/sections\/[^/]+\/delete$/, 'Deleted a song'],
+    [/^\/t\/sections/, 'Changed a song'],
+    [/^\/t\/groups/, 'Changed a group'],
+    [/^\/t\/slots|^\/t\/students\/[^/]+\/slots$/, 'Changed the schedule'],
+    [/^\/t\/catalogue\/seed$/, 'Loaded the starter catalogue'],
+  ];
+  for (const [re, label] of rules) if (re.test(p)) return label;
+  return `Changed something at ${p}`;
+}
 
 /* ==================================================================
  * Admin — above every project
@@ -490,6 +551,7 @@ app.get('/t', requireTeacher, async (c) => {
       c.req.query('msg'),
       q,
       { showAll, hiddenCount: hidden?.n ?? 0 },
+      visiting(c),
     ),
   );
 });
@@ -609,7 +671,9 @@ app.get('/t/approvals', requireTeacher, async (c) => {
   )
     .bind(pid(c))
     .all<User>();
-  return c.html(V.teacherApprovals(c.get('user'), pending.results ?? [], site(c), c.req.query('msg')));
+  return c.html(
+    V.teacherApprovals(c.get('user'), pending.results ?? [], site(c), c.req.query('msg'), visiting(c)),
+  );
 });
 
 app.post('/t/approvals/:id', requireTeacher, async (c) => {
@@ -715,7 +779,10 @@ app.get('/t/catalogue', requireTeacher, async (c) => {
     : await db.prepare(base + order).bind(pid(c)).all<Section & { assigned_count: number }>();
 
   return c.html(
-    V.teacherCatalogue(c.get('user'), groups.results ?? [], sections.results ?? [], site(c), c.req.query('msg'), q),
+    V.teacherCatalogue(
+      c.get('user'), groups.results ?? [], sections.results ?? [], site(c), c.req.query('msg'), q,
+      visiting(c),
+    ),
   );
 });
 
@@ -991,6 +1058,7 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
     finished: rows.filter((r) => r.completed_at),
     assignable: assignable.results ?? [],
     dictate: dictateEnabled(c.env),
+    visiting: visiting(c),
   };
   return c.html(songPage(c.get('user'), data, site(c), c.req.query('msg')));
 });
@@ -1361,6 +1429,7 @@ app.get('/t/s/:id', requireTeacher, async (c) => {
         sessions: await sessionsFor(c.env, pid(c), student.id),
         upcoming: await upcomingFor(c.env, pid(c), student.id),
         learning: assigned.filter((a) => !a.completed_at),
+        visiting: visiting(c),
       },
       site(c),
       c.req.query('msg'),
@@ -1388,6 +1457,7 @@ app.get('/t/s/:id/songs', requireTeacher, async (c) => {
       catalogue.results ?? [],
       site(c),
       c.req.query('msg'),
+      visiting(c),
     ),
   );
 });
@@ -1426,6 +1496,7 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
         prevMonth: shift(-1),
         nextMonth: shift(1),
         dictate: dictateEnabled(c.env),
+        visiting: visiting(c),
       },
       site(c),
       c.req.query('msg'),
@@ -1444,6 +1515,7 @@ app.get('/t/s/:id/schedule', requireTeacher, async (c) => {
       {
         slots: (await loadSlots(c.env, pid(c), student.id)) as unknown as ClassSlot[],
         upcoming: await upcomingFor(c.env, pid(c), student.id, 42),
+        visiting: visiting(c),
       },
       site(c),
       c.req.query('msg'),
@@ -1455,7 +1527,10 @@ app.get('/t/s/:id/settings', requireTeacher, async (c) => {
   const student = await studentOr404(c.env, pid(c), c.req.param('id'));
   if (!student) return c.html(V.notFound(c.get('user'), site(c)), 404);
   return c.html(
-    Stu.settingsTab(c.get('user'), student, await tabCounts(c.env, pid(c), student.id), site(c), c.req.query('msg')),
+    Stu.settingsTab(
+      c.get('user'), student, await tabCounts(c.env, pid(c), student.id), site(c), c.req.query('msg'),
+      visiting(c),
+    ),
   );
 });
 
@@ -1514,7 +1589,7 @@ app.get('/t/class/:slotId/:date', requireTeacher, async (c) => {
   return c.html(
     classPage(
       c.get('user'),
-      { student, occ, lastLesson, songs, alreadyLogged, dictate: dictateEnabled(c.env) },
+      { student, occ, lastLesson, songs, alreadyLogged, dictate: dictateEnabled(c.env), visiting: visiting(c) },
       site(c),
       c.req.query('msg'),
     ),
@@ -1698,6 +1773,7 @@ app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {
       siteName: site(c),
       msg: c.req.query('msg'),
       dictate: dictateEnabled(c.env),
+      visiting: visiting(c),
     }),
   );
 });
@@ -2393,7 +2469,9 @@ app.get('/t/schedule', requireTeacher, async (c) => {
   }
 
   return c.html(
-    Sched.schedulePageWrapped(c.get('user'), [...byDate.values()], days, site(c), c.req.query('msg')),
+    Sched.schedulePageWrapped(
+      c.get('user'), [...byDate.values()], days, site(c), c.req.query('msg'), visiting(c),
+    ),
   );
 });
 
@@ -2442,7 +2520,9 @@ app.get('/t/schedule/week', requireTeacher, async (c) => {
     if (st && cell) cell.items.push({ occ, student: st });
   }
 
-  return c.html(Sched.weekCalendar(c.get('user'), start, cells, site(c), c.req.query('msg')));
+  return c.html(
+    Sched.weekCalendar(c.get('user'), start, cells, site(c), c.req.query('msg'), visiting(c)),
+  );
 });
 
 /** One day, opened from the calendar. */
@@ -2459,7 +2539,7 @@ app.get('/t/schedule/day/:date', requireTeacher, async (c) => {
     .map((occ) => ({ occ, student: students.get(occ.slot.student_id)! }))
     .filter((x) => x.student && stillScheduled(x.student.status, x.occ.date, istToday()));
 
-  return c.html(Sched.dayView(c.get('user'), date, items, site(c), c.req.query('msg')));
+  return c.html(Sched.dayView(c.get('user'), date, items, site(c), c.req.query('msg'), visiting(c)));
 });
 
 /** A class that should have happened and didn't. Distinct from a cancellation. */
@@ -2499,7 +2579,7 @@ app.get('/t/schedule/slots', requireTeacher, async (c) => {
     slots: allSlots.filter((s) => s.student_id === student.id) as unknown as ClassSlot[],
   }));
 
-  return c.html(Sched.slotsPage(c.get('user'), rows, site(c), c.req.query('msg')));
+  return c.html(Sched.slotsPage(c.get('user'), rows, site(c), c.req.query('msg'), visiting(c)));
 });
 
 app.post('/t/students/:id/slots', requireTeacher, async (c) => {

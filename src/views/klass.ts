@@ -7,6 +7,7 @@
  * ================================================================== */
 
 import { page, avatar, inlineTitle } from './layout';
+import type { Visiting } from './layout';
 import { spoken } from './sessions';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
 import type { User, SessionRow, AssignedRow } from '../types';
@@ -21,6 +22,8 @@ export interface ClassPageData {
   songs: AssignedRow[];
   alreadyLogged: SessionRow | null;
   dictate?: boolean;
+  /** Set when an admin is acting inside a practice they do not teach. */
+  visiting?: Visiting | null;
 }
 
 /* His Malayalam over the English, the same order a song title uses. */
@@ -278,6 +281,7 @@ ${
       user,
       siteName,
       nav: 'schedule',
+      visiting: d.visiting ?? null,
       scripts: d.dictate ? ['/dictate.js'] : [],
     },
   );
