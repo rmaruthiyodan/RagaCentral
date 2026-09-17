@@ -229,20 +229,47 @@ app.get('/dev/login', async (c) => {
 
   const email = (c.req.query('email') ?? 'teacher@example.com').toLowerCase();
   const role = c.req.query('role') === 'student' ? 'student' : 'teacher';
+
+  /* Admin if asked for, or if this is the address wrangler.toml names.
+     Without this there is no way to reach /admin on a local database:
+     is_admin is otherwise set only during a real Google sign-in, and the
+     admin screens are the first thing anyone wants to try locally. */
+  const wantsAdmin =
+    c.req.query('admin') === '1' ||
+    email === (c.env.BOOTSTRAP_ADMIN_EMAIL ?? '').toLowerCase().trim();
+
   /* unscoped: local-only sign-in, which is identity and happens before any project is resolved — the same job auth.ts does in production */
   let u = await c.env.DB.prepare('SELECT * FROM users WHERE lower(email) = ?').bind(email).first<User>();
   if (!u) {
     const id = newId('u');
     await c.env.DB.prepare(
       /* unscoped: creating the local-only dev account — identity is global, and it joins a project the same way anyone else does */
-      `INSERT INTO users (id, google_sub, email, name, role, status, created_at, approved_at)
-       VALUES (?,?,?,?,?, 'active', ?, ?)`,
+      `INSERT INTO users (id, google_sub, email, name, created_at, is_admin)
+       VALUES (?,?,?,?,?,?)`,
     )
-      .bind(id, `dev-${id}`, email, c.req.query('name') ?? email.split('@')[0], role, now(), now())
+      .bind(id, `dev-${id}`, email, c.req.query('name') ?? email.split('@')[0], now(), wantsAdmin ? 1 : 0)
       .run();
     /* unscoped: reading back the local-only dev account just created, to start its session */
     u = (await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>())!;
+  } else if (wantsAdmin && !u.is_admin) {
+    /* unscoped: promoting the local-only dev account that already existed */
+    await c.env.DB.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').bind(u.id).run();
+    u = { ...u, is_admin: 1 };
   }
+
+  /* ?project=<id> joins them to a practice and switches into it, so one
+     URL produces a usable teacher or student. Without it a fresh account
+     belongs to nothing and lands on /waiting — correct, and useless for
+     testing. */
+  const projectId = c.req.query('project');
+  if (projectId) {
+    const p = await getProject(c.env, projectId);
+    if (p) {
+      await addMember(c.env, { projectId: p.id, userId: u.id, role, status: 'active' });
+      setActiveProject(c, p.id);
+    }
+  }
+
   await startSession(c, u.id);
   return c.redirect('/');
 });
