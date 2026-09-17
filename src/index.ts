@@ -14,12 +14,17 @@ import {
 import {
   currentUser, startSession, endSession, googleAuthUrl, setOAuthState,
   takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher, requireTeacherJson,
+  requireAdmin,
 } from './auth';
-import { pid, acting, addMember, resolveProject } from './projects';
+import {
+  pid, acting, addMember, removeMember, createProject, getProject,
+  setActiveProject, clearActiveProject, recentAdminLog, resolveProject,
+} from './projects';
 import { newId, now, extFor, slugify } from './util';
 import { isLang } from './i18n';
 import { transcribe, DictateError, CARNATIC_TERMS } from './transcribe';
 import * as V from './views/pages';
+import * as Adm from './views/admin';
 import type { StudentRow } from './views/pages';
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -254,6 +259,180 @@ const MEMBER_COLS = `u.id, u.google_sub, u.email, u.name, u.avatar_url, u.create
         u.time_zone, u.location, u.phone, u.palette, u.theme_mode, u.lang, u.is_admin,
         m.role AS role, m.status AS status, m.status_note AS status_note,
         m.status_changed_at AS status_changed_at, m.approved_at AS approved_at`;
+
+/* ==================================================================
+ * Admin — above every project
+ *
+ * Two pages, and a way in and out of a practice. Everything else an
+ * admin might want is the teacher's own screens, reached by switching
+ * in: there is no second copy of the teaching interface here, and a
+ * good part of the reason this feature is small is that there isn't.
+ *
+ * Switching in sets a cookie and nothing else. The cookie is only ever
+ * a request — resolveProject proves it against the database on every
+ * single hit — so nothing here is trusted later on.
+ * ================================================================== */
+
+/** The numbers worth seeing without opening a practice. */
+const PROJECT_SUMMARY = `
+  SELECT p.*,
+    (SELECT group_concat(u.name, ', ') FROM project_members m
+       JOIN users u ON u.id = m.user_id
+      WHERE m.project_id = p.id AND m.role = 'teacher' AND m.status = 'active') AS teacher_names,
+    (SELECT COUNT(*) FROM project_members m
+      WHERE m.project_id = p.id AND m.role = 'student'
+        AND m.status NOT IN ('disabled','pending'))                      AS student_count,
+    (SELECT COUNT(*) FROM sections  WHERE project_id = p.id)             AS song_count,
+    (SELECT COUNT(*) FROM recordings WHERE project_id = p.id)            AS recording_count,
+    (SELECT COALESCE(SUM(size_bytes),0) FROM recordings WHERE project_id = p.id)
+      + (SELECT COALESCE(SUM(image_bytes),0) FROM notes WHERE project_id = p.id) AS bytes,
+    (SELECT MAX(created_at) FROM recordings WHERE project_id = p.id)     AS last_activity
+  FROM projects p`;
+
+app.get('/admin', requireAdmin, async (c) => {
+  const r = await c.env.DB.prepare(
+    `${PROJECT_SUMMARY} ORDER BY p.status, p.name COLLATE NOCASE`,
+  ).all<Adm.ProjectSummary>();
+  return c.html(Adm.adminHome(c.get('user'), r.results ?? [], site(c), c.req.query('msg')));
+});
+
+app.post('/admin/projects', requireAdmin, async (c) => {
+  const f = await c.req.formData();
+  const name = String(f.get('name') ?? '').trim();
+  if (!name) return c.redirect('/admin?msg=' + encodeURIComponent('A practice needs a name.'));
+  const id = await createProject(c.env, {
+    name,
+    nameMl: String(f.get('name_ml') ?? ''),
+    note: String(f.get('note') ?? ''),
+    createdBy: c.get('user').id,
+  });
+  return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('Created. Now add the teacher who runs it.'));
+});
+
+async function projectSummaryOr404(env: Env, id: string): Promise<Adm.ProjectSummary | null> {
+  return (
+    (await env.DB.prepare(`${PROJECT_SUMMARY} WHERE p.id = ?`)
+      .bind(id)
+      .first<Adm.ProjectSummary>()) ?? null
+  );
+}
+
+app.get('/admin/p/:id', requireAdmin, async (c) => {
+  const p = await projectSummaryOr404(c.env, c.req.param('id'));
+  if (!p) return c.html(V.notFound(c.get('user'), site(c)), 404);
+  const members = await c.env.DB.prepare(
+    `SELECT m.user_id, m.role, m.status, m.joined_at, u.name, u.email, u.avatar_url
+       FROM project_members m
+       JOIN users u ON u.id = m.user_id
+      WHERE m.project_id = ?
+      ORDER BY m.role DESC, u.name COLLATE NOCASE`,
+  )
+    .bind(p.id)
+    .all<Adm.MemberRow>();
+  const log = await recentAdminLog(c.env, p.id, 40);
+  return c.html(
+    Adm.adminProject(c.get('user'), p, members.results ?? [], log, site(c), c.req.query('msg')),
+  );
+});
+
+app.post('/admin/p/:id', requireAdmin, async (c) => {
+  const f = await c.req.formData();
+  const id = c.req.param('id');
+  const name = String(f.get('name') ?? '').trim();
+  if (!name) return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('A practice needs a name.'));
+  await c.env.DB.prepare('UPDATE projects SET name = ?, name_ml = ?, note = ? WHERE id = ?')
+    .bind(name, String(f.get('name_ml') ?? '').trim() || null, String(f.get('note') ?? '').trim() || null, id)
+    .run();
+  return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('Saved.'));
+});
+
+app.post('/admin/p/:id/archive', requireAdmin, async (c) => {
+  const id = c.req.param('id');
+  const p = await getProject(c.env, id);
+  if (!p) return c.html(V.notFound(c.get('user'), site(c)), 404);
+  const archiving = p.status === 'active';
+  await c.env.DB.prepare(
+    `UPDATE projects SET status = ?, archived_at = ? WHERE id = ?`,
+  )
+    .bind(archiving ? 'archived' : 'active', archiving ? now() : null, id)
+    .run();
+  /* Anyone currently inside it is holding a cookie that resolveProject
+     will now refuse, which is the behaviour we want: they land back on
+     whatever else they can reach rather than in a practice that is
+     supposed to be closed. */
+  return c.redirect(
+    `/admin/p/${id}?msg=` +
+      encodeURIComponent(archiving ? 'Archived. Nothing was deleted.' : 'Back in use.'),
+  );
+});
+
+app.post('/admin/p/:id/members', requireAdmin, async (c) => {
+  const f = await c.req.formData();
+  const id = c.req.param('id');
+  const email = String(f.get('email') ?? '').trim().toLowerCase();
+  const role = String(f.get('role') ?? 'student') === 'teacher' ? 'teacher' : 'student';
+  if (!email.includes('@'))
+    return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('That does not look like an email address.'));
+
+  /* unscoped: finding the person behind an email address — identity is
+     global, and they may already be learning with another teacher.
+     addMember below is what puts them in this practice. */
+  let u = await c.env.DB.prepare('SELECT id, name FROM users WHERE lower(email) = ?')
+    .bind(email)
+    .first<{ id: string; name: string }>();
+
+  if (!u) {
+    const uid = newId('u');
+    /* unscoped: creating the person. Identity has no project_id; the
+       membership on the next line is what joins them to this one. */
+    await c.env.DB.prepare(
+      `INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)`,
+    )
+      .bind(uid, email, email.split('@')[0], now())
+      .run();
+    u = { id: uid, name: email.split('@')[0] };
+  }
+
+  await addMember(c.env, {
+    projectId: id,
+    userId: u.id,
+    role,
+    status: 'active',
+    approvedBy: c.get('user').id,
+  });
+
+  return c.redirect(
+    `/admin/p/${id}?msg=` +
+      encodeURIComponent(
+        `${u.name} is in as ${role === 'teacher' ? 'a teacher' : 'a student'}. They are active the moment they sign in with that address.`,
+      ),
+  );
+});
+
+app.post('/admin/p/:id/members/:uid/remove', requireAdmin, async (c) => {
+  const id = c.req.param('id');
+  await removeMember(c.env, id, c.req.param('uid'));
+  /* The membership goes; the person, and everything they recorded or
+     were taught, stays. Removing somebody is not a way to delete them. */
+  return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('Taken out of this practice.'));
+});
+
+/* ------------------------------------------------------------------ *
+ * In, and out again
+ * ------------------------------------------------------------------ */
+
+app.post('/admin/switch/:id', requireAdmin, async (c) => {
+  const p = await getProject(c.env, c.req.param('id'));
+  if (!p || p.status !== 'active')
+    return c.redirect('/admin?msg=' + encodeURIComponent('That practice is not open.'));
+  setActiveProject(c, p.id);
+  return c.redirect('/t/schedule/week');
+});
+
+app.post('/admin/leave', requireAdmin, (c) => {
+  clearActiveProject(c);
+  return c.redirect('/admin');
+});
 
 app.get('/t', requireTeacher, async (c) => {
   const db = c.env.DB;
