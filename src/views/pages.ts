@@ -7,6 +7,7 @@ import { studentSchedule, zoneOptions } from './schedule';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
+import type { Hat } from '../projects';
 import { t, setLang } from '../i18n';
 
 export type { AssignedRow };
@@ -72,6 +73,72 @@ export function waiting(user: User, siteName: string): string {
   </div>
 </div>`,
     { title: t('Waiting for approval'), siteName, user: null },
+  );
+}
+
+/* ================================================================== *
+ * Which hat?
+ * ================================================================== */
+
+/**
+ * The chooser, shown to anyone who holds more than one standing.
+ *
+ * It is not a settings page and it is not permanent: choosing writes a
+ * cookie, and the header offers this page again from every screen. The
+ * one rule it follows is that the hats are the *real* ones — derived
+ * from memberships, checked again on the way in — so there is nothing
+ * here to choose that the chooser cannot actually give you.
+ */
+export function chooseHat(
+  user: User,
+  hats: Hat[],
+  siteName: string,
+  current?: string,
+): string {
+  setLang(user.lang);
+
+  const card = (h: Hat) => {
+    const isNow = h.id === current;
+    const what =
+      h.kind === 'admin'
+        ? t('Manage every practice, and step into any of them.')
+        : h.role === 'teacher'
+          ? t('Your students, songs, lessons and schedule.')
+          : t('Your songs, your recordings and your teacher’s notes.');
+    const badge =
+      h.kind === 'admin'
+        ? t('Admin')
+        : h.role === 'teacher'
+          ? t('Teacher')
+          : t('Student');
+    return `<form method="post" action="/hats/choose" class="hat-form">
+  <input type="hidden" name="to" value="${esc(h.id)}">
+  <button class="hat${isNow ? ' is-now' : ''}" type="submit">
+    <span class="hat-role">${esc(badge)}</span>
+    <span class="hat-name">${h.kind === 'admin' ? esc(t('Every practice')) : titleWithScript(h.name, h.nameMl)}</span>
+    <span class="hat-what">${esc(what)}</span>
+    ${isNow ? `<span class="hat-now">${esc(t('Where you are now'))}</span>` : ''}
+  </button>
+</form>`;
+  };
+
+  return page(
+    `<div style="max-width:640px;margin:6vh auto 0">
+  <h1 style="text-align:center">${esc(t('Which hat today?'))}</h1>
+  <p class="lede" style="margin:12px auto 28px;max-width:46ch;text-align:center">
+    ${t('You hold more than one standing here. Pick the one you want to work in — you can change it any time from the menu beside your name.')}
+  </p>
+  <div class="hat-list">
+    ${hats.map(card).join('')}
+  </div>
+  <p class="hint" style="text-align:center;margin-top:26px">
+    ${t('Signed in as %s.', `<strong>${esc(user.email)}</strong>`)}
+    <form method="post" action="/auth/logout" style="display:inline">
+      <button class="btn btn-sm btn-quiet" type="submit">${esc(t('Sign out'))}</button>
+    </form>
+  </p>
+</div>`,
+    { title: t('Which hat today?'), siteName, user: null, bodyClass: 'narrow' },
   );
 }
 

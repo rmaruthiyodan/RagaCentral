@@ -1240,3 +1240,38 @@ a.wa:hover{text-decoration:underline}
 @media (max-width:560px){ .visiting{ flex-direction:column; align-items:stretch; text-align:center } }
 .row.is-dim{ opacity:.55 }
 .crumb{ margin:0 0 10px; font-size:13px }
+
+/* ------------------------------------------------------------------
+   Which hat?
+
+   One person can be the admin, a teacher in their own practice and a
+   student in somebody else's, all at once. None of those is more true
+   than the others, so the chooser gives them equal weight rather than
+   promoting one and hiding the rest behind a menu.
+   ------------------------------------------------------------------ */
+.hat-list{display:grid;gap:12px}
+.hat-form{margin:0}
+.hat{
+  display:grid;gap:3px;width:100%;text-align:left;
+  background:var(--surface);border:1px solid var(--line-strong);
+  border-radius:var(--radius);padding:15px 17px;cursor:pointer;
+  font-family:var(--f-body);color:var(--ink);
+  transition:border-color .12s,background .12s;
+}
+.hat:hover{border-color:var(--brass);background:var(--surface-2)}
+.hat:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.hat.is-now{border-color:var(--brass);background:var(--brass-soft)}
+.hat-role{
+  font-family:var(--f-mono);font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-3);
+}
+.hat.is-now .hat-role{color:var(--brass-ink)}
+.hat-name{font-family:var(--f-display);font-size:1.25rem;font-weight:600;line-height:1.25}
+.hat-what{font-size:13.5px;color:var(--ink-2)}
+.hat-now{
+  font-family:var(--f-mono);font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--brass-ink);margin-top:4px;
+}
+/* The menu row that leads here. It is an anchor rather than a button,
+   so it needs the text-decoration reset that .tp-opt never needed. */
+.tp-link{text-decoration:none;display:block}

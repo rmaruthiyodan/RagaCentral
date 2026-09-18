@@ -728,4 +728,23 @@ export const ML: Record<string, string> = {
   'Match my device': 'എന്റെ ഉപകരണത്തിനൊപ്പം',
   'Always light': 'എപ്പോഴും വെളിച്ചം',
   'Always dark': 'എപ്പോഴും ഇരുട്ട്',
+  /* ---- Which hat? ---------------------------------------------- *
+     Shown to anyone who is more than one thing here: the admin, a
+     teacher of their own practice, a student in another teacher class. */
+  'Which hat today?': 'ഇന്ന് ഏത് വേഷം?',
+  'You hold more than one standing here. Pick the one you want to work in — you can change it any time from the menu beside your name.':
+    'ഇവിടെ നിങ്ങൾക്ക് ഒന്നിലധികം സ്ഥാനങ്ങളുണ്ട്. ഇപ്പോൾ ഏതിലാണോ പ്രവർത്തിക്കേണ്ടത് അത് തിരഞ്ഞെടുക്കുക — പേരിന് അടുത്തുള്ള മെനുവിൽ നിന്ന് എപ്പോൾ വേണമെങ്കിലും മാറ്റാം.',
+  'Every practice': 'എല്ലാ ക്ലാസ്സുകളും',
+  'Manage every practice, and step into any of them.':
+    'എല്ലാ ക്ലാസ്സുകളും കൈകാര്യം ചെയ്യാം, ഏതിലേക്കും കയറാം.',
+  'Your students, songs, lessons and schedule.':
+    'നിങ്ങളുടെ ശിഷ്യർ, കീർത്തനങ്ങൾ, ക്ലാസ്സുകൾ, സമയക്രമം.',
+  'Your songs, your recordings and your teacher’s notes.':
+    'നിങ്ങളുടെ കീർത്തനങ്ങൾ, റെക്കോർഡുകൾ, ഗുരുവിന്റെ കുറിപ്പുകൾ.',
+  'Where you are now': 'ഇപ്പോൾ ഇവിടെ',
+  'Signed in as %s.': '%s ആയി പ്രവേശിച്ചിരിക്കുന്നു.',
+  'You': 'നിങ്ങൾ',
+  'Switch role': 'വേഷം മാറ്റുക',
+  'Admin': 'അഡ്മിൻ',
+  'Teacher': 'ഗുരു',
 };

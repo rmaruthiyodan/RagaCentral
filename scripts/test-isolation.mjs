@@ -998,9 +998,9 @@ async function main() {
   await GET(dual, `/dev/login?email=${encodeURIComponent(N.dual)}`);
   const noPick = await GET(dual, '/');
   check(
-    'a student in two practices with no project chosen is not silently dropped into one',
-    noPick.status === 302 && noPick.location !== '/me',
-    `${noPick.line} -> ${noPick.status} ${noPick.location ?? ''} — they were put into a practice without choosing`,
+    'a student in two practices with no project chosen is asked which one',
+    noPick.status === 302 && noPick.location === '/hats',
+    `${noPick.line} -> ${noPick.status} ${noPick.location ?? ''} — expected the chooser at /hats`,
   );
 
   for (const [proj, mine, theirs, myLeft, theirLeft] of [
@@ -1060,6 +1060,105 @@ async function main() {
       "B's material rendered for someone holding only a cookie",
     );
   }
+
+  /* ================================================================
+   * 10. Which hat?
+   *
+   * One identity, several standings. The chooser is the only thing
+   * standing between "I am the admin, and I also teach" and a landing
+   * page that silently picks one for you — so what matters here is not
+   * that it renders, but that it cannot be talked into handing over a
+   * hat the person does not hold.
+   * ================================================================ */
+
+  console.log('\n--- which hat? ---');
+
+  /* The dual student: two memberships, so a real choice. */
+  dual.cookies.delete('sruti_project');
+  const chooser = await GET(dual, '/hats');
+  if (checkStatus('a student in two practices is offered the chooser', chooser, 200)) {
+    check('  …and both practices are on it', chooser.text.includes(N.projectA) && chooser.text.includes(N.projectB),
+      `A present: ${chooser.text.includes(N.projectA)}, B present: ${chooser.text.includes(N.projectB)}`);
+    check('  …and the admin console is not, for someone who is not an admin',
+      !chooser.text.includes('/hats/choose" class="hat-form"><input type="hidden" name="to" value="admin"'),
+      'the admin hat was offered to a student');
+  }
+
+  const picked = await POST(dual, '/hats/choose', { to: A.id });
+  if (checkStatus('choosing a practice lands them in it', picked, 302)) {
+    check('  …on their own pages, not a teacher\u2019s', picked.location === '/me', `went to ${picked.location}`);
+    check('  …and the cookie now names that project', dual.cookies.get('sruti_project') === A.id,
+      `cookie is ${dual.cookies.get('sruti_project')}`);
+    const after = await GET(dual, '/me');
+    check('  …and they see that practice\u2019s song', after.status === 200 && after.text.includes(N.songA),
+      `${after.line} -> ${after.status}`);
+  }
+
+  /* A student of A only, asking for B. The chooser is a preference; the
+     membership is the permission. */
+  const onlyA = new Jar('studentAOnly');
+  await GET(onlyA, `/dev/login?email=${encodeURIComponent(N.studentA)}`);
+  const grab = await POST(onlyA, '/hats/choose', { to: B.id });
+  check('a student of A cannot choose their way into B', grab.status === 302 && grab.location === '/hats',
+    `${grab.line} -> ${grab.status} ${grab.location ?? ''}`);
+  check('  …and no cookie for B was written', onlyA.cookies.get('sruti_project') !== B.id,
+    `cookie is ${onlyA.cookies.get('sruti_project')}`);
+
+  /* Nor can they claim to be the admin. */
+  const claimAdmin = await POST(onlyA, '/hats/choose', { to: 'admin' });
+  check('a student cannot choose the admin hat', claimAdmin.status === 302 && claimAdmin.location === '/hats',
+    `${claimAdmin.line} -> ${claimAdmin.status} ${claimAdmin.location ?? ''}`);
+  const stillStudent = await GET(onlyA, '/admin');
+  check('  …and /admin still refuses them', stillStudent.status === 302 && stillStudent.location === '/',
+    `${stillStudent.line} -> ${stillStudent.status} ${stillStudent.location ?? ''}`);
+
+  /* One hat means no question. Teacher A belongs to exactly one
+     practice and is not an admin, so the chooser must get out of the
+     way rather than make them click through it. */
+  const taHats = await GET(ta, '/hats');
+  check('a teacher with one practice is not asked to choose',
+    taHats.status === 302 && taHats.location === '/t/schedule/week',
+    `${taHats.line} -> ${taHats.status} ${taHats.location ?? ''}`);
+
+  /* The admin, who from here also teaches A: two hats, and the one
+     they pick has to stick. */
+  r = await POST(admin, `/admin/p/${A.id}/members`, { email: N.adminEmail, role: 'teacher' });
+  checkStatus('the admin is also made a teacher of A', r, 302);
+  admin.cookies.delete('sruti_project');
+
+  const adminHats = await GET(admin, '/hats');
+  if (checkStatus('an admin who also teaches is offered both', adminHats, 200)) {
+    check('  …the practice they teach', adminHats.text.includes(N.projectA), 'their practice is missing');
+    check('  …and the admin console', adminHats.text.includes('value="admin"'), 'the admin hat is missing');
+  }
+
+  const beAdmin = await POST(admin, '/hats/choose', { to: 'admin' });
+  check('the admin can choose the console', beAdmin.status === 302 && beAdmin.location === '/admin',
+    `${beAdmin.line} -> ${beAdmin.status} ${beAdmin.location ?? ''}`);
+  const adminLanding = await GET(admin, '/');
+  check('  …and is not dropped back into their own practice next time',
+    adminLanding.status === 302 && adminLanding.location === '/admin',
+    `${adminLanding.line} -> ${adminLanding.status} ${adminLanding.location ?? ''} — the membership overrode the choice`);
+
+  const beTeacher = await POST(admin, '/hats/choose', { to: A.id });
+  check('the same admin can put the teacher hat on', beTeacher.status === 302 && beTeacher.location === '/t/schedule/week',
+    `${beTeacher.line} -> ${beTeacher.status} ${beTeacher.location ?? ''}`);
+  const teaching = await GET(admin, '/t');
+  check('  …and teaches their own practice, not as a visiting admin',
+    teaching.status === 200 && !teaching.text.includes('class="visiting"'),
+    `${teaching.line} -> ${teaching.status}; the visiting banner appeared in their own practice`);
+
+  /* Leaving a practice they are only visiting must put the admin hat
+     back on, not leave them hatless for the fallback to pick up. */
+  await POST(admin, `/admin/switch/${B.id}`, {});
+  const visitingB = await GET(admin, '/t');
+  check('the admin visiting B is told so', visitingB.status === 200 && visitingB.text.includes('class="visiting"'),
+    `${visitingB.line} -> ${visitingB.status}; no visiting banner`);
+  await POST(admin, '/admin/leave', {});
+  const left = await GET(admin, '/');
+  check('leaving a visited practice returns to the console, not to their own students',
+    left.status === 302 && left.location === '/admin',
+    `${left.line} -> ${left.status} ${left.location ?? ''}`);
 }
 
 /* ================================================================== */

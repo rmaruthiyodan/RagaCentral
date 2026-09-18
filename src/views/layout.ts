@@ -105,6 +105,8 @@ function themePicker(palette: string, mode: string): string {
           name="theme_mode" value="${esc(m.id)}" type="submit">${esc(t(m.name))}</button>`,
       ).join('')}
     </form>
+    <div class="tp-h">${esc(t('You'))}</div>
+    <a class="tp-opt tp-link" href="/hats">${esc(t('Switch role'))}</a>
   </div>
 </details>`;
 }

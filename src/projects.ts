@@ -31,6 +31,16 @@ type Ctx = Context<AppEnv, any, any>;
 
 const PROJECT_COOKIE = 'sruti_project';
 
+/**
+ * The cookie value that means "I chose the admin console".
+ *
+ * It lives in the same cookie as the project id, because it is the same
+ * question — which hat am I wearing — and two cookies would let them
+ * disagree. It is not a project id and never will be: no project id can
+ * collide with it, because they are all minted as 'p_' + random.
+ */
+export const ADMIN_HAT = 'admin';
+
 export interface Project {
   id: string;
   name: string;
@@ -147,6 +157,12 @@ export function clearActiveProject(c: Ctx): void {
 export async function resolveProject(c: Ctx, user: User): Promise<Acting | null> {
   const wanted = getCookie(c, PROJECT_COOKIE);
   const isAdmin = Boolean((user as User & { is_admin?: number }).is_admin);
+
+  /* An admin who has chosen the admin console is acting in no project,
+     deliberately. Without this, the fallback below would notice they
+     have exactly one membership and drop them into their own practice —
+     which is precisely the hat they just took off. */
+  if (wanted === ADMIN_HAT && isAdmin) return null;
 
   if (wanted) {
     const p = await getProject(c.env, wanted);
@@ -293,6 +309,65 @@ export async function recentAdminLog(
     .bind(projectId, limit)
     .all<AdminLogRow>();
   return r.results ?? [];
+}
+
+/* ------------------------------------------------------------------ *
+ * Hats
+ *
+ * One person, several standings. Ratish is the admin, and he also
+ * teaches; a student may learn from two teachers; a teacher may be
+ * somebody else's student. None of that is a contradiction, and none of
+ * it is knowable from the `users` row — it is exactly the set of
+ * memberships, plus the admin flag.
+ *
+ * So rather than guess which one someone meant, ask them. `hatsFor`
+ * is the list to choose from, and it is derived, never stored: add a
+ * membership and the hat appears; end it and the hat goes.
+ * ------------------------------------------------------------------ */
+
+export interface Hat {
+  /** A project id, or ADMIN_HAT. This is what goes in the cookie. */
+  id: string;
+  kind: 'admin' | 'member';
+  name: string;
+  nameMl: string | null;
+  /** Null for the admin hat, which is above roles rather than one of them. */
+  role: 'teacher' | 'student' | null;
+}
+
+/**
+ * Every standing this person could choose right now.
+ *
+ * No new query: the memberships are the same ones the rest of the app
+ * already reads, filtered to the ones that are a way in.
+ */
+export async function hatsFor(env: Env, user: User): Promise<Hat[]> {
+  const hats: Hat[] = [];
+  for (const m of await membershipsFor(env, user.id)) {
+    hats.push({
+      id: m.project_id,
+      kind: 'member',
+      name: m.project_name,
+      nameMl: m.project_name_ml,
+      role: m.role,
+    });
+  }
+  if (user.is_admin) {
+    hats.push({ id: ADMIN_HAT, kind: 'admin', name: 'Every practice', nameMl: null, role: null });
+  }
+  return hats;
+}
+
+/**
+ * Which hat the browser says it is wearing, if any.
+ *
+ * Like the project cookie it reads, this is a preference and not a
+ * permission — whoever acts on it checks first. Its only job is to tell
+ * "they have chosen" apart from "they have not been asked yet", which is
+ * the difference between showing the chooser and not.
+ */
+export function chosenHat(c: Ctx): string | undefined {
+  return getCookie(c, PROJECT_COOKIE);
 }
 
 /* ------------------------------------------------------------------ *

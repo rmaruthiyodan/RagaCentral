@@ -20,6 +20,7 @@ import {
 import {
   pid, acting, addMember, removeMember, createProject, getProject,
   setActiveProject, clearActiveProject, recentAdminLog, resolveProject, logAdmin,
+  hatsFor, chosenHat, ADMIN_HAT,
 } from './projects';
 import { newId, now, extFor, slugify } from './util';
 import { isLang } from './i18n';
@@ -150,12 +151,73 @@ app.post('/settings/theme', requireUser, async (c) => {
  * So ask the same question the guards ask, one hop earlier: is there a
  * project this person can act in, and are they a teacher of it?
  */
+/**
+ * Where this person belongs right now.
+ *
+ * One standing means there is nothing to ask about, so nobody with a
+ * single role ever sees the chooser. More than one, and nothing chosen
+ * yet, and we ask instead of guessing — which is also what fixes the
+ * dead end this used to have: anyone belonging to two practices
+ * resolved to no project at all and was sent to the waiting page for
+ * an approval that had already happened.
+ */
 async function landingFor(c: Context<AppEnv, any, any>, user: User): Promise<string> {
+  if (!chosenHat(c)) {
+    const hats = await hatsFor(c.env, user);
+    if (hats.length > 1) return '/hats';
+  }
   const acting = await resolveProject(c, user);
   if (acting) return acting.isTeacher ? '/t/schedule/week' : '/me';
   if (user.is_admin) return '/admin';
   return '/waiting';
 }
+
+/** Where a chosen hat lands you. */
+function hatLanding(kind: 'admin' | 'member', role: 'teacher' | 'student' | null): string {
+  if (kind === 'admin') return '/admin';
+  return role === 'teacher' ? '/t/schedule/week' : '/me';
+}
+
+/* ------------------------------------------------------------------ *
+ * Choosing a hat
+ *
+ * Deliberately outside requireUser: that guard's whole job is to settle
+ * which project you are acting in, which is the question being asked
+ * here. Signed in is the only thing these two need to know.
+ * ------------------------------------------------------------------ */
+
+app.get('/hats', async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect('/');
+
+  const hats = await hatsFor(c.env, user);
+  if (hats.length === 0) return c.redirect('/waiting');
+  if (hats.length === 1) {
+    /* Nothing to choose. Record it anyway so the next page does not
+       come straight back here, and go. */
+    setActiveProject(c, hats[0].id);
+    return c.redirect(hatLanding(hats[0].kind, hats[0].role));
+  }
+  return c.html(V.chooseHat(user, hats, site(c), chosenHat(c)));
+});
+
+app.post('/hats/choose', async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect('/');
+
+  const to = String((await c.req.formData()).get('to') ?? '');
+  /* The cookie is a preference; this is the permission. A hat that is
+     not in the list — a forged id, or one that was real until a
+     membership ended a moment ago — buys nothing. */
+  const hat = (await hatsFor(c.env, user)).find((h) => h.id === to);
+  if (!hat) return c.redirect('/hats');
+
+  setActiveProject(c, hat.id);
+  /* The redirect is computed from the hat rather than read back from
+     the cookie, because the cookie we just set is on the *response* —
+     this request still sees the old one. */
+  return c.redirect(hatLanding(hat.kind, hat.role));
+});
 
 app.get('/', async (c) => {
   const user = await currentUser(c);
@@ -535,7 +597,11 @@ app.post('/admin/switch/:id', requireAdmin, async (c) => {
 });
 
 app.post('/admin/leave', requireAdmin, (c) => {
-  clearActiveProject(c);
+  /* The admin hat, not no hat. Clearing the cookie outright would leave
+     an admin who also teaches to be picked up by the single-membership
+     fallback and dropped straight back into their own practice — which
+     looks, from the outside, like the Leave button not working. */
+  setActiveProject(c, ADMIN_HAT);
   return c.redirect('/admin');
 });
 
