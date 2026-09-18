@@ -473,7 +473,25 @@ app.post('/admin/projects', requireAdmin, async (c) => {
     note: String(f.get('note') ?? ''),
     createdBy: c.get('user').id,
   });
-  return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('Created. Now add the teacher who runs it.'));
+
+  /* The admin joins as a teacher, always.
+     An admin can already reach any practice by switching into it, but
+     that is the visiting path: no membership, every change written to
+     the audit log, and a red banner across the top saying so. That is
+     right for looking at somebody else's practice and wrong for one
+     you set up yourself. Being a member makes it yours \u2014 it appears in
+     the hat chooser, it opens without a banner, and nothing about it is
+     recorded as an intrusion.
+     Matched by the rule in backfill.sql, which does the same for every
+     practice that already exists. */
+  await addMember(c.env, {
+    projectId: id,
+    userId: c.get('user').id,
+    role: 'teacher',
+    approvedBy: c.get('user').id,
+  });
+
+  return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('Created. You are its teacher; add anyone else who teaches it.'));
 });
 
 async function projectSummaryOr404(env: Env, id: string): Promise<Adm.ProjectSummary | null> {

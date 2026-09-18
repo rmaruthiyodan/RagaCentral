@@ -75,3 +75,32 @@ UPDATE recordings  SET project_id = 'p_first' WHERE project_id IS NULL;
 UPDATE notes       SET project_id = 'p_first' WHERE project_id IS NULL;
 UPDATE sessions    SET project_id = 'p_first' WHERE project_id IS NULL;
 UPDATE class_slots SET project_id = 'p_first' WHERE project_id IS NULL;
+
+-- ===================================================================
+-- Every admin teaches every practice.
+--
+-- Asked for as "make myself a teacher in all the projects by default".
+-- An admin could already step into any practice, but that is the
+-- visiting path: no membership, a banner across the top, and every
+-- change written to the audit log. Right for somebody else's practice,
+-- wrong for one you run yourself.
+--
+-- A standing rule rather than a one-off migration, so a practice
+-- created before this — or by someone else — is covered too. INSERT OR
+-- IGNORE means it never touches a membership that already exists, so a
+-- role deliberately set to 'student' is left exactly as it is.
+--
+-- The one consequence worth knowing: an admin removed from a practice
+-- is added back the next time this runs, because "every admin teaches
+-- every practice" is what this says. Remove the statement, not the row,
+-- if that is ever not what you want.
+-- ===================================================================
+
+INSERT OR IGNORE INTO project_members
+  (id, project_id, user_id, role, status, approved_at, approved_by, joined_at)
+SELECT 'pm_' || u.id || '_' || p.id, p.id, u.id, 'teacher', 'active',
+       datetime('now'), u.id, datetime('now')
+  FROM users u
+  CROSS JOIN projects p
+ WHERE u.is_admin = 1
+   AND p.status = 'active';

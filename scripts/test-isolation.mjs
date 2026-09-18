@@ -369,6 +369,7 @@ async function main() {
      BOOTSTRAP_ADMIN_EMAIL during a real Google sign-in, which local dev
      never reaches. So the one bit it cannot grant is granted here. */
   d1(`UPDATE users SET is_admin = 1 WHERE lower(email) = '${N.adminEmail}'`);
+  const adminId = d1one(`SELECT id FROM users WHERE lower(email) = '${N.adminEmail}'`)[0].id;
 
   /* ================================================================
    * 2. Two projects, each with its own teacher — through /admin
@@ -935,6 +936,22 @@ async function main() {
 
   console.log('\n--- the admin switching into B ---');
 
+  /* An admin now joins every practice they create as a teacher, which
+     means the visiting path \u2014 banner, audit log, no membership \u2014 no
+     longer applies to their own. It still has to work for a practice
+     they are genuinely outside of, and that is what is being tested
+     here, so take the membership away first.
+     Removing it rather than never creating it is deliberate: it also
+     proves that leaving a practice really does put the admin back
+     outside it. */
+  r = await POST(admin, `/admin/p/${B.id}/members/${adminId}/remove`, {});
+  checkStatus('the admin steps out of B, so they are a visitor to it', r, 302);
+  check(
+    '  …and holds no membership there',
+    d1one(`SELECT COUNT(*) AS n FROM project_members WHERE project_id='${B.id}' AND user_id='${adminId}'`)[0].n === 0,
+    'the membership row survived the removal',
+  );
+
   const logBefore = d1one(`SELECT COUNT(*) AS n FROM admin_log WHERE project_id='${B.id}'`)[0].n;
 
   got = await POST(admin, `/admin/switch/${B.id}`, {});
@@ -1122,8 +1139,11 @@ async function main() {
 
   /* The admin, who from here also teaches A: two hats, and the one
      they pick has to stick. */
-  r = await POST(admin, `/admin/p/${A.id}/members`, { email: N.adminEmail, role: 'teacher' });
-  checkStatus('the admin is also made a teacher of A', r, 302);
+  check(
+    'the admin is a teacher of the practice they created, without being added by hand',
+    d1one(`SELECT role FROM project_members WHERE project_id='${A.id}' AND user_id='${adminId}'`)[0]?.role === 'teacher',
+    'no teacher membership was created for the admin when they made the project',
+  );
   admin.cookies.delete('sruti_project');
 
   const adminHats = await GET(admin, '/hats');
