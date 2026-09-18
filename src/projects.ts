@@ -294,3 +294,29 @@ export async function recentAdminLog(
     .all<AdminLogRow>();
   return r.results ?? [];
 }
+
+/* ------------------------------------------------------------------ *
+ * The one-liner every scoped query uses
+ * ------------------------------------------------------------------ */
+
+/**
+ * The id of the project this request is acting in.
+ *
+ * Throws if it is missing rather than returning null, and that is
+ * deliberate: every caller is inside a guard that set it, so an absent
+ * project means a route was wired up wrong. A 500 on the first request
+ * in testing is a much better outcome than a query that quietly drops
+ * its WHERE clause and returns another teacher's students.
+ */
+export function pid(c: Ctx): string {
+  const acting = c.get('acting');
+  if (!acting) throw new Error('No acting project — this route is missing a guard that sets one.');
+  return acting.project.id;
+}
+
+/** The whole acting context, for the routes that need more than the id. */
+export function acting(c: Ctx): Acting {
+  const a = c.get('acting');
+  if (!a) throw new Error('No acting project — this route is missing a guard that sets one.');
+  return a;
+}

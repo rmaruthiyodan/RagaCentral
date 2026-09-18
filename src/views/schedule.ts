@@ -1,4 +1,5 @@
 import { page, avatar } from './layout';
+import type { Visiting } from './layout';
 import { esc } from '../util';
 import type { User, ClassSlot } from '../types';
 import {
@@ -152,10 +153,11 @@ ${
 
 export function schedulePageWrapped(
   user: User, days: DayGroup[], windowDays: number, siteName: string, msg?: string,
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   return page(schedulePage(user, days, windowDays, siteName, msg), {
-    title: t('Schedule'), user, siteName, nav: 'schedule',
+    title: t('Schedule'), user, siteName, nav: 'schedule', visiting,
   });
 }
 
@@ -229,6 +231,7 @@ export function slotsPage(
   rows: StudentSlots[],
   siteName: string,
   msg?: string,
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   const block = ({ student, slots }: StudentSlots) => `<div class="card" style="margin-bottom:14px">
@@ -313,7 +316,7 @@ export function slotsPage(
 </div>
 ${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 ${rows.length ? rows.map(block).join('') : `<div class="empty">${t('No students yet.')}</div>`}`,
-    { title: t('Weekly slots'), user, siteName, nav: 'schedule' },
+    { title: t('Weekly slots'), user, siteName, nav: 'schedule', visiting },
   );
 }
 
@@ -399,6 +402,7 @@ export function weekCalendar(
   cells: DayGroup[],
   siteName: string,
   msg?: string,
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   const today = istToday();
@@ -479,7 +483,7 @@ ${
   ${total === 1 ? t('%s class this week.', total) : t('%s classes this week.', total)}
   ${t('Struck through means no class; amber means moved; red means missed.')}
 </p>`,
-    { title: t('This week'), user, siteName, nav: 'schedule' },
+    { title: t('This week'), user, siteName, nav: 'schedule', visiting },
   );
 }
 
@@ -489,6 +493,7 @@ export function dayView(
   items: { occ: Occurrence; student: WithZone }[],
   siteName: string,
   msg?: string,
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   const today = istToday();
@@ -569,7 +574,7 @@ export function dayView(
 </div>
 
 ${items.length ? items.map(row).join('') : `<div class="empty">${t('No classes on this day.')}</div>`}`,
-    { title: prettyIstDate(date), user, siteName, nav: 'schedule' },
+    { title: prettyIstDate(date), user, siteName, nav: 'schedule', visiting },
   );
 }
 

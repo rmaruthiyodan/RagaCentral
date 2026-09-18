@@ -104,8 +104,18 @@ if [ "${DICTATE:-}" = "off" ]; then
   echo "   (and DICTATE=off is set, which hides it regardless)"
 fi
 if [ "${DEV_LOGIN:-true}" = "true" ]; then
-  echo "   no Google credentials needed to look around:"
-  echo "   http://localhost:8787/dev/login?email=teacher@example.com&role=teacher"
+  echo ""
+  echo "   No Google credentials needed to look around. Start here:"
+  echo ""
+  echo "     ADMIN    http://localhost:8787/dev/login?email=admin@example.com&admin=1"
+  echo ""
+  echo "   That lands on /admin. Make a practice, note the p_... id in the"
+  echo "   address bar, then sign a teacher and a student into it:"
+  echo ""
+  echo "     TEACHER  http://localhost:8787/dev/login?email=teacher@example.com&role=teacher&project=p_xxxx"
+  echo "     STUDENT  http://localhost:8787/dev/login?email=anjali@example.com&role=student&project=p_xxxx"
+  echo ""
+  echo "   Without &project=... an account belongs to no practice and waits."
 fi
 
 # --ip 0.0.0.0 so the port is reachable from outside the container.

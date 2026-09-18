@@ -1224,3 +1224,19 @@ a.wa:hover{text-decoration:underline}
 @media (max-width:520px){
   .tp-menu{position:fixed;right:10px;left:10px;top:56px;min-width:0}
 }
+
+/* An admin inside someone else's practice. Deliberately loud and
+   deliberately sticky: the one mistake this prevents is changing a
+   teacher's data while believing you are in your own. */
+.visiting{
+  position:sticky; top:0; z-index:40;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:8px 16px; font-size:13px; font-weight:600;
+  background:var(--brass-700,#7a5420); color:#fff;
+  border-bottom:1px solid rgba(0,0,0,.2);
+}
+.visiting .btn{ background:rgba(255,255,255,.16); color:#fff; border-color:rgba(255,255,255,.35) }
+.visiting .btn:hover{ background:rgba(255,255,255,.28) }
+@media (max-width:560px){ .visiting{ flex-direction:column; align-items:stretch; text-align:center } }
+.row.is-dim{ opacity:.55 }
+.crumb{ margin:0 0 10px; font-size:13px }

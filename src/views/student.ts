@@ -8,11 +8,12 @@
  * ================================================================== */
 
 import { page, avatar, inlineTitle } from './layout';
+import type { Visiting } from './layout';
 import { resumeCard, lessonLog } from './sessions';
 import { monthCalendar, zoneOptions } from './schedule';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, monthLabel, type Occurrence } from '../tz';
-import type { User, Section, SessionRow, ClassSlot, AssignedRow } from '../types';
+import type { User, Section, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
 import { t, setLang } from '../i18n';
 
 export type StudentTab = 'overview' | 'songs' | 'lessons' | 'schedule' | 'settings';
@@ -31,7 +32,7 @@ export interface TabCounts {
   lessons: number;
 }
 
-function shell(student: User, tab: StudentTab, counts: TabCounts, body: string): string {
+function shell(student: ProjectPerson, tab: StudentTab, counts: TabCounts, body: string): string {
   const stab = (id: StudentTab, href: string, label: string, badge?: number) =>
     `<a class="stab${tab === id ? ' is-on' : ''}" href="${esc(href)}">${esc(label)}${
       badge ? ` <span class="stab-n">${badge}</span>` : ''
@@ -89,12 +90,13 @@ ${body}`;
 
 export function overviewTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   d: {
     sessions: SessionRow[];
     upcoming: Occurrence[];
     learning: AssignedRow[];
+    visiting?: Visiting | null;
   },
   siteName: string,
   msg?: string,
@@ -209,7 +211,7 @@ ${
     : `<div class="empty">${t('No classes logged yet.')}</div>`
 }`,
     ),
-    { title: student.name, user, siteName, nav: 'students' },
+    { title: student.name, user, siteName, nav: 'students', visiting: d.visiting ?? null },
   );
 }
 
@@ -219,12 +221,13 @@ ${
 
 export function songsTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   assigned: AssignedRow[],
   catalogue: (Section & { group_name: string | null })[],
   siteName: string,
   msg?: string,
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   const inProgress = assigned.filter((a) => !a.completed_at);
@@ -329,7 +332,7 @@ ${
   }
 </div>`,
     ),
-    { title: t('%s · Songs', student.name), user, siteName, nav: 'students' },
+    { title: t('%s · Songs', student.name), user, siteName, nav: 'students', visiting },
   );
 }
 
@@ -339,7 +342,7 @@ ${
 
 export function lessonsTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   d: {
     sessions: SessionRow[];
@@ -349,6 +352,7 @@ export function lessonsTab(
     prevMonth: string;
     nextMonth: string;
     dictate?: boolean;
+    visiting?: Visiting | null;
   },
   siteName: string,
   msg?: string,
@@ -385,6 +389,7 @@ ${lessonLog(d.sessions, { isTeacher: true, studentId: student.id, assigned: d.as
       user,
       siteName,
       nav: 'students',
+      visiting: d.visiting ?? null,
       scripts: d.dictate ? ['/dictate.js'] : [],
     },
   );
@@ -396,9 +401,9 @@ ${lessonLog(d.sessions, { isTeacher: true, studentId: student.id, assigned: d.as
 
 export function scheduleTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
-  d: { slots: ClassSlot[]; upcoming: Occurrence[] },
+  d: { slots: ClassSlot[]; upcoming: Occurrence[]; visiting?: Visiting | null },
   siteName: string,
   msg?: string,
 ): string {
@@ -478,7 +483,7 @@ ${
     : `<div class="empty">${t('Nothing coming up.')}</div>`
 }`,
     ),
-    { title: t('%s · Schedule', student.name), user, siteName, nav: 'students' },
+    { title: t('%s · Schedule', student.name), user, siteName, nav: 'students', visiting: d.visiting ?? null },
   );
 }
 
@@ -488,10 +493,11 @@ ${
 
 export function settingsTab(
   user: User,
-  student: User,
+  student: ProjectPerson,
   counts: TabCounts,
   siteName: string,
   msg?: string,
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   return page(
@@ -568,6 +574,6 @@ export function settingsTab(
   </div>
 </div>`,
     ),
-    { title: t('%s · Settings', student.name), user, siteName, nav: 'students' },
+    { title: t('%s · Settings', student.name), user, siteName, nav: 'students', visiting },
   );
 }

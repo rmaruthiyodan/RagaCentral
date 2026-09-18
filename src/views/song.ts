@@ -10,6 +10,7 @@
  * ================================================================== */
 
 import { page, avatar, titleWithScript, disclosure, discloseAll } from './layout';
+import type { Visiting } from './layout';
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import { spoken } from './sessions';
 import type { User, Group, Section, Recording, Note } from '../types';
@@ -45,6 +46,8 @@ export interface SongPageData {
   assignable: SongStudent[];
   /** Show the speak-it button on note bodies (dictation is configured). */
   dictate?: boolean;
+  /** Set when an admin is acting inside a practice they do not teach. */
+  visiting?: Visiting | null;
 }
 
 function partsDatalist(): string {
@@ -783,6 +786,7 @@ ${
       user,
       siteName,
       nav: 'catalogue',
+      visiting: d.visiting ?? null,
       scripts: d.dictate
         ? ['/player.js', '/recorder.js', '/dictate.js']
         : ['/player.js', '/recorder.js'],

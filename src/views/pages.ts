@@ -1,11 +1,12 @@
 import {
   page, avatar, inlineTitle, titleWithScript, flash, disclosure, discloseAll,
 } from './layout';
+import type { Visiting } from './layout';
 import { resumeCard, lessonLog, spoken } from './sessions';
 import { studentSchedule, zoneOptions } from './schedule';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
-import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow } from '../types';
+import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
 import { t, setLang } from '../i18n';
 
 export type { AssignedRow };
@@ -78,7 +79,7 @@ export function waiting(user: User, siteName: string): string {
  * Teacher — students
  * ================================================================== */
 
-export interface StudentRow extends User {
+export interface StudentRow extends ProjectPerson {
   song_count: number;
   rec_count: number;
   last_activity: string | null;
@@ -93,6 +94,7 @@ export function teacherStudents(
   msg?: string,
   q = '',
   filter: { showAll: boolean; hiddenCount: number } = { showAll: false, hiddenCount: 0 },
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   const pct = Math.min(100, (storage.bytes / (10 * 1024 ** 3)) * 100);
@@ -206,11 +208,17 @@ ${rows}
     ${t('Beyond 10 GB it costs about 1.5 cents per gigabyte per month. Playback is always free.')}
   </p>
 </div>`,
-    { title: t('Students'), user, siteName, nav: 'students' },
+    { title: t('Students'), user, siteName, nav: 'students', visiting },
   );
 }
 
-export function teacherApprovals(user: User, pending: User[], siteName: string, msg?: string): string {
+export function teacherApprovals(
+  user: User,
+  pending: User[],
+  siteName: string,
+  msg?: string,
+  visiting?: Visiting | null,
+): string {
   setLang(user.lang);
   const rows = pending.length
     ? `<div class="rows">${pending
@@ -255,7 +263,7 @@ ${rows}
     <button class="btn btn-primary" type="submit">${t('Add student')}</button>
   </form>
 </div>`,
-    { title: t('Approvals'), user, siteName, nav: 'approvals' },
+    { title: t('Approvals'), user, siteName, nav: 'approvals', visiting },
   );
 }
 
@@ -270,6 +278,7 @@ export function teacherCatalogue(
   siteName: string,
   msg?: string,
   q = '',
+  visiting?: Visiting | null,
 ): string {
   setLang(user.lang);
   const byGroup = new Map<string, (Section & { assigned_count: number })[]>();
@@ -477,7 +486,7 @@ ${
        ${t('Start by adding a group like "Sarali varisai", then put songs in it.')}</div>`
     : ''
 }`,
-    { title: t('Songs'), user, siteName, nav: 'catalogue' },
+    { title: t('Songs'), user, siteName, nav: 'catalogue', visiting },
   );
 }
 
@@ -496,11 +505,17 @@ export function songPage(opts: {
   msg?: string;
   /** Show the speak-it button on the note box. */
   dictate?: boolean;
+  /** Teacher of THIS project — from the acting membership. */
+  isTeacher?: boolean;
+  /** Set when an admin is acting inside a practice they do not teach. */
+  visiting?: Visiting | null;
 }): string {
   setLang(opts.viewer.lang);
   const { viewer, student, section, recordings, notes, siteName, msg } = opts;
   const dictate = Boolean(opts.dictate);
-  const isTeacher = viewer.role === 'teacher';
+  /* Which way the back link points. Not viewer.role — that is the dead
+     global column, and a teacher of another project is a student here. */
+  const isTeacher = Boolean(opts.isTeacher);
   const backHref = isTeacher ? `/t/s/${student.id}` : '/me';
   const backLabel = isTeacher ? `← ${student.name}` : `← ${t('My songs')}`;
 
@@ -857,6 +872,7 @@ ${
       user: viewer,
       siteName,
       nav: isTeacher ? 'students' : 'mine',
+      visiting: opts.visiting ?? null,
       scripts: isTeacher
         ? dictate
           ? ['/player.js', '/recorder.js', '/dictate.js']
@@ -963,7 +979,7 @@ export function notFound(user: User | null, siteName: string): string {
   <p class="lede" style="margin:12px auto 24px">
     ${t("That page doesn't exist, or it isn't yours to open.")}
   </p>
-  <a class="btn" href="${user ? (user.role === 'teacher' ? '/t' : '/me') : '/'}">${t('Go back')}</a>
+  <a class="btn" href="/">${t('Go back')}</a>
 </div>`,
     { title: t('Not found'), user, siteName },
   );

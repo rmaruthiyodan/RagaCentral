@@ -9,6 +9,29 @@ interface LayoutOpts {
   nav?: 'students' | 'catalogue' | 'approvals' | 'schedule' | 'mine' | null;
   scripts?: string[];
   bodyClass?: string;
+  /** Teacher OF THE PROJECT being viewed. Defaults from `nav`, which is
+      already chosen by the same fact: every teacher screen names a
+      teacher section and a student's own pages say 'mine'. Pass it
+      explicitly only where that is not true. */
+  isTeacher?: boolean;
+  /** Set when an admin is acting inside a practice they do not teach. */
+  visiting?: Visiting | null;
+}
+
+/**
+ * "You are inside someone else's practice."
+ *
+ * Passed down rather than held in a module variable, and that is worth
+ * a sentence. The language does use a module variable, safely, because
+ * setLang runs at the top of the same synchronous render that reads it.
+ * A banner set in a guard could not make that claim: `await next()` is
+ * a yield, so between the guard and the render another request can run
+ * and overwrite it — and the failure would be the banner going missing
+ * on exactly the page where it matters most.
+ */
+export interface Visiting {
+  name: string;
+  asAdmin: boolean;
 }
 
 const FONTS =
@@ -89,7 +112,12 @@ function themePicker(palette: string, mode: string): string {
 export function page(body: string, o: LayoutOpts): string {
   const site = o.siteName || 'RP Sajeev Music';
   const u = o.user;
-  const isTeacher = u?.role === 'teacher';
+  /* Whether to draw the teacher's nav. It must be told, not guessed:
+     `u.role` is the dead global column, so reading it gives a teacher
+     the student nav (their user row still says 'student' because
+     nothing writes it any more) and gives a teacher-of-another-project
+     the teacher nav while they are browsing as a student here. */
+  const isTeacher = o.isTeacher ?? (o.nav !== null && o.nav !== undefined && o.nav !== 'mine');
   const palette = u?.palette && isPalette(u.palette) ? u.palette : 'brass';
   const mode = u?.theme_mode && isMode(u.theme_mode) ? u.theme_mode : 'auto';
 
@@ -138,6 +166,16 @@ export function page(body: string, o: LayoutOpts): string {
     ${whoami}
   </div>
 </header>
+${
+  o.visiting?.asAdmin
+    ? `<div class="visiting">
+    <span>${esc(t('You are inside %s as an admin. Anything you change here is recorded.', o.visiting.name))}</span>
+    <form method="post" action="/admin/leave">
+      <button class="btn btn-sm" type="submit">${esc(t('Leave'))}</button>
+    </form>
+  </div>`
+    : ''
+}
 <main${o.bodyClass === 'narrow' ? ' class="narrow"' : ''}>
 ${body}
 </main>
