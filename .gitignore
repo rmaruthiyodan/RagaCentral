@@ -5,3 +5,6 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+# Left behind only if the isolation run is killed; never belongs in a commit.
+wrangler.toml.isolation-backup

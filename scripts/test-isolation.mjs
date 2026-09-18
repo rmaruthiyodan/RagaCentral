@@ -1240,11 +1240,24 @@ async function main() {
 
 let exitCode = 0;
 process.on('exit', restoreToml);
-process.on('SIGINT', () => {
-  stopServer();
-  restoreToml();
-  process.exit(130);
-});
+
+/* SIGTERM as well as SIGINT, and that is not belt-and-braces.
+   This run edits wrangler.toml — it takes the [ai] block out, because
+   Workers AI has no local simulator — and puts it back in `finally`.
+   `timeout`, CI cancellation and most process managers send SIGTERM,
+   which ends the process without running either `finally` or the exit
+   handler, so the stripped file survives the run. It then looks like an
+   ordinary edit: it commits without complaint, deploys without
+   complaint, and the first thing anyone notices is dictation answering
+   "Workers AI is not bound". Which is exactly what happened once.
+   Restoring here costs nothing and closes that door. */
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => {
+    stopServer();
+    restoreToml();
+    process.exit(sig === 'SIGINT' ? 130 : 143);
+  });
+}
 
 try {
   if (!(await portIsFree()))

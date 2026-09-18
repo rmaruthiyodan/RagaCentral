@@ -17,6 +17,17 @@ database_id = "31fe8aa6-9900-4844-ad5e-4035c57a4dc7"
 binding = "MEDIA"
 bucket_name = "sruti-media"
 
+[ai]
+# Speech to text for spoken lesson notes. Free: 10,000 neurons a day, and
+# Whisper costs 46.63 per audio minute — about 200 minutes daily at no charge.
+#
+# Note: Workers AI has no local simulator. `wrangler dev` opens a connection
+# to Cloudflare for this binding, so running locally needs `wrangler login`
+# or a CLOUDFLARE_API_TOKEN. The Docker entrypoint removes this block when
+# neither is present, so the container still starts with no account at all.
+# The comment lives under the header on purpose: it is removed with it.
+binding = "AI"
+
 [vars]
 # The Google account that becomes the first teacher on its first sign-in.
 # Once projects exist this is only consulted for a database with nobody in
