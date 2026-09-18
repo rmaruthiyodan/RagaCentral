@@ -20,7 +20,7 @@ import {
 import {
   pid, acting, addMember, removeMember, createProject, getProject,
   setActiveProject, clearActiveProject, recentAdminLog, resolveProject, logAdmin,
-  hatsFor, chosenHat, ADMIN_HAT,
+  hatsFor, chosenHat, ADMIN_HAT, ADMIN_IN,
 } from './projects';
 import { newId, now, extFor, slugify } from './util';
 import { isLang } from './i18n';
@@ -610,7 +610,12 @@ app.post('/admin/switch/:id', requireAdmin, async (c) => {
   const p = await getProject(c.env, c.req.param('id'));
   if (!p || p.status !== 'active')
     return c.redirect('/admin?msg=' + encodeURIComponent('That practice is not open.'));
-  setActiveProject(c, p.id);
+  /* In AS THE ADMIN, not as whatever this account happens to be here.
+     The button sits on the admin console and says "go in and teach";
+     an admin who had enrolled themselves as a student somewhere would
+     otherwise press it and land on their own student page, with no way
+     back to the teacher side of that practice. */
+  setActiveProject(c, ADMIN_IN + p.id);
   return c.redirect('/t/schedule/week');
 });
 

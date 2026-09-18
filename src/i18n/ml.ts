@@ -747,4 +747,5 @@ export const ML: Record<string, string> = {
   'Switch role': 'വേഷം മാറ്റുക',
   'Admin': 'അഡ്മിൻ',
   'Teacher': 'ഗുരു',
+  'Teach it': 'ഇത് പഠിപ്പിക്കുക',
 };

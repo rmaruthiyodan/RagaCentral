@@ -87,7 +87,7 @@ export function adminHome(
       ${
         p.status === 'active'
           ? `<form method="post" action="/admin/switch/${esc(p.id)}">
-               <button class="btn btn-sm btn-primary" type="submit">${esc(t('Go in'))}</button>
+               <button class="btn btn-sm btn-primary" type="submit">${esc(t('Teach it'))}</button>
              </form>`
           : ''
       }
@@ -226,7 +226,7 @@ export function adminProject(
     ${
       p.status === 'active'
         ? `<form method="post" action="/admin/switch/${esc(p.id)}">
-             <button class="btn btn-primary" type="submit">${esc(t('Go in'))}</button>
+             <button class="btn btn-primary" type="submit">${esc(t('Teach it'))}</button>
            </form>`
         : `<span class="pill p-warn">${esc(t('archived'))}</span>`
     }

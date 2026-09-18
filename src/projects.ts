@@ -41,6 +41,26 @@ const PROJECT_COOKIE = 'sruti_project';
  */
 export const ADMIN_HAT = 'admin';
 
+/**
+ * The cookie value that means "I am inside this practice AS THE ADMIN".
+ *
+ *     sruti_project = p_abc123          I am in p_abc123 as whatever I am
+ *     sruti_project = admin:p_abc123    I am in p_abc123 as the admin
+ *
+ * The distinction earns its keep the moment an admin is also enrolled
+ * somewhere as a student. Without it the membership decides, and it
+ * decides against them: an admin who signed themselves up to see the
+ * student side could not get back to the teacher side of that same
+ * practice at all, because a role is a fact about a membership and
+ * theirs now said 'student'.
+ *
+ * Being in as the admin is not a quiet upgrade. It carries the banner
+ * and the audit log exactly as visiting a stranger's practice does —
+ * the point is that it is a different way of being there, not a bigger
+ * version of the same one.
+ */
+export const ADMIN_IN = 'admin:';
+
 export interface Project {
   id: string;
   name: string;
@@ -163,6 +183,20 @@ export async function resolveProject(c: Ctx, user: User): Promise<Acting | null>
      have exactly one membership and drop them into their own practice —
      which is precisely the hat they just took off. */
   if (wanted === ADMIN_HAT && isAdmin) return null;
+
+  /* In as the admin. Teacher powers regardless of what the membership
+     row says, or whether there is one, and recorded either way. */
+  if (wanted?.startsWith(ADMIN_IN) && isAdmin) {
+    const p = await getProject(c.env, wanted.slice(ADMIN_IN.length));
+    if (p && p.status === 'active') {
+      /* The membership is still looked up and still carried, even
+         though it grants nothing here: pages that show "your standing
+         in this practice" should show the truth, not the borrowed
+         authority the admin is using to read them. */
+      const m = await membershipIn(c.env, p.id, user.id);
+      return { project: p, membership: m, isTeacher: true, asAdmin: true };
+    }
+  }
 
   if (wanted) {
     const p = await getProject(c.env, wanted);

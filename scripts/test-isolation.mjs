@@ -1179,6 +1179,61 @@ async function main() {
   check('leaving a visited practice returns to the console, not to their own students',
     left.status === 302 && left.location === '/admin',
     `${left.line} -> ${left.status} ${left.location ?? ''}`);
+
+  /* ----------------------------------------------------------------
+     The admin who enrolled themselves as a student.
+
+     Reported as "once I register myself as a student, I can no longer
+     get in as teacher". A role is a fact about a membership, so the
+     moment theirs said 'student' the membership decided, and it
+     decided against them \u2014 in the one practice they run. Going in
+     from the console has to mean going in as the admin, not as
+     whatever this account happens to be there.
+     ---------------------------------------------------------------- */
+
+  r = await POST(admin, `/admin/p/${A.id}/members`, { email: N.adminEmail, role: 'student' });
+  checkStatus('the admin enrols themselves as a student of their own practice', r, 302);
+  check(
+    '  …and the membership really did change',
+    d1one(`SELECT role FROM project_members WHERE project_id='${A.id}' AND user_id='${adminId}'`)[0]?.role === 'student',
+    'the role did not change to student',
+  );
+
+  admin.cookies.delete('sruti_project');
+  const studentHat = await POST(admin, '/hats/choose', { to: A.id });
+  check('  …so their hat there is the student one', studentHat.status === 302 && studentHat.location === '/me',
+    `${studentHat.line} -> ${studentHat.status} ${studentHat.location ?? ''}`);
+  const asStudent = await GET(admin, '/t');
+  check('  …and the teacher pages turn them away, correctly',
+    asStudent.status === 302 && asStudent.location === '/me',
+    `${asStudent.line} -> ${asStudent.status} ${asStudent.location ?? ''}`);
+
+  const backIn = await POST(admin, `/admin/switch/${A.id}`, {});
+  check('the console can still put them on the teacher side of that same practice',
+    backIn.status === 302 && backIn.location === '/t/schedule/week',
+    `${backIn.line} -> ${backIn.status} ${backIn.location ?? ''}`);
+  const teachingOwn = await GET(admin, '/t');
+  if (checkStatus('  …and the teacher pages open', teachingOwn, 200)) {
+    check('  …showing that practice\u2019s students', teachingOwn.text.includes(N.studentAName),
+      `${N.studentAName} is not on the page`);
+    check('  …with the banner up, because this is borrowed authority',
+      teachingOwn.text.includes('class="visiting"'), 'no banner while in as the admin');
+  }
+  check(
+    '  …and their student membership is untouched by any of it',
+    d1one(`SELECT role FROM project_members WHERE project_id='${A.id}' AND user_id='${adminId}'`)[0]?.role === 'student',
+    'going in as the admin rewrote the membership row',
+  );
+
+  /* A teacher of A is not an admin, and must not be able to do the same
+     by typing the cookie. */
+  const forgedAdminIn = new Jar('forgedAdminIn');
+  await GET(forgedAdminIn, `/dev/login?email=${encodeURIComponent(N.studentA)}`);
+  forgedAdminIn.set('sruti_project', `admin:${A.id}`);
+  const forgedIn = await GET(forgedAdminIn, '/t');
+  check('a student cannot forge their way in as the admin',
+    forgedIn.status === 302 && forgedIn.location !== '/t/schedule/week',
+    `${forgedIn.line} -> ${forgedIn.status} ${forgedIn.location ?? ''} — the cookie granted teacher powers`);
 }
 
 /* ================================================================== */
