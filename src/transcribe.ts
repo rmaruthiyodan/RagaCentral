@@ -67,6 +67,8 @@ export interface Transcript {
   ml: string;
   en: string;
   provider: string;
+  /** Something the teacher should know about this result, if anything. */
+  note?: string;
 }
 
 /** Carnatic words a general model has no reason to know. */
@@ -126,28 +128,57 @@ function withDeadline<T>(work: Promise<T>, what: string): Promise<T> {
  * ------------------------------------------------------------------ */
 
 async function viaWorkersAi(env: Env, b64: string, keyterms: string[]): Promise<Transcript> {
-  if (!env.AI) throw new DictateError('Workers AI is not bound — add [ai] binding = "AI" to wrangler.toml.');
+  if (!env.AI) throw new DictateError('Workers AI is not bound \u2014 add [ai] binding = "AI" to wrangler.toml.');
 
-  /* Whisper's own knob for vocabulary. It is a hint, not a constraint,
-     and much less effective than Sarvam's keyterms — but it costs
-     nothing and it does reduce the mangling of the obvious words. */
-  const initial_prompt = keyterms.length
-    ? `Carnatic music lesson. Terms: ${keyterms.slice(0, 40).join(', ')}.`
-    : 'Carnatic music lesson.';
+  /* No initial_prompt, and that is a correction rather than an omission.
+     Whisper takes the prompt as a sample of what the output should look
+     like \u2014 style, spelling AND SCRIPT. Feeding it an English sentence
+     full of romanised Carnatic words ("Carnatic music lesson. Terms:
+     pallavi, anupallavi, gamaka\u2026") while asking it for Malayalam told it,
+     in the only language it has for this, to answer in the Latin
+     alphabet. It obliged:
 
-  /* The one pass. `b64` is handed straight to the binding and never
-     read, copied or re-encoded here — see the note at the top. */
-  const ml = (
-    await runWhisper(env, { audio: b64, task: 'transcribe', language: 'ml', initial_prompt })
+       spoken Malayalam -> "Testing, chiyana, it is glass and virtual renoots."
+
+     The vocabulary hint was worth "a little better than nothing" and it
+     cost the entire script. `keyterms` still goes to Sarvam, which takes
+     it as a word list rather than as a writing sample and is the right
+     way to do this. */
+  void keyterms;
+
+  const heard = (
+    await runWhisper(env, { audio: b64, task: 'transcribe', language: 'ml' })
   ).trim();
 
-  /* English from the words, not from the sound. If it fails the note is
-     still perfectly usable — he can type the gist himself — so this
-     never takes the dictation down with it. */
-  const en = ml ? await translateToEnglish(env, ml) : '';
+  /* Did any Malayalam actually come back?
+     Whisper is a general model and much weaker on Indic languages than
+     European ones, so "I asked for Malayalam" is not the same as "this
+     is Malayalam". When it is not, the honest thing is to put the words
+     where they belong and say so \u2014 not to pass Latin text to a
+     Malayalam-to-English translator, which returns it unchanged and
+     fills both boxes with the same sentence. */
+  if (!MALAYALAM.test(heard)) {
+    return {
+      ml: '',
+      en: heard,
+      provider: 'workers-ai',
+      note: heard
+        ? 'That did not come back in Malayalam, so it is in the English box. ' +
+          'Whisper is weak on Malayalam; SARVAM is the fix if this keeps happening.'
+        : '',
+    };
+  }
 
-  return { ml, en, provider: 'workers-ai' };
+  /* English from the words, not from the sound. If it fails the note is
+     still perfectly usable \u2014 he can type the gist himself \u2014 so this
+     never takes the dictation down with it. */
+  const en = await translateToEnglish(env, heard);
+
+  return { ml: heard, en: en && en !== heard ? en : '', provider: 'workers-ai' };
 }
+
+/** Any character in the Malayalam block. One is enough to tell. */
+const MALAYALAM = /[\u0D00-\u0D7F]/;
 
 async function runWhisper(env: Env, input: Record<string, unknown>): Promise<string> {
   let res: unknown;
@@ -305,6 +336,19 @@ function extFor(mime: string): string {
  * this number again — or be on the paid plan, where it is irrelevant.
  */
 function fromBase64(b64: string): Uint8Array {
-  const bin = atob(b64);
-  return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+  /* The native decoder, where the runtime has it. This is the whole
+     difference between Sarvam working and Sarvam killing the request:
+     the fallback below walks every byte in JavaScript, which measures
+     14 ms for a 30-second clip and 42 ms for two minutes, against a
+     free-plan budget of 10 ms per request.
+
+     So on the free plan, Sarvam works if this branch is taken and is a
+     coin flip if it is not. On the paid plan neither matters. If you
+     switch DICTATE_PROVIDER to sarvam and dictation starts timing out
+     again, this is why, and the fix is to have the browser send raw
+     bytes for Sarvam so the body can be piped into the upload without
+     ever being a string. */
+  const U = Uint8Array as unknown as { fromBase64?: (s: string) => Uint8Array };
+  if (typeof U.fromBase64 === 'function') return U.fromBase64(b64);
+  return Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
 }

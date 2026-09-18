@@ -234,6 +234,11 @@
         got = true;
       }
       if (!got) return say('Nothing came back — try saying it again.', 'bad');
+      /* The server says when the result is not what was asked for —
+         Malayalam that came back in the Latin alphabet, most often.
+         Better to explain it than to let him wonder why one box is
+         empty. */
+      if (t.note) return say(t.note, 'warn');
       say('Written down. Read it over before you save — it will have got something wrong.', 'ok');
     }
 
