@@ -877,12 +877,21 @@ async function main() {
     check('  …and the assignment exists', d1one(`SELECT COUNT(*) AS n FROM assignments WHERE project_id='${A.id}' AND section_id='${A.sectionId}' AND student_id='${dualId}' AND archived_at IS NULL`)[0].n === 1, 'no assignment row');
 
   got = await GET(ta, `/t/catalogue?q=${encodeURIComponent(N.songA)}`);
-  if (checkStatus("teacher A's catalogue search for their own song answers", got, 200))
+  if (checkStatus("teacher A's catalogue search for their own song answers", got, 200)) {
     check(
       '  …and finds it',
       got.text.includes('1 match for') && (got.text.split(N.songA).length - 1) > 1,
       `no match block: ${snippet(got.text.slice(got.text.indexOf('<main')))}`,
     );
+    /* A result you cannot open is not a result. This was a plain <div>
+       for months: you could search the catalogue, find the song, and
+       have nowhere to click. */
+    check(
+      '  …and the result opens the song',
+      got.text.includes(`href="/t/song/${A.sectionId}"`),
+      'the search result is not a link to the song',
+    );
+  }
   got = await GET(ta, `/t?q=${encodeURIComponent(N.studentAName)}`);
   if (checkStatus("teacher A's student search for their own student answers", got, 200))
     check('  …and finds them', got.text.includes(A.studentId), "A's own student was not in its own search results");

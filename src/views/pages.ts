@@ -524,7 +524,12 @@ ${
         }</h2></div></div>
        <div class="rows">${sections
          .map(
-           (s) => `<div class="row">
+           /* A link, not a div. Searching for a song and then having no
+              way to open the one you found is the whole reason anyone
+              searched. The grouped list below reaches the song through
+              an Open button; a result has nothing else competing for
+              the click, so the whole row is the target. */
+           (s) => `<a class="row" href="/t/song/${esc(s.id)}">
          <div class="row-main">
            <div class="row-title">${inlineTitle(s.title, s.title_ml)}</div>
            <div class="row-meta">
@@ -538,7 +543,8 @@ ${
              }</span>
            </div>
          </div>
-       </div>`,
+         <div class="row-actions"><span class="btn btn-sm btn-primary">${t('Open')}</span></div>
+       </a>`,
          )
          .join('')}</div>`
       : `<div class="empty"><strong>${t('No songs match "%s"', esc(q))}</strong>

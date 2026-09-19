@@ -138,10 +138,14 @@ export function spoken(o: {
 }): string {
   return `<div class="field spoken" data-spoken>
     <div class="spoken-head">
-      <label for="${esc(o.id)}">${esc(o.label)}${
-        o.optional ? ` <span class="opt">${t('— optional')}</span>` : ''
-      }</label>
       ${
+        /* The microphone comes FIRST, before the label.
+           It used to sit far right, level with the label and past the
+           whole width of the field — the teacher's thumb was nowhere
+           near it and, on a phone, neither was his eye. Dictation is
+           the reason this field exists at all: he does not type
+           Malayalam, and his phone cannot. The primary action on a
+           field belongs where the reading starts. */
         o.dictate
           ? `<button class="mic" type="button" data-mic aria-label="${esc(
               t('Speak this in Malayalam'),
@@ -152,6 +156,9 @@ export function spoken(o: {
       </button>`
           : ''
       }
+      <label for="${esc(o.id)}">${esc(o.label)}${
+        o.optional ? ` <span class="opt">${t('— optional')}</span>` : ''
+      }</label>
     </div>
 
     <div class="spoken-ml"${o.ml ? '' : ' hidden'} data-ml-wrap>
