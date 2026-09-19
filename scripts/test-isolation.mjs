@@ -1237,6 +1237,89 @@ async function main() {
     left.status === 302 && left.location === '/admin',
     `${left.line} -> ${left.status} ${left.location ?? ''}`);
 
+  /* ================================================================
+   * 11. A long history, a page at a time
+   *
+   * The lesson log used to be sent whole on every visit. A student two
+   * years in has a hundred classes, each with what was covered, where
+   * they stopped and what to practise, in two languages. Now it is
+   * paged in SQL, which is a correctness question as much as a speed
+   * one: the tally has to keep counting ALL of them, and a calendar
+   * link has to reach a class that is not on page one.
+   * ================================================================ */
+
+  console.log('\n--- a long history, a page at a time ---');
+
+  const manyId = d1one(`SELECT id FROM users WHERE lower(email)='${N.studentA}'`)[0].id;
+  const PAGE = 10;
+  const EXTRA = 14; // enough for a second and a third page
+  for (let i = 0; i < EXTRA; i++) {
+    const day = `2026-0${1 + (i % 6)}-${String(1 + i).padStart(2, '0')}`;
+    await POST(ta, `/t/s/${manyId}/sessions`, {
+      held_on: day,
+      status: 'completed',
+      covered: `Bulk${RUN}n${i}`,
+      left_off: `Bulk${RUN}stop${i}`,
+    });
+  }
+  const totalLessons = d1one(
+    `SELECT COUNT(*) AS n FROM sessions WHERE project_id='${A.id}' AND student_id='${manyId}'`,
+  )[0].n;
+  check('the student now has a history worth paging', totalLessons > PAGE, `only ${totalLessons} lessons`);
+
+  const p1 = await GET(ta, `/t/s/${manyId}/lessons`);
+  if (checkStatus('page one of the lesson log', p1, 200)) {
+    const onPage = (p1.text.match(/class="lesson[ "]/g) ?? []).length;
+    check('  …carries one page of lessons, not the lot', onPage <= PAGE,
+      `${onPage} lessons rendered, expected at most ${PAGE} of ${totalLessons}`);
+    check('  …and the tally still counts every one', p1.text.includes(`>${totalLessons}<`),
+      `the tally does not show ${totalLessons}`);
+    check('  …and offers the next page', p1.text.includes('lp=2'), 'no pager');
+  }
+
+  const p2 = await GET(ta, `/t/s/${manyId}/lessons?lp=2`);
+  if (checkStatus('page two', p2, 200)) {
+    check('  …is a different page of lessons', p2.text !== p1.text, 'page two is identical to page one');
+    check('  …and can go back', p2.text.includes('/lessons"') || p2.text.includes('lp=1'),
+      'no way back to page one');
+  }
+
+  /* The oldest lesson is not on page one, and the calendar has to be
+     able to reach it anyway. ?on=<date> is how. */
+  const oldest = d1one(
+    `SELECT id, held_on FROM sessions WHERE project_id='${A.id}' AND student_id='${manyId}'
+      ORDER BY held_on ASC LIMIT 1`,
+  )[0];
+  check('  …and the oldest lesson is not on page one',
+    !p1.text.includes(`id="l-${oldest.id}"`), 'the oldest lesson is on page one after all');
+  const jumped = await GET(ta, `/t/s/${manyId}/lessons?on=${oldest.held_on}`);
+  if (checkStatus('jumping to the day a class was held', jumped, 200))
+    check('  …lands on the page that holds it', jumped.text.includes(`id="l-${oldest.id}"`),
+      'the lesson is not on the page ?on sent us to');
+
+  /* Out of range asks for nothing that exists; it must not be an error
+     page or an empty one. */
+  const far = await GET(ta, `/t/s/${manyId}/lessons?lp=9999`);
+  if (checkStatus('a page number past the end', far, 200))
+    check('  …clamps to the last page rather than showing nothing',
+      (far.text.match(/class="lesson[ "]/g) ?? []).length > 0, 'nothing rendered');
+
+  /* And the student sees their own history paged the same way. */
+  const paged = new Jar('studentA-paged');
+  await GET(paged, `/dev/login?email=${encodeURIComponent(N.studentA)}`);
+  paged.set('sruti_project', A.id);
+  const mine1 = await GET(paged, '/me/lessons');
+  if (checkStatus("the student's own past classes", mine1, 200)) {
+    const n = (mine1.text.match(/class="lesson[ "]/g) ?? []).length;
+    check('  …is paged too', n <= PAGE, `${n} lessons rendered`);
+    check('  …and says how many there are in total', mine1.text.includes(`>${totalLessons}<`),
+      'the tally is wrong');
+  }
+  const mine2 = await GET(paged, '/me/lessons?lp=2');
+  checkStatus("  …and page two is theirs to read", mine2, 200);
+  check('  …with nothing of the other practice on it',
+    !(mine2.text ?? '').includes(N.songB), "B's material appeared");
+
   /* ----------------------------------------------------------------
      The admin who enrolled themselves as a student.
 

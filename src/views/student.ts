@@ -347,6 +347,9 @@ export function lessonsTab(
   counts: TabCounts,
   d: {
     sessions: SessionRow[];
+    /** The whole history behind this one page of it. */
+    totals: { total: number; completed: number; ongoing: number };
+    pager: { page: number; pages: number; href: (p: number) => string };
     assigned: AssignedRow[];
     month: string;
     monthOccs: Occurrence[];
@@ -354,6 +357,9 @@ export function lessonsTab(
     nextMonth: string;
     dictate?: boolean;
     visiting?: Visiting | null;
+    /** The id of the class logged on this day, if there is one — so a
+        calendar cell can link to a lesson that is not on this page. */
+    lessonOn?: (date: string) => string | null;
   },
   siteName: string,
   msg?: string,
@@ -383,6 +389,8 @@ ${/* The log first, and inside a box with a ceiling.
     assigned: d.assigned,
     dictate: d.dictate,
     withForm: false,
+    totals: d.totals,
+    pager: d.pager,
   })}
 </div>
 
@@ -401,8 +409,14 @@ ${logForm(student.id, d.assigned, Boolean(d.dictate))}
 </div>
 ${monthCalendar(d.month, d.monthOccs, {
   dayHref: (date, list) => {
+    /* A logged class may be forty lessons back and therefore not on
+       this page at all. Rather than a bare #anchor that would silently
+       do nothing, ask for the day: the server finds its page and lands
+       on it, anchor and all. */
     const logged = d.sessions.find((s) => s.held_on === date);
     if (logged) return `#l-${logged.id}`;
+    const elsewhere = d.lessonOn?.(date);
+    if (elsewhere) return `?on=${date}#l-${elsewhere}`;
     const o = list.find((x) => !x.skipped && !x.missed);
     return o ? `/t/class/${o.slot.id}/${o.originalDate}` : null;
   },

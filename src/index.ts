@@ -1424,7 +1424,54 @@ async function loadExceptions(env: Env, projectId: string, from: string, to: str
  * touched folded in. SEP is an unlikely-in-a-song-title separator so the
  * concatenated lists can be split apart again for display.
  */
-async function sessionsFor(env: Env, projectId: string, studentId: string): Promise<SessionRow[]> {
+/* ------------------------------------------------------------------ *
+ * Lessons, a page at a time
+ *
+ * A student two years in has a hundred classes, each carrying what was
+ * covered, where they stopped and what to practise, in two languages.
+ * Sending all of it on every visit to the tab is a bigger query, a
+ * bigger response and a slower page, and nobody reads past the first
+ * few. So the list is paginated in SQL, not hidden in CSS: what is not
+ * on the page is not fetched, not rendered and not sent.
+ *
+ * The count is asked for separately because the tally has to say how
+ * many lessons there are in total, not how many are on this page.
+ * ------------------------------------------------------------------ */
+
+/**
+ * How many lessons on one page. Roughly two screens of reading.
+ *
+ * Not exported, and that is not tidiness. This module is the Worker's
+ * entry point, and the runtime reads its exports as handlers: a `const`
+ * among them refuses to start the whole Worker with
+ *
+ *   Incorrect type for map entry 'LESSONS_PER_PAGE': the provided value
+ *   is not of type 'function or ExportedHandler'
+ *
+ * which is a dead site, not a warning. Exported functions are fine;
+ * exported values are not.
+ */
+const LESSONS_PER_PAGE = 10;
+
+export interface LessonPage {
+  rows: SessionRow[];
+  /** Every lesson, not just this page. */
+  total: number;
+  completed: number;
+  ongoing: number;
+  page: number;
+  pages: number;
+}
+
+async function sessionsFor(
+  env: Env,
+  projectId: string,
+  studentId: string,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<SessionRow[]> {
+  /* A limit of 0 would be a page with nothing on it, so it means "all"
+     — which is what every caller outside the lessons tab wants. */
+  const limit = opts.limit && opts.limit > 0 ? opts.limit : -1;
   const r = await env.DB.prepare(
     `SELECT s.*,
        (SELECT group_concat(sec.title, ?2) FROM session_sections ss
@@ -1434,11 +1481,63 @@ async function sessionsFor(env: Env, projectId: string, studentId: string): Prom
          WHERE ss.session_id = s.id) AS section_ids
      FROM sessions s
      WHERE s.student_id = ?1 AND s.project_id = ?3
-     ORDER BY s.held_on DESC, s.created_at DESC`,
+     ORDER BY s.held_on DESC, s.created_at DESC
+     LIMIT ?4 OFFSET ?5`,
   )
-    .bind(studentId, SEP, projectId)
+    .bind(studentId, SEP, projectId, limit, Math.max(0, opts.offset ?? 0))
     .all<SessionRow>();
   return r.results ?? [];
+}
+
+/**
+ * One page of the lesson history, plus the totals the tally needs.
+ *
+ * `onDate` is how the calendar reaches a class that is not on page one:
+ * rather than guessing a page number, it names the day and this works
+ * out which page that day falls on. A link that lands on the wrong page
+ * is worse than no link.
+ */
+async function lessonPage(
+  env: Env,
+  projectId: string,
+  studentId: string,
+  o: { page?: number; onDate?: string | null } = {},
+): Promise<LessonPage> {
+  const counts =
+    (await env.DB.prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
+         FROM sessions WHERE student_id = ?1 AND project_id = ?2`,
+    )
+      .bind(studentId, projectId)
+      .first<{ total: number; completed: number | null }>()) ?? { total: 0, completed: 0 };
+
+  const total = counts.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / LESSONS_PER_PAGE));
+
+  let page = o.page && o.page > 0 ? o.page : 1;
+
+  if (o.onDate) {
+    /* How many lessons sort before this day? That is its position in the
+       list, and its position divided by the page size is its page. */
+    const before = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM sessions
+        WHERE student_id = ?1 AND project_id = ?2 AND held_on > ?3`,
+    )
+      .bind(studentId, projectId, o.onDate)
+      .first<{ n: number }>();
+    page = Math.floor((before?.n ?? 0) / LESSONS_PER_PAGE) + 1;
+  }
+
+  page = Math.min(page, pages);
+
+  const rows = await sessionsFor(env, projectId, studentId, {
+    limit: LESSONS_PER_PAGE,
+    offset: (page - 1) * LESSONS_PER_PAGE,
+  });
+
+  const completed = counts.completed ?? 0;
+  return { rows, total, completed, ongoing: total - completed, page, pages };
 }
 
 /** Shared by the create and update routes. */
@@ -1563,7 +1662,10 @@ app.get('/t/s/:id', requireTeacher, async (c) => {
       student,
       await tabCounts(c.env, pid(c), student.id),
       {
-        sessions: await sessionsFor(c.env, pid(c), student.id),
+        /* Three are shown and one is read for the resume card.
+           Fetching a hundred to render three was the same waste as the
+           lessons tab, one page over. */
+        sessions: await sessionsFor(c.env, pid(c), student.id, { limit: 6 }),
         upcoming: await upcomingFor(c.env, pid(c), student.id),
         learning: assigned.filter((a) => !a.completed_at),
         visiting: visiting(c),
@@ -1620,13 +1722,50 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
     const [y, m] = month.split('-').map(Number);
     return new Date(Date.UTC(y, m - 1 + by, 1)).toISOString().slice(0, 7);
   };
+  /* One page of lessons, chosen by ?lp — or by ?on=<date>, which is how
+     the calendar reaches a class buried forty lessons back. */
+  const lp = await lessonPage(c.env, pid(c), student.id, {
+    page: Number(c.req.query('lp')) || 1,
+    onDate: c.req.query('on') ?? null,
+  });
+
+  /* Which days in THIS month have a class in the log, and which lesson
+     each one is. The calendar can then link a day whose lesson is forty
+     back in the history; without it that cell would point at an anchor
+     that is not on the page and do nothing. Bounded to the month on
+     screen, so it stays one small query however long the history. */
+  const monthEnd = addDays(month, 41);
+  const loggedDays = new Map(
+    (
+      (
+        await c.env.DB.prepare(
+          `SELECT id, held_on FROM sessions
+            WHERE student_id = ?1 AND project_id = ?2 AND held_on BETWEEN ?3 AND ?4`,
+        )
+          .bind(student.id, pid(c), month, monthEnd)
+          .all<{ id: string; held_on: string }>()
+      ).results ?? []
+    ).map((r) => [r.held_on, r.id] as const),
+  );
+
+  const keep = (n: number) => {
+    const u = new URL(c.req.url);
+    u.searchParams.delete('on');
+    u.searchParams.delete('msg');
+    if (n <= 1) u.searchParams.delete('lp');
+    else u.searchParams.set('lp', String(n));
+    return u.pathname + (u.search || '');
+  };
+
   return c.html(
     Stu.lessonsTab(
       c.get('user'),
       student,
       await tabCounts(c.env, pid(c), student.id),
       {
-        sessions: await sessionsFor(c.env, pid(c), student.id),
+        sessions: lp.rows,
+        totals: { total: lp.total, completed: lp.completed, ongoing: lp.ongoing },
+        pager: { page: lp.page, pages: lp.pages, href: keep },
         assigned: await assignedFor(c.env, pid(c), student.id),
         month,
         monthOccs,
@@ -1634,6 +1773,7 @@ app.get('/t/s/:id/lessons', requireTeacher, async (c) => {
         nextMonth: shift(1),
         dictate: dictateEnabled(c.env),
         visiting: visiting(c),
+        lessonOn: (date) => loggedDays.get(date) ?? null,
       },
       site(c),
       c.req.query('msg'),
@@ -2020,7 +2160,7 @@ app.get('/me', requireUser, async (c) => {
       user,
       await meCounts(c.env, pid(c), user.id),
       {
-        sessions: await sessionsFor(c.env, pid(c), user.id),
+        sessions: await sessionsFor(c.env, pid(c), user.id, { limit: 6 }),
         upcoming,
         assigned: await assignedFor(c.env, pid(c), user.id),
       },
@@ -2056,14 +2196,20 @@ app.get('/me/songs', requireUser, async (c) => {
 app.get('/me/lessons', requireUser, async (c) => {
   if (acting(c).isTeacher) return c.redirect('/t');
   const { user, upcoming } = await meContext(c);
+  const lp = await lessonPage(c.env, pid(c), user.id, {
+    page: Number(c.req.query('lp')) || 1,
+  });
+  const keep = (n: number) => (n <= 1 ? '/me/lessons' : `/me/lessons?lp=${n}`);
   return c.html(
     Me.lessonsTab(
       user,
       await meCounts(c.env, pid(c), user.id),
-      await sessionsFor(c.env, pid(c), user.id),
+      lp.rows,
       await assignedFor(c.env, pid(c), user.id),
       site(c),
       upcoming[0],
+      { total: lp.total, completed: lp.completed, ongoing: lp.ongoing },
+      { page: lp.page, pages: lp.pages, href: keep },
     ),
   );
 });

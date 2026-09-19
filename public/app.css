@@ -1396,3 +1396,14 @@ a.wa:hover{text-decoration:underline}
 @media (max-width:620px){
   .ps-hint{text-align:left}
 }
+
+/* Newer / older, at the end of a page of lessons. */
+.pager{
+  display:flex;align-items:center;justify-content:center;gap:14px;
+  margin:18px 0 4px;padding-top:14px;border-top:1px solid var(--line);
+}
+.pager-at{
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3);
+}
+.btn.is-off{opacity:.4;cursor:default}

@@ -780,4 +780,10 @@ export const ML: Record<string, string> = {
   'not recorded': 'രേഖപ്പെടുത്തിയിട്ടില്ല',
   'learning': 'പഠിക്കുന്നു',
   'Clear the finish date to put it back in progress.': 'തീർന്ന തീയതി ഒഴിവാക്കിയാൽ വീണ്ടും പഠിക്കുന്നതായി മാറും.',
+
+  /* ---- Paging through the lesson history ---- */
+  '← Newer': '← പുതിയത്',
+  'Older →': 'പഴയത് →',
+  'Page %1$s of %2$s': '%2$s-ൽ %1$s-ാം പേജ്',
+  'More lessons': 'കൂടുതൽ ക്ലാസ്സുകൾ',
 };

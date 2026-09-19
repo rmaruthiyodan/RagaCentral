@@ -313,6 +313,8 @@ export function lessonsTab(
   assigned: AssignedRow[],
   siteName: string,
   next: Occurrence | undefined,
+  totals: { total: number; completed: number; ongoing: number },
+  pager: { page: number; pages: number; href: (p: number) => string },
 ): string {
   setLang(user.lang);
   return page(
@@ -326,7 +328,12 @@ export function lessonsTab(
   <h2>${t('Past classes')}</h2>
   <p class="lede">${t('What you covered, and where each class stopped.')}</p>
 </div>
-${lessonLog(sessions, { isTeacher: false, studentId: user.id, assigned })}`,
+${/* The same ceiling the teacher's tab has, and for the same reason: a
+     student two years in has a hundred of these. What is not on this
+     page was never fetched. */ ''}
+<div class="lesson-scroll">
+  ${lessonLog(sessions, { isTeacher: false, studentId: user.id, assigned, totals, pager })}
+</div>`,
     ),
     { title: t('Past classes'), user, siteName, nav: 'mine', hideNav: true },
   );

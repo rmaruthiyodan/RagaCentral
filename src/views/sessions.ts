@@ -295,14 +295,21 @@ export function lessonLog(
         a form behind a year of scrolling. Default true, so every other
         caller is unchanged. */
     withForm?: boolean;
+    /** The whole history, when `sessions` is only one page of it. The
+        tally must count every lesson: "10 lessons" on page three of
+        seven is not a summary, it is a lie about the page size. */
+    totals?: { total: number; completed: number; ongoing: number };
+    /** Which page this is, and how to reach the others. */
+    pager?: { page: number; pages: number; href: (p: number) => string };
   },
 ): string {
   const dictate = Boolean(o.dictate);
-  const done = sessions.filter((s) => s.status === 'completed').length;
-  const open = sessions.length - done;
+  const done = o.totals ? o.totals.completed : sessions.filter((s) => s.status === 'completed').length;
+  const open = o.totals ? o.totals.ongoing : sessions.length - done;
+  const all = o.totals ? o.totals.total : sessions.length;
 
   const tally = `<div class="tally">
-    <div><div class="t-num">${sessions.length}</div><div class="t-lab">${t('lessons')}</div></div>
+    <div><div class="t-num">${all}</div><div class="t-lab">${t('lessons')}</div></div>
     <div><div class="t-num">${done}</div><div class="t-lab">${t('completed')}</div></div>
     <div class="ongoing"><div class="t-num">${open}</div><div class="t-lab">${t(
       'ongoing',
@@ -363,7 +370,7 @@ export function lessonLog(
     </div>
   </div>
 
-  ${sessions.length ? tally : ''}
+  ${all ? tally : ''}
   ${
     sessions.length
       ? `<div class="rows" style="margin-top:14px">${sessions.map(one).join('')}</div>`
@@ -371,8 +378,30 @@ export function lessonLog(
         ? ''
         : `<div class="empty">${t('No lessons logged yet.')}</div>`
   }
+  ${o.pager && o.pager.pages > 1 ? pager(o.pager) : ''}
 
   ${o.isTeacher && o.withForm !== false ? logForm(o.studentId, o.assigned, dictate) : ''}`;
+}
+
+/**
+ * Newer / older, and where you are.
+ *
+ * Plain links rather than a script: this has to work on the teacher's
+ * phone with one bar of signal, and a link is the only navigation that
+ * always does. Page one is the default so its link carries no query,
+ * which keeps the tab's own URL clean and shareable.
+ */
+function pager(p: { page: number; pages: number; href: (n: number) => string }): string {
+  const btn = (n: number, label: string) =>
+    n >= 1 && n <= p.pages
+      ? `<a class="btn btn-sm" href="${esc(p.href(n))}">${esc(label)}</a>`
+      : `<span class="btn btn-sm is-off" aria-disabled="true">${esc(label)}</span>`;
+
+  return `<nav class="pager" aria-label="${esc(t('More lessons'))}">
+    ${btn(p.page - 1, t('← Newer'))}
+    <span class="pager-at">${t('Page %1$s of %2$s', p.page, p.pages)}</span>
+    ${btn(p.page + 1, t('Older →'))}
+  </nav>`;
 }
 
 /** The form that writes down the class that just happened. */
