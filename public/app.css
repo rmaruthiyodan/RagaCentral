@@ -1006,8 +1006,12 @@ a.cal-chip:hover{filter:brightness(.97);box-shadow:0 0 0 1px var(--line-strong)}
   font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;color:var(--ink-3);text-align:center;
 }
 .mc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+/* Square, but only up to a point. On a wide screen an unbounded
+   aspect-ratio:1 gave a month of 190px cells holding one dot each —
+   a page of empty boxes. */
 .mc-cell{
-  aspect-ratio:1;border:1px solid var(--line);border-radius:3px;
+  aspect-ratio:1;min-height:40px;max-height:78px;
+  border:1px solid var(--line);border-radius:3px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   font-size:12px;color:var(--ink-2);position:relative;
 }
@@ -1282,3 +1286,49 @@ a.wa:hover{text-decoration:underline}
 /* The menu row that leads here. It is an anchor rather than a button,
    so it needs the text-decoration reset that .tp-opt never needed. */
 .tp-link{text-decoration:none;display:block}
+
+/* ------------------------------------------------------------------
+   The student's own header.
+
+   Their name is not news to them, so it is set quietly and the space
+   goes to the one thing worth knowing on every screen: when they are
+   next on, on both clocks. A student in Perth reading "7:00 pm" cannot
+   tell whose evening that is, and the cost of guessing wrong is missing
+   the class.
+   ------------------------------------------------------------------ */
+.me-head{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
+  flex-wrap:wrap;margin:4px 0 18px;
+}
+.me-who h1{margin:0;font-size:1.9rem;line-height:1.15}
+.me-who .lede{margin:2px 0 0;font-size:13.5px}
+
+.me-next{
+  display:grid;grid-template-columns:auto auto;gap:1px 14px;align-items:baseline;
+  background:var(--surface);border:1px solid var(--line-strong);
+  border-left:3px solid var(--peacock);border-radius:0 var(--radius) var(--radius) 0;
+  padding:10px 16px;min-width:230px;
+}
+.me-next-lab{
+  grid-column:1/-1;font-family:var(--f-mono);font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-3);
+}
+.me-next-when{font-family:var(--f-display);font-size:1.05rem;font-weight:600;color:var(--ink)}
+.me-next-in{
+  justify-self:end;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--peacock);
+}
+.me-next-time{font-size:14px;font-weight:600;color:var(--ink)}
+.me-next-ist{justify-self:end;font-size:12px;color:var(--ink-3)}
+.me-next.is-none{border-left-color:var(--line-strong)}
+.me-next-none{grid-column:1/-1;font-size:13.5px;color:var(--ink-3)}
+
+@media (max-width:620px){
+  .me-head{align-items:stretch}
+  .me-next{width:100%}
+  .me-who h1{font-size:1.55rem}
+}
+
+/* A section heading's explanatory line should not push the action
+   button off to the horizon. */
+.section-head .lede{max-width:56ch}

@@ -3,7 +3,7 @@ import {
 } from './layout';
 import type { Visiting } from './layout';
 import { resumeCard, lessonLog, spoken } from './sessions';
-import { studentSchedule, zoneOptions } from './schedule';
+import { zoneOptions } from './schedule';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
 import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
@@ -583,7 +583,7 @@ export function songPage(opts: {
   /* Which way the back link points. Not viewer.role — that is the dead
      global column, and a teacher of another project is a student here. */
   const isTeacher = Boolean(opts.isTeacher);
-  const backHref = isTeacher ? `/t/s/${student.id}` : '/me';
+  const backHref = isTeacher ? `/t/s/${student.id}` : '/me/songs';
   const backLabel = isTeacher ? `← ${student.name}` : `← ${t('My songs')}`;
 
   const notesFor = (recId: string | null) =>
@@ -634,7 +634,7 @@ export function songPage(opts: {
         ? `<span class="locked-note">${t("%s can't hear this one.", esc(student.name.split(' ')[0]))}</span>
       <form method="post" action="/t/recordings/${esc(r.id)}/share">
         <input type="hidden" name="student_id" value="${esc(student.id)}">
-        <input type="hidden" name="back" value="${esc(backHref === '/me' ? '/me' : `/t/s/${student.id}/${section.id}`)}">
+        <input type="hidden" name="back" value="${esc(isTeacher ? `/t/s/${student.id}/${section.id}` : '/me/songs')}">
         <button class="btn btn-sm btn-primary" type="submit">${t('Unlock for %s', esc(student.name.split(' ')[0]))}</button>
       </form>`
         : `<span class="locked-note">${t("Your teacher hasn't shared this one with you yet.")}</span>`
@@ -946,95 +946,6 @@ ${
           : ['/player.js', '/recorder.js']
         : ['/player.js'],
     },
-  );
-}
-
-/* ================================================================== *
- * Student home
- * ================================================================== */
-
-export function studentHome(
-  user: User,
-  assigned: AssignedRow[],
-  sessions: SessionRow[],
-  siteName: string,
-  q = '',
-  upcoming: Occurrence[] = [],
-): string {
-  setLang(user.lang);
-  const live = assigned.filter((a) => !a.completed_at);
-  const withRecs = live.filter((a) => a.rec_count > 0);
-  const waiting = live.filter((a) => a.rec_count === 0);
-  const finished = assigned.filter((a) => a.completed_at);
-
-  const rowFor = (a: AssignedRow) => `<a class="row${a.completed_at ? ' is-done' : ''}" href="/me/${esc(a.id)}">
-  <div class="row-main">
-    <div class="row-title">${inlineTitle(a.title, a.title_ml)}${
-      a.completed_at ? ` <span class="pill p-good">${t('finished')}</span>` : ''
-    }</div>
-    <div class="row-meta">
-      ${a.group_name ? `<span>${esc(a.group_name)}</span>` : ''}
-      ${a.raga ? `<span>${t('Raga %s', esc(a.raga))}</span>` : ''}
-      ${
-        a.rec_count
-          ? `<span class="num">${
-              a.rec_count === 1 ? t('%s recording', a.rec_count) : t('%s recordings', a.rec_count)
-            }</span>`
-          : ''
-      }
-      ${
-        a.note_count
-          ? `<span class="num">${
-              a.note_count === 1 ? t('%s note', a.note_count) : t('%s notes', a.note_count)
-            }</span>`
-          : ''
-      }
-      ${a.last_added ? `<span>${t('updated %s', esc(relativeDate(a.last_added)))}</span>` : ''}
-    </div>
-  </div>
-  <div class="row-actions"><span class="btn btn-sm">${a.rec_count ? t('Listen') : t('Open')}</span></div>
-</a>`;
-
-  return page(
-    `<div class="page-head">
-  <h1>${t('My songs')}</h1>
-  <p class="lede">${t("Everything your teacher has recorded for you. Slow any of them down without changing the pitch, and loop the phrase you're working on.")}</p>
-</div>
-
-${resumeCard(sessions[0] ?? null, { isTeacher: false, firstName: user.name.split(' ')[0] })}
-
-${studentSchedule(user, upcoming)}
-
-${searchBox('/me', q, t('Search your songs by name or raga…'))}
-
-${
-  withRecs.length
-    ? `<div class="rows">${withRecs.map(rowFor).join('')}</div>`
-    : q
-      ? `<div class="empty"><strong>${t('Nothing matches "%s"', esc(q))}</strong>
-         ${t('Search covers the song name in either script, plus raga and composer.')}</div>`
-      : `<div class="empty"><strong>${t('Nothing to practise yet')}</strong>
-       ${t('As soon as your teacher adds a recording, it appears here.')}</div>`
-}
-
-${
-  waiting.length
-    ? `<div class="section-head"><h2>${t('Assigned, nothing recorded yet')}</h2></div>
-     <div class="rows">${waiting.map(rowFor).join('')}</div>`
-    : ''
-}
-
-${
-  finished.length
-    ? `<div class="section-head">
-     <div><h2>${t('Finished')}</h2><p class="lede">${t("Songs you've completed. The recordings stay here.")}</p></div>
-   </div>
-   <div class="rows">${finished.map(rowFor).join('')}</div>`
-    : ''
-}
-
-${lessonLog(sessions, { isTeacher: false, studentId: user.id, assigned })}`,
-    { title: t('My songs'), user, siteName, nav: 'mine' },
   );
 }
 

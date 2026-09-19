@@ -16,6 +16,10 @@ interface LayoutOpts {
   isTeacher?: boolean;
   /** Set when an admin is acting inside a practice they do not teach. */
   visiting?: Visiting | null;
+  /** The student's own pages carry their own tab bar, which already says
+      everything the header nav would. Two rows of navigation one above
+      the other is not more navigable; it is just two rows. */
+  hideNav?: boolean;
 }
 
 /**
@@ -123,7 +127,9 @@ export function page(body: string, o: LayoutOpts): string {
   const palette = u?.palette && isPalette(u.palette) ? u.palette : 'brass';
   const mode = u?.theme_mode && isMode(u.theme_mode) ? u.theme_mode : 'auto';
 
-  const nav = u
+  const nav = o.hideNav
+    ? '<div class="nav"></div>'
+    : u
     ? isTeacher
       ? `<nav class="nav">
            <a href="/t"${o.nav === 'students' ? ' aria-current="page"' : ''}>${esc(t('Students'))}</a>

@@ -1033,6 +1033,20 @@ async function main() {
       check(`  …and sees ${which}'s lesson`, page.text.includes(myLeft), `"${myLeft}" missing`);
       check(`  …and not the other practice's lesson`, !page.text.includes(theirLeft), `"${theirLeft}" leaked across`);
     }
+
+    /* Home shows a handful; the songs tab shows everything, so that is
+       where a leak would actually surface. Same for the whole lesson
+       history, which moved off the landing page. */
+    const songs = await GET(dual, '/me/songs');
+    if (checkStatus(`  …the songs tab in ${which}`, songs, 200)) {
+      check(`  …lists ${which}'s song`, songs.text.includes(mine), `"${mine}" missing`);
+      check(`  …and nothing of the other practice`, !songs.text.includes(theirs), `"${theirs}" leaked across`);
+    }
+    const past = await GET(dual, '/me/lessons');
+    if (checkStatus(`  …the past-classes tab in ${which}`, past, 200)) {
+      check(`  …holds ${which}'s lesson`, past.text.includes(myLeft), `"${myLeft}" missing`);
+      check(`  …and not the other practice's`, !past.text.includes(theirLeft), `"${theirLeft}" leaked across`);
+    }
     const other = proj === A ? B : A;
     const otherSong = await GET(dual, `/me/${other.sectionId}`);
     checkStatus(`  …and cannot open the other practice's song page`, otherSong, 404);
@@ -1057,7 +1071,7 @@ async function main() {
       `the assignment row for B's song sits in project ${owner?.project_id} (B is ${B.id}, A is ${A.id})`,
     );
     dual.set('sruti_project', B.id);
-    const dualB = await GET(dual, '/me');
+    const dualB = await GET(dual, '/me/songs');
     check(
       "teacher A cannot squat on an assignment slot in B — B's student sees what B assigned",
       dualB.status === 200 && dualB.text.includes(`SquatSong${RUN}`),

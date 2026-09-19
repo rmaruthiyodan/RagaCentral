@@ -5,6 +5,7 @@ import { SEP } from './views/sessions';
 import * as Sched from './views/schedule';
 import { songPage, type SongStudent, type SongPageData } from './views/song';
 import * as Stu from './views/student';
+import * as Me from './views/me';
 import { classPage, type ClassPageData } from './views/klass';
 import type { Visiting } from './views/layout';
 import { STARTER_CATALOGUE, STARTER_COUNT } from './catalogue-seed';
@@ -1913,13 +1914,69 @@ app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {
   );
 });
 
-app.get('/me', requireUser, async (c) => {
+/* ------------------------------------------------------------------ *
+ * The student's own side
+ *
+ * Five tabs rather than one long page, the same shape the teacher gets
+ * when looking at a student — see src/views/me.ts for why.
+ *
+ * Order matters below: /me/songs and its siblings are registered before
+ * /me/:secid, or the song route swallows them. It cannot happen the
+ * other way round by accident, because section ids are minted 's_…' and
+ * no song can be called "songs" — but the order is load-bearing, so it
+ * is written down rather than left to luck.
+ * ------------------------------------------------------------------ */
+
+/** Everything the tabs share: who they are, and when they are next on. */
+async function meContext(c: Context<AppEnv, any, any>, days = 28) {
   const user = c.get('user');
+  const from = istToday();
+  const slots = await loadSlots(c.env, pid(c), user.id);
+  const upcoming = slots.length
+    ? expand(slots, await loadExceptions(c.env, pid(c), from, addDays(from, days - 1)), from, days)
+    : [];
+  return { user, upcoming };
+}
+
+/** The two numbers on the tabs. One query, not two. */
+async function meCounts(env: Env, projectId: string, userId: string): Promise<Me.MeCounts> {
+  const row = await env.DB.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM assignments
+         WHERE project_id = ?1 AND student_id = ?2) AS songs,
+       (SELECT COUNT(*) FROM sessions
+         WHERE project_id = ?1 AND student_id = ?2) AS lessons`,
+  )
+    .bind(projectId, userId)
+    .first<Me.MeCounts>();
+  return row ?? { songs: 0, lessons: 0 };
+}
+
+app.get('/me', requireUser, async (c) => {
   /* Whether they teach is a fact about them IN THIS PROJECT. Reading the dead
      users.role instead sent anyone who teaches anywhere to /t, where
      requireTeacher sent them straight back here — a loop, for exactly the
      person projects exist for: a teacher over there, a student here. */
   if (acting(c).isTeacher) return c.redirect('/t');
+  const { user, upcoming } = await meContext(c);
+  return c.html(
+    Me.homeTab(
+      user,
+      await meCounts(c.env, pid(c), user.id),
+      {
+        sessions: await sessionsFor(c.env, pid(c), user.id),
+        upcoming,
+        assigned: await assignedFor(c.env, pid(c), user.id),
+      },
+      site(c),
+      c.req.query('msg'),
+    ),
+  );
+});
+
+app.get('/me/songs', requireUser, async (c) => {
+  if (acting(c).isTeacher) return c.redirect('/t');
+  const { user, upcoming } = await meContext(c);
   const q = (c.req.query('q') ?? '').trim().toLowerCase();
   const all = await assignedFor(c.env, pid(c), user.id);
   const assigned = q
@@ -1928,15 +1985,61 @@ app.get('/me', requireUser, async (c) => {
           .some((v) => (v ?? '').toLowerCase().includes(q)),
       )
     : all;
+  return c.html(
+    Me.songsTab(
+      user,
+      await meCounts(c.env, pid(c), user.id),
+      assigned,
+      site(c),
+      upcoming[0],
+      c.req.query('q') ?? '',
+    ),
+  );
+});
 
-  // The next few classes, on the student's own clock.
-  const from = istToday();
-  const slots = await loadSlots(c.env, pid(c), user.id);
-  const occs = slots.length
-    ? expand(slots, await loadExceptions(c.env, pid(c), from, addDays(from, 27)), from, 28)
-    : [];
+app.get('/me/lessons', requireUser, async (c) => {
+  if (acting(c).isTeacher) return c.redirect('/t');
+  const { user, upcoming } = await meContext(c);
+  return c.html(
+    Me.lessonsTab(
+      user,
+      await meCounts(c.env, pid(c), user.id),
+      await sessionsFor(c.env, pid(c), user.id),
+      await assignedFor(c.env, pid(c), user.id),
+      site(c),
+      upcoming[0],
+    ),
+  );
+});
 
-  return c.html(V.studentHome(user, assigned, await sessionsFor(c.env, pid(c), user.id), site(c), q, occs));
+app.get('/me/schedule', requireUser, async (c) => {
+  if (acting(c).isTeacher) return c.redirect('/t');
+  /* Further ahead than the other tabs: this is the one place someone
+     looks to answer "am I on over the holidays?". */
+  const { user, upcoming } = await meContext(c, 70);
+  return c.html(
+    Me.scheduleTab(
+      user,
+      await meCounts(c.env, pid(c), user.id),
+      upcoming,
+      istToday().slice(0, 7) + '-01',
+      site(c),
+    ),
+  );
+});
+
+app.get('/me/settings', requireUser, async (c) => {
+  if (acting(c).isTeacher) return c.redirect('/t');
+  const { user, upcoming } = await meContext(c);
+  return c.html(
+    Me.settingsTab(
+      user,
+      await meCounts(c.env, pid(c), user.id),
+      site(c),
+      upcoming[0],
+      c.req.query('msg'),
+    ),
+  );
 });
 
 app.get('/me/:secid', requireUser, async (c) => {
@@ -2893,12 +2996,13 @@ app.post('/t/students/:id/zone', requireTeacher, async (c) => {
 app.post('/me/zone', requireUser, async (c) => {
   const f = await c.req.formData();
   const tz = String(f.get('time_zone') ?? '').trim();
-  if (tz && !isValidZone(tz)) return c.redirect('/me');
+  if (tz && !isValidZone(tz))
+    return c.redirect('/me/settings?msg=' + encodeURIComponent('That time zone was not recognised.'));
   /* unscoped: the signed-in user setting their own location and time zone — one person keeps one clock, whichever teachers they learn from */
   await c.env.DB.prepare('UPDATE users SET time_zone = ?, location = ? WHERE id = ?')
     .bind(tz || null, String(f.get('location') ?? '').trim() || null, c.get('user').id)
     .run();
-  return c.redirect('/me');
+  return c.redirect('/me/settings?msg=' + encodeURIComponent('Saved.'));
 });
 
 /**

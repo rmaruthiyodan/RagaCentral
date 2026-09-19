@@ -324,7 +324,14 @@ ${rows.length ? rows.map(block).join('') : `<div class="empty">${t('No students 
  * The student's own next classes
  * ------------------------------------------------------------------ */
 
-export function studentSchedule(user: User, occs: Occurrence[]): string {
+/**
+ * The next few classes, on the student's own clock.
+ *
+ * Split from the time-zone form it used to carry, because they answer
+ * different questions and now live on different tabs: "when am I next
+ * on" belongs on Schedule, "which clock is that" belongs in Settings.
+ */
+export function studentUpcoming(user: User, occs: Occurrence[]): string {
   if (!occs.length) return '';
   const tz = user.time_zone || TEACHER_ZONE;
 
@@ -333,7 +340,7 @@ export function studentSchedule(user: User, occs: Occurrence[]): string {
       <p class="lede">${
         user.time_zone
           ? t('In your own time.')
-          : t('In your own time — set your time zone below so these are right.')
+          : t('In your own time — set your time zone in Settings so these are right.')
       }</p></div>
   </div>
   <div class="rows">
@@ -355,9 +362,12 @@ export function studentSchedule(user: User, occs: Occurrence[]): string {
     </div>`;
       })
       .join('')}
-  </div>
+  </div>`;
+}
 
-  <form method="post" action="/me/zone" class="tzpick">
+/** Where they are, and therefore which clock everything is shown on. */
+export function studentZoneForm(user: User): string {
+  return `<form method="post" action="/me/zone" class="tzpick">
     <label for="my-loc">${t('Where you are')}</label>
     <input id="my-loc" name="location" type="text"
            value="${esc(user.location ?? '')}" placeholder="Dubai, UAE">
