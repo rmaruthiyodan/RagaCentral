@@ -68,6 +68,108 @@ export function isValidZone(tz: string | null | undefined): boolean {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Naming a zone
+ *
+ * A time with no zone on it is a trap in a school that runs across six
+ * of them. "6:30 pm" is either the right answer or five hours wrong,
+ * and nothing on the page says which.
+ *
+ * The obvious call gives the wrong answer for most of the world:
+ *
+ *   Intl.DateTimeFormat('en-GB', { timeZoneName: 'short' })
+ *     Asia/Kolkata    -> "GMT+5:30"      wanted: IST
+ *     Australia/Perth -> "GMT+8"         wanted: AWST
+ *
+ * because CLDR only carries a zone's letters in the locales that
+ * actually use them. en-IN knows IST and not AWST; en-AU knows AWST and
+ * not IST; en-US knows EDT and neither of the others. No single locale
+ * knows them all.
+ *
+ * So ask several, and take the first that answers with letters rather
+ * than an offset. A locale never invents an abbreviation it does not
+ * have — it falls back to "GMT+8" — so the first letters-only answer is
+ * a real one, and the order below only decides who gets asked first.
+ * Where nobody has a name (Singapore in some builds, Hong Kong), the
+ * offset stands, which is still better than nothing at all.
+ * ------------------------------------------------------------------ */
+
+const ABBR_LOCALES = ['en-IN', 'en-AU', 'en-NZ', 'en-US', 'en-GB', 'en-CA', 'en-ZA', 'en-SG', 'en'];
+
+/** "GMT+5:30", "UTC-7" — an offset wearing a name badge, not a name. */
+const IS_OFFSET = /^(GMT|UTC)[+-]/i;
+
+/* Keyed by zone AND by the offset we already saw, so the two sides of a
+   daylight-saving change are cached apart: Sydney is AEST in July and
+   AEDT in January, and a cache that could not tell them apart would be
+   wrong for half the year. A pure function of its key, so unlike most
+   module state in this app it is safe across requests. */
+const abbrCache = new Map<string, string>();
+
+function rawAbbr(locale: string, tz: string, at: Date): string {
+  return (
+    new Intl.DateTimeFormat(locale, { timeZone: tz, timeZoneName: 'short' })
+      .formatToParts(at)
+      .find((p) => p.type === 'timeZoneName')?.value ?? ''
+  );
+}
+
+/**
+ * The best name for a zone at an instant, given the offset-ish string
+ * the caller already has.
+ *
+ * Takes `plain` rather than working it out, because every caller has
+ * just built a formatter that produced it. Constructing another one per
+ * call measured at 0.1 ms, which is nothing until a week calendar asks
+ * sixty times and the Worker has ten milliseconds to spend.
+ */
+export function betterAbbr(tz: string, plain: string, at: Date): string {
+  if (plain && !IS_OFFSET.test(plain)) return plain;
+
+  const key = `${tz}|${plain}`;
+  const hit = abbrCache.get(key);
+  if (hit !== undefined) return hit;
+
+  let best = plain;
+  for (const locale of ABBR_LOCALES) {
+    let v = '';
+    try {
+      v = rawAbbr(locale, tz, at);
+    } catch {
+      /* a locale this build does not carry */
+    }
+    if (v && !IS_OFFSET.test(v)) {
+      best = v;
+      break;
+    }
+  }
+  abbrCache.set(key, best);
+  return best;
+}
+
+/** What to call a zone when you have nothing else in hand. */
+export function zoneAbbr(tz: string, at: Date = new Date()): string {
+  if (!isValidZone(tz)) return '';
+  let plain = '';
+  try {
+    plain = rawAbbr('en-GB', tz, at);
+  } catch {
+    return '';
+  }
+  return betterAbbr(tz, plain, at);
+}
+
+/**
+ * "IST". Worked out once and kept, which is safe here and would not be
+ * for any other zone: India has had no daylight saving since 1945, so
+ * unlike Sydney or New York this answer does not depend on the date.
+ */
+let istAbbrCached: string | null = null;
+export function istAbbr(): string {
+  if (istAbbrCached === null) istAbbrCached = zoneAbbr(TEACHER_ZONE) || 'IST';
+  return istAbbrCached;
+}
+
 export interface LocalTime {
   time: string;      // "9:30 am"
   weekday: string;   // "Mon"
@@ -109,7 +211,9 @@ export function inZone(instant: Date, tz: string): LocalTime {
     weekday: get('weekday'),
     date: `${get('day')} ${get('month')}`,
     iso: isoParts,
-    abbr: get('timeZoneName'),
+    /* Not get('timeZoneName') as it stands: for most of the world that
+       is "GMT+8" where there is a real name to be had. */
+    abbr: betterAbbr(zone, get('timeZoneName'), instant),
   };
 }
 
@@ -244,6 +348,11 @@ export function expand(
   return out
     .filter((o) => o[key] >= fromDate && o[key] <= lastDate)
     .sort((a, b) => a.instant.getTime() - b.instant.getTime());
+}
+
+/** "7:00 pm IST" from "19:00" \u2014 the teacher's clock, named. */
+export function prettyIstZ(time: string): string {
+  return `${prettyIst(time)} ${istAbbr()}`;
 }
 
 /** "7:00 pm" from "19:00", for display. */

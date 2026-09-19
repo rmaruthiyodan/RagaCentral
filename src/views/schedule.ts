@@ -3,8 +3,8 @@ import type { Visiting } from './layout';
 import { esc } from '../util';
 import type { User, ClassSlot } from '../types';
 import {
-  WEEKDAYS, COMMON_ZONES, TEACHER_ZONE, prettyIst, prettyIstDate,
-  inZone, istToday, addDays, monthLabel, type Occurrence,
+  WEEKDAYS, COMMON_ZONES, TEACHER_ZONE, prettyIst, prettyIstZ, prettyIstDate,
+  istAbbr, inZone, istToday, addDays, monthLabel, type Occurrence,
 } from '../tz';
 import { t, setLang } from '../i18n';
 
@@ -77,7 +77,7 @@ export function schedulePage(
         ${occ.reason ? `<span class="sched-reason">${esc(occ.reason)}</span>` : ''}
       </div>
       <div class="sched-times">
-        <span class="ist"><b>${esc(prettyIst(occ.time))}</b> <span class="zone">IST</span></span>
+        <span class="ist"><b>${esc(prettyIst(occ.time))}</b> <span class="zone">${esc(istAbbr())}</span></span>
         <span class="arrow">→</span>
         ${localLine(occ, student)}
       </div>
@@ -205,7 +205,7 @@ function slotRow(s: ClassSlot, student: WithZone): string {
   return `<div class="slot-row">
   <div class="slot-when">
     <b>${esc(when)}</b>
-    <span class="slot-time">${esc(prettyIst(s.time_ist))} IST · ${t('%s min', s.duration_min)}</span>
+    <span class="slot-time">${esc(prettyIstZ(s.time_ist))} · ${t('%s min', s.duration_min)}</span>
     ${s.label ? `<span class="slot-label">${esc(s.label)}</span>` : ''}
   </div>
   <div class="slot-local">${local}</div>
@@ -346,7 +346,7 @@ export function studentSchedule(user: User, occs: Occurrence[]): string {
         <div class="row-title">${esc(t(l.weekday))} ${esc(l.date)} · ${esc(l.time)}
           <span class="zone">${esc(l.abbr)}</span></div>
         <div class="row-meta">
-          <span>${esc(prettyIst(o.time))} IST</span>
+          <span>${esc(prettyIstZ(o.time))}</span>
           <span>${t('%s minutes', o.slot.duration_min)}</span>
           ${o.moved ? `<span>${t('rescheduled')}</span>` : ''}
           ${o.slot.label ? `<span>${esc(o.slot.label)}</span>` : ''}
@@ -389,10 +389,10 @@ function chip(occ: Occurrence, student: WithZone): string {
   // rather than only a way to look.
   return `<a class="cal-chip ${cls}${inactive ? ' is-former' : ''}"
   href="/t/class/${esc(occ.slot.id)}/${esc(occ.originalDate)}">
-  <span class="cal-time">${esc(prettyIst(occ.time))}</span>
+  <span class="cal-time">${esc(prettyIst(occ.time))} <span class="zone">${esc(istAbbr())}</span></span>
   <span class="cal-name">${esc(student.name)}</span>
   ${inactive ? `<span class="cal-former">${esc(t(inactive))}</span>` : ''}
-  ${local ? `<span class="cal-local">${esc(local.time)} ${esc(t(local.weekday))}</span>` : ''}
+  ${local ? `<span class="cal-local">${esc(local.time)} ${esc(t(local.weekday))} <span class="zone">${esc(local.abbr)}</span></span>` : ''}
 </a>`;
 }
 
@@ -446,7 +446,7 @@ ${
         ${occ.missed ? `<span class="pill p-bad">${t('missed')}</span>` : ''}
       </div>
       <div class="today-time">
-        <b>${esc(prettyIst(occ.time))}</b> <span class="zone">IST</span>
+        <b>${esc(prettyIst(occ.time))}</b> <span class="zone">${esc(istAbbr())}</span>
         ${l ? `<span class="today-local">${esc(l.time)} ${esc(t(l.weekday))} ${esc(l.abbr)}</span>` : ''}
       </div>
       <a class="btn btn-sm${off ? '' : ' btn-primary'}"
@@ -518,7 +518,7 @@ export function dayView(
       ${occ.reason ? `<span class="sched-reason">${esc(occ.reason)}</span>` : ''}
     </div>
     <div class="sched-times">
-      <span class="ist"><b>${esc(prettyIst(occ.time))}</b> <span class="zone">IST</span></span>
+      <span class="ist"><b>${esc(prettyIst(occ.time))}</b> <span class="zone">${esc(istAbbr())}</span></span>
       <span class="arrow">→</span>
       ${localLine(occ, student)}
     </div>

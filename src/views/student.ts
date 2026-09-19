@@ -12,7 +12,7 @@ import type { Visiting } from './layout';
 import { resumeCard, lessonLog } from './sessions';
 import { monthCalendar, zoneOptions } from './schedule';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
-import { prettyIst, prettyIstDate, WEEKDAYS, inZone, monthLabel, type Occurrence } from '../tz';
+import { prettyIst, prettyIstZ, prettyIstDate, WEEKDAYS, inZone, monthLabel, type Occurrence } from '../tz';
 import type { User, Section, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
 import { t, setLang } from '../i18n';
 
@@ -124,7 +124,7 @@ ${
   <div class="rows" style="margin-bottom:6px">
     <div class="row">
       <div class="row-main">
-        <div class="row-title">${esc(prettyIstDate(next.date))} · ${esc(prettyIst(next.time))} IST</div>
+        <div class="row-title">${esc(prettyIstDate(next.date))} · ${esc(prettyIstZ(next.time))}</div>
         <div class="row-meta">
           ${
             tz
@@ -448,7 +448,7 @@ ${
             : t('Once on %s', esc(prettyIstDate(s.on_date ?? '')))
         }${s.label ? ` <span class="slot-label">${esc(s.label)}</span>` : ''}</div>
         <div class="row-meta">
-          <span class="num">${esc(prettyIst(s.time_ist))} IST</span>
+          <span class="num">${esc(prettyIstZ(s.time_ist))}</span>
           <span>${t('%s minutes', s.duration_min)}</span>
         </div>
       </div>
@@ -467,7 +467,7 @@ ${
           const l = tz ? inZone(o.instant, tz) : null;
           return `<div class="row">
         <div class="row-main">
-          <div class="row-title">${esc(prettyIstDate(o.date))} · ${esc(prettyIst(o.time))} IST</div>
+          <div class="row-title">${esc(prettyIstDate(o.date))} · ${esc(prettyIstZ(o.time))}</div>
           <div class="row-meta">
             ${l ? `<span>${t('%s %s their time', esc(l.time), esc(l.weekday))}</span>` : ''}
             ${o.moved ? `<span>${t('rescheduled')}</span>` : ''}

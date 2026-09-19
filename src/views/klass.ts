@@ -11,7 +11,7 @@ import type { Visiting } from './layout';
 import { spoken } from './sessions';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
 import type { User, SessionRow, AssignedRow } from '../types';
-import { prettyIst, prettyIstDate, inZone, type Occurrence } from '../tz';
+import { prettyIst, prettyIstDate, istAbbr, inZone, type Occurrence } from '../tz';
 import type { WithZone } from './schedule';
 import { t, setLang } from '../i18n';
 
@@ -71,7 +71,7 @@ export function classPage(user: User, d: ClassPageData, siteName: string, msg?: 
       .join(' · ')}</p>
   </div>
   <div class="class-when">
-    <div class="cw-line"><b>${esc(prettyIst(occ.time))}</b> <span class="zone">IST</span></div>
+    <div class="cw-line"><b>${esc(prettyIst(occ.time))}</b> <span class="zone">${esc(istAbbr())}</span></div>
     ${
       local
         ? `<div class="cw-line cw-local">${esc(local.time)} ${esc(local.weekday)}

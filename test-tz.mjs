@@ -1,4 +1,4 @@
-import { istToInstant, inZone, expand, istToday, weekdayOf, addDays, prettyIst } from './src/tz.ts';
+import { istToInstant, inZone, expand, istToday, weekdayOf, addDays, prettyIst, prettyIstZ, zoneAbbr, istAbbr } from './src/tz.ts';
 
 const check = (label, got, want) => {
   const ok = got === want;
@@ -96,6 +96,42 @@ t('weekdayOf 2026-09-08', String(weekdayOf('2026-09-08')), '2');
 t('addDays across month end', addDays('2026-09-30', 1), '2026-10-01');
 t('prettyIst midnight', prettyIst('00:30'), '12:30 am');
 t('prettyIst noon', prettyIst('12:00'), '12:00 pm');
+
+console.log('=== naming the zone, which is the whole point of showing one ===');
+/* A time with no zone on it is either right or five hours wrong, and
+   nothing on the page says which. The obvious Intl call answers
+   "GMT+5:30" and "GMT+8" for the two zones this school actually uses,
+   because CLDR keeps a zone's letters only in the locales that use
+   them. These assertions are here to catch a future runtime, or a
+   future "simplification", quietly going back to offsets. */
+t('India', zoneAbbr('Asia/Kolkata', new Date('2026-09-19T12:00:00Z')), 'IST');
+t('Perth', zoneAbbr('Australia/Perth', new Date('2026-09-19T12:00:00Z')), 'AWST');
+t('the teacher\u2019s own clock, cached', istAbbr(), 'IST');
+t('a time carries it', prettyIstZ('19:00'), '7:00 pm IST');
+
+/* Daylight saving is the reason the cache is keyed by offset and not by
+   zone alone: the same place has two names and using one all year is
+   wrong for half of it. */
+const jan = new Date('2026-01-15T12:00:00Z');
+const jul = new Date('2026-07-15T12:00:00Z');
+t('Sydney in January is on summer time', zoneAbbr('Australia/Sydney', jan), 'AEDT');
+t('Sydney in July is not', zoneAbbr('Australia/Sydney', jul), 'AEST');
+t('New York in January', zoneAbbr('America/New_York', jan), 'EST');
+t('New York in July', zoneAbbr('America/New_York', jul), 'EDT');
+t('London in July', zoneAbbr('Europe/London', jul), 'BST');
+
+/* inZone is what every schedule row actually calls. */
+t('a student in Perth sees their own zone named',
+  inZone(istToInstant('2026-09-22', '19:00'), 'Australia/Perth').abbr, 'AWST');
+t('and one in New York sees theirs',
+  inZone(istToInstant('2026-09-22', '19:00'), 'America/New_York').abbr, 'EDT');
+
+/* Where the world genuinely has no abbreviation, an offset is honest
+   and an invented acronym would not be. */
+t('a zone with no name keeps its offset',
+  /^(GMT|UTC)[+-]|^[A-Z]{2,5}$/.test(zoneAbbr('Asia/Hong_Kong', jul)) ? 'plausible' : zoneAbbr('Asia/Hong_Kong', jul),
+  'plausible');
+t('nonsense gets nothing rather than a guess', zoneAbbr('Not/AZone'), '');
 
 console.log(fails ? `\n${fails} FAILURES` : '\nall passed');
 process.exit(fails?1:0);
