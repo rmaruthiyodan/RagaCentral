@@ -1149,7 +1149,7 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
 
   const roster = await db
     .prepare(
-      `SELECT u.id, u.name, u.avatar_url, m.status AS status, a.completed_at,
+      `SELECT u.id, u.name, u.avatar_url, m.status AS status, a.completed_at, a.assigned_at AS started_at,
         (SELECT COUNT(*) FROM recording_shares rs
            JOIN recordings r ON r.id = rs.recording_id AND r.project_id = ?2
           WHERE r.section_id = ?1 AND rs.student_id = u.id) AS rec_count
@@ -1165,7 +1165,8 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
 
   const assignable = await db
     .prepare(
-      `SELECT u.id, u.name, u.avatar_url, m.status AS status, NULL AS completed_at, 0 AS rec_count
+      `SELECT u.id, u.name, u.avatar_url, m.status AS status, NULL AS completed_at,
+              NULL AS started_at, 0 AS rec_count
        FROM users u
        JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2
        WHERE m.role = 'student' AND m.status = 'active'
@@ -1482,6 +1483,7 @@ async function setSessionSections(env: Env, projectId: string, sessionId: string
 async function assignedFor(env: Env, projectId: string, studentId: string): Promise<AssignedRow[]> {
   const r = await env.DB.prepare(
     `SELECT s.*, g.name AS group_name, a.completed_at AS completed_at,
+       a.assigned_at AS started_at,
        (SELECT COUNT(*) FROM recordings x WHERE x.section_id = s.id AND x.student_id = ?1 AND x.project_id = ?2) AS rec_count,
        (SELECT COUNT(*) FROM notes n  WHERE n.section_id = s.id AND n.student_id = ?1 AND n.project_id = ?2) AS note_count,
        (SELECT MAX(x.created_at) FROM recordings x WHERE x.section_id = s.id AND x.student_id = ?1 AND x.project_id = ?2) AS last_added
@@ -1841,6 +1843,43 @@ app.post('/t/s/:id/complete-song', requireTeacher, async (c) => {
   return c.redirect(`${back}?msg=` + encodeURIComponent(done ? 'Marked as finished.' : 'Back in progress.'));
 });
 
+/**
+ * Correcting when a song was started, and when it was finished.
+ *
+ * assigned_at is written the moment a song is put on someone's list,
+ * which is the right default and often the wrong date: a teacher
+ * setting up an account in September for a student who began this
+ * krithi in March needs to say March. Both dates are plain dates
+ * rather than instants, because "when did she start this" is a day,
+ * not a moment.
+ */
+app.post('/t/s/:id/song-dates', requireTeacher, async (c) => {
+  const studentId = c.req.param('id');
+  const f = await c.req.formData();
+  const sectionId = String(f.get('section_id') ?? '');
+  const day = (v: unknown) => {
+    const d = String(v ?? '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+  };
+  const started = day(f.get('started_at'));
+  const finished = day(f.get('completed_at'));
+
+  /* A start with no date is a row that has lost something true, so an
+     empty box leaves the existing value alone. An empty finish box is
+     different: clearing it is how you say "not finished after all". */
+  await c.env.DB.prepare(
+    `UPDATE assignments
+        SET assigned_at = COALESCE(?1, assigned_at),
+            completed_at = ?2
+      WHERE student_id = ?3 AND section_id = ?4 AND project_id = ?5`,
+  )
+    .bind(started, finished, studentId, sectionId, pid(c))
+    .run();
+
+  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${sectionId}`;
+  return c.redirect(`${back}?msg=` + encodeURIComponent('Dates saved.'));
+});
+
 app.post('/t/s/:id/unassign', requireTeacher, async (c) => {
   const studentId = c.req.param('id');
   const f = await c.req.formData();
@@ -1891,7 +1930,24 @@ async function loadSong(env: Env, projectId: string, studentId: string, sectionI
     .bind(sectionId, studentId, projectId)
     .all<Note>();
 
-  return { section, recordings: recordings.results ?? [], notes: notes.results ?? [] };
+  /* When they started it, and whether they have finished.
+     assigned_at was always written and never shown, which is why the
+     finish date looked like the only date this song had. */
+  const progress = await env.DB.prepare(
+    `SELECT a.assigned_at AS started_at, a.completed_at
+       FROM assignments a
+      WHERE a.student_id = ?1 AND a.section_id = ?2 AND a.project_id = ?3
+        AND a.archived_at IS NULL`,
+  )
+    .bind(studentId, sectionId, projectId)
+    .first<{ started_at: string | null; completed_at: string | null }>();
+
+  return {
+    section,
+    recordings: recordings.results ?? [],
+    notes: notes.results ?? [],
+    progress: progress ?? null,
+  };
 }
 
 app.get('/t/s/:sid/:secid', requireTeacher, async (c) => {

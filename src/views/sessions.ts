@@ -284,7 +284,18 @@ function logFields(assigned: AssignedRow[], s: SessionRow | undefined, dictate: 
 
 export function lessonLog(
   sessions: SessionRow[],
-  o: { isTeacher: boolean; studentId: string; assigned: AssignedRow[]; dictate?: boolean },
+  o: {
+    isTeacher: boolean;
+    studentId: string;
+    assigned: AssignedRow[];
+    dictate?: boolean;
+    /** Leave the "Log a lesson" form out, because the caller is putting
+        it somewhere better. The Past classes tab does: the history sits
+        in a box with a ceiling, and a form at the bottom of that box is
+        a form behind a year of scrolling. Default true, so every other
+        caller is unchanged. */
+    withForm?: boolean;
+  },
 ): string {
   const dictate = Boolean(o.dictate);
   const done = sessions.filter((s) => s.status === 'completed').length;
@@ -361,15 +372,16 @@ export function lessonLog(
         : `<div class="empty">${t('No lessons logged yet.')}</div>`
   }
 
-  ${
-    o.isTeacher
-      ? `<div class="section-head" id="log"><h2>${t('Log a lesson')}</h2></div>
+  ${o.isTeacher && o.withForm !== false ? logForm(o.studentId, o.assigned, dictate) : ''}`;
+}
+
+/** The form that writes down the class that just happened. */
+export function logForm(studentId: string, assigned: AssignedRow[], dictate: boolean): string {
+  return `<div class="section-head" id="log"><h2>${t('Log a lesson')}</h2></div>
     <div class="card">
-      <form method="post" action="/t/s/${esc(o.studentId)}/sessions">
-        ${logFields(o.assigned, undefined, dictate)}
+      <form method="post" action="/t/s/${esc(studentId)}/sessions">
+        ${logFields(assigned, undefined, dictate)}
         <button class="btn btn-primary" type="submit">${t('Save lesson')}</button>
       </form>
-    </div>`
-      : ''
-  }`;
+    </div>`;
 }

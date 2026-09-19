@@ -27,6 +27,7 @@ export interface SongStudent {
   name: string;
   avatar_url: string | null;
   status: string;
+  started_at: string | null;
   completed_at: string | null;
   rec_count: number;
 }
@@ -481,6 +482,7 @@ export function songPage(user: User, d: SongPageData, siteName: string, msg?: st
     <div class="row-title"><a href="/t/s/${esc(s.id)}/${esc(section.id)}"
       style="color:inherit;text-decoration:none">${esc(s.name)}</a></div>
     <div class="row-meta">
+      ${s.started_at ? `<span>${t('started %s', esc(fmtDate(s.started_at)))}</span>` : ''}
       ${s.completed_at ? `<span>${t('finished %s', esc(relativeDate(s.completed_at)))}</span>` : ''}
       ${
         s.rec_count

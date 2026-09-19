@@ -195,6 +195,8 @@ export interface SlotExceptionRow {
 /** A song as it appears on a student's list: the section plus their counts. */
 export interface AssignedRow extends Section {
   group_name: string | null;
+  /** When this song was put on their list — the start date. */
+  started_at: string | null;
   rec_count: number;
   note_count: number;
   last_added: string | null;

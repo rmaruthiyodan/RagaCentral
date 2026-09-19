@@ -567,6 +567,52 @@ ${
  * The song workspace — shared by teacher and student
  * ================================================================== */
 
+/**
+ * When this song was started, and whether it is finished.
+ *
+ * The finish date has always been here and the start date never was,
+ * which made a song look like it appeared out of nowhere and then
+ * ended. It was in the database all along as assignments.assigned_at —
+ * written the moment the song went on the list, and never shown.
+ *
+ * Editable for the teacher, because the default is often wrong in one
+ * specific way: setting up an account in September for a student who
+ * began this krithi in March records September.
+ */
+function progressStrip(
+  p: { started_at: string | null; completed_at: string | null } | null,
+  isTeacher: boolean,
+  studentId: string,
+  sectionId: string,
+): string {
+  if (!p) return '';
+  const day = (v: string | null) => (v ? v.slice(0, 10) : '');
+
+  if (!isTeacher) {
+    return `<div class="progress-strip">
+      <span class="ps-item"><span class="ps-lab">${esc(t('Started'))}</span>
+        <b>${p.started_at ? esc(fmtDate(p.started_at)) : esc(t('not recorded'))}</b></span>
+      ${
+        p.completed_at
+          ? `<span class="ps-item"><span class="ps-lab">${esc(t('Finished'))}</span>
+               <b>${esc(fmtDate(p.completed_at))}</b></span>`
+          : `<span class="ps-item"><span class="pill p-brass">${esc(t('learning'))}</span></span>`
+      }
+    </div>`;
+  }
+
+  return `<form class="progress-strip" method="post" action="/t/s/${esc(studentId)}/song-dates">
+    <input type="hidden" name="section_id" value="${esc(sectionId)}">
+    <input type="hidden" name="back" value="/t/s/${esc(studentId)}/${esc(sectionId)}">
+    <label class="ps-item"><span class="ps-lab">${esc(t('Started'))}</span>
+      <input type="date" name="started_at" value="${esc(day(p.started_at))}"></label>
+    <label class="ps-item"><span class="ps-lab">${esc(t('Finished'))}</span>
+      <input type="date" name="completed_at" value="${esc(day(p.completed_at))}"></label>
+    <button class="btn btn-sm" type="submit">${esc(t('Save dates'))}</button>
+    <span class="ps-hint">${esc(t('Clear the finish date to put it back in progress.'))}</span>
+  </form>`;
+}
+
 export function songPage(opts: {
   viewer: User;
   student: User;
@@ -580,6 +626,9 @@ export function songPage(opts: {
   dictate?: boolean;
   /** Teacher of THIS project — from the acting membership. */
   isTeacher?: boolean;
+  /** Where this student is with this song: when they began, and whether
+      they have finished. */
+  progress?: { started_at: string | null; completed_at: string | null } | null;
   /** Set when an admin is acting inside a practice they do not teach. */
   visiting?: Visiting | null;
 }): string {
@@ -857,6 +906,8 @@ export function songPage(opts: {
       .join(' · ')}
   </p>
 </div>
+
+${progressStrip(opts.progress ?? null, isTeacher, student.id, section.id)}
 
 ${
   generalNotes.length

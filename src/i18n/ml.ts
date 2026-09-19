@@ -772,4 +772,12 @@ export const ML: Record<string, string> = {
   'In your own time — set your time zone in Settings so these are right.': 'നിങ്ങളുടെ സമയത്തിൽ — ഇവ ശരിയാകാൻ ക്രമീകരണങ്ങളിൽ സമയ മേഖല ക്രമീകരിക്കുക.',
   'Times are shown on your clock (%s) and on the teacher’s. Change yours in Settings.': 'സമയങ്ങൾ നിങ്ങളുടെ (%s) ക്ലോക്കിലും ഗുരുവിന്റേതിലും കാണിക്കുന്നു. മാറ്റം ക്രമീകരണങ്ങളിൽ.',
   'Your time zone is not set, so these are shown on the teacher’s clock. Set it in Settings.': 'നിങ്ങളുടെ സമയ മേഖല ക്രമീകരിച്ചിട്ടില്ല, അതുകൊണ്ട് ഇവ ഗുരുവിന്റേ ക്ലോക്കിലാണ്. ക്രമീകരണങ്ങളിൽ ക്രമീകരിക്കുക.',
+
+  /* ---- When a song was started, and finished ---- */
+  'Started': 'തുടങ്ങിയത്',
+  'started %s': '%s തുടങ്ങി',
+  'Save dates': 'തീയതികൾ സേവ് ചെയ്യുക',
+  'not recorded': 'രേഖപ്പെടുത്തിയിട്ടില്ല',
+  'learning': 'പഠിക്കുന്നു',
+  'Clear the finish date to put it back in progress.': 'തീർന്ന തീയതി ഒഴിവാക്കിയാൽ വീണ്ടും പഠിക്കുന്നതായി മാറും.',
 };

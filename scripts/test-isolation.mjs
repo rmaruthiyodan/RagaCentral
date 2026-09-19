@@ -608,6 +608,7 @@ async function main() {
     ["assign B's song to B's student", 'POST', `/t/s/${B.studentId}/assign`, { section_id: B.sectionId }],
     ["mark B's song finished for B's student", 'POST', `/t/s/${B.studentId}/complete-song`, { section_id: B.sectionId }],
     ["unassign B's song from B's student", 'POST', `/t/s/${B.studentId}/unassign`, { section_id: B.sectionId }],
+    ["rewrite the dates on B's song for B's student", 'POST', `/t/s/${B.studentId}/song-dates`, { section_id: B.sectionId, started_at: '1999-01-01', completed_at: '1999-12-31' }],
     ["edit B's recording", 'POST', `/t/recordings/${B.recordingId}`, { title: `HIJACKED${RUN}`, part: 'charanam', description: 'hijacked' }],
     ["move B's recording", 'POST', `/t/recordings/${B.recordingId}/move`, { dir: 'up' }],
     ["delete B's recording", 'POST', `/t/recordings/${B.recordingId}/delete`, {}],
@@ -875,6 +876,39 @@ async function main() {
   let got = await POST(ta, `/t/song/${A.sectionId}/assign`, { student_id: dualId });
   if (checkStatus('teacher A can assign their own song to their own student', got, 302))
     check('  …and the assignment exists', d1one(`SELECT COUNT(*) AS n FROM assignments WHERE project_id='${A.id}' AND section_id='${A.sectionId}' AND student_id='${dualId}' AND archived_at IS NULL`)[0].n === 1, 'no assignment row');
+
+  /* The start date. It was always written to assignments.assigned_at
+     and never shown, so a song looked like it appeared from nowhere and
+     then ended. Setting it is a write on the same table the attack
+     table above tries to reach across, hence both halves. */
+  got = await POST(ta, `/t/s/${A.studentId}/song-dates`, {
+    section_id: A.sectionId,
+    started_at: '2026-03-04',
+    completed_at: '',
+  });
+  checkStatus('teacher A corrects when their student started a song', got, 302);
+  check(
+    '  …and the database took it',
+    d1one(`SELECT assigned_at, completed_at FROM assignments WHERE project_id='${A.id}' AND student_id='${A.studentId}' AND section_id='${A.sectionId}'`)[0]?.assigned_at === '2026-03-04',
+    'assigned_at was not changed',
+  );
+  check(
+    '  …and an empty finish date means "still learning"',
+    d1one(`SELECT completed_at FROM assignments WHERE project_id='${A.id}' AND student_id='${A.studentId}' AND section_id='${A.sectionId}'`)[0]?.completed_at === null,
+    'completed_at was not cleared',
+  );
+  got = await GET(ta, `/t/s/${A.studentId}/${A.sectionId}`);
+  if (checkStatus('  …and the song page shows it', got, 200))
+    check('  …as a date they can correct', got.text.includes('name="started_at"') && got.text.includes('2026-03-04'),
+      'no start date on the page');
+
+  /* Blank start means "leave it alone", not "erase what we knew". */
+  await POST(ta, `/t/s/${A.studentId}/song-dates`, { section_id: A.sectionId, started_at: '', completed_at: '' });
+  check(
+    '  …and a blank start date leaves the known one alone',
+    d1one(`SELECT assigned_at FROM assignments WHERE project_id='${A.id}' AND student_id='${A.studentId}' AND section_id='${A.sectionId}'`)[0]?.assigned_at === '2026-03-04',
+    'a blank box wiped the start date',
+  );
 
   got = await GET(ta, `/t/catalogue?q=${encodeURIComponent(N.songA)}`);
   if (checkStatus("teacher A's catalogue search for their own song answers", got, 200)) {

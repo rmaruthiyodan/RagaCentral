@@ -9,7 +9,7 @@
 
 import { page, avatar, inlineTitle } from './layout';
 import type { Visiting } from './layout';
-import { resumeCard, lessonLog } from './sessions';
+import { resumeCard, lessonLog, logForm } from './sessions';
 import { monthCalendar, zoneOptions } from './schedule';
 import { esc, fmtDate, relativeDate, waLink } from '../util';
 import { prettyIst, prettyIstZ, prettyIstDate, WEEKDAYS, inZone, monthLabel, type Occurrence } from '../tz';
@@ -268,6 +268,7 @@ export function songsTab(
               }</span>`
             : ''
         }
+        ${a.started_at ? `<span>${t('started %s', esc(fmtDate(a.started_at)))}</span>` : ''}
         ${a.completed_at ? `<span>${t('finished %s', esc(fmtDate(a.completed_at)))}</span>` : ''}
       </div>
     </a>
@@ -365,7 +366,32 @@ export function lessonsTab(
       counts,
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 
-<div class="section-head">
+${/* The log first, and inside a box with a ceiling.
+      A student a year in has fifty classes here, each with what was
+      covered, where they stopped and what to practise. Rendered
+      straight down the page that is several screens of scrolling
+      before the calendar — which is the thing you came here to click —
+      even appears. Capping the list at roughly a screen puts the two
+      side by side in the reading rather than a year apart, and losing
+      nothing: the whole history is still there, one scroll inside the
+      box. The anchors the calendar links to (#l-<id>) still work; a
+      browser scrolls a container to reach them. */ ''}
+<div class="lesson-scroll">
+  ${lessonLog(d.sessions, {
+    isTeacher: true,
+    studentId: student.id,
+    assigned: d.assigned,
+    dictate: d.dictate,
+    withForm: false,
+  })}
+</div>
+
+${/* Outside the box, and directly under it. Writing down the class that
+      just finished is the most frequent thing done on this tab; it must
+      not be the thing you reach by scrolling through a year. */ ''}
+${logForm(student.id, d.assigned, Boolean(d.dictate))}
+
+<div class="section-head" style="margin-top:26px">
   <div><h2>${t('Class calendar')}</h2>
     <p class="lede">${t('Every class that happened, was missed, or was cancelled.')}</p></div>
 </div>
@@ -380,9 +406,7 @@ ${monthCalendar(d.month, d.monthOccs, {
     const o = list.find((x) => !x.skipped && !x.missed);
     return o ? `/t/class/${o.slot.id}/${o.originalDate}` : null;
   },
-})}
-
-${lessonLog(d.sessions, { isTeacher: true, studentId: student.id, assigned: d.assigned, dictate: d.dictate })}`,
+})}`,
     ),
     {
       title: t('%s · Past classes', student.name),

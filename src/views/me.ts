@@ -148,6 +148,7 @@ function songRow(a: AssignedRow): string {
             }</span>`
           : ''
       }
+      ${a.started_at ? `<span>${t('started %s', esc(fmtDate(a.started_at)))}</span>` : ''}
       ${a.last_added ? `<span>${t('updated %s', esc(relativeDate(a.last_added)))}</span>` : ''}
     </div>
   </div>
