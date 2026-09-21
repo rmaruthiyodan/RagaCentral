@@ -26,6 +26,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 
 const YEL = '\u001b[33m';
+const RED = '\u001b[31m';
 const OFF = '\u001b[0m';
 
 /* Tables that carry project_id. The child tables (session_sections,
@@ -62,6 +63,119 @@ const touchesUsers =
   /\b(?:FROM|JOIN|UPDATE|INTO|DELETE\s+FROM)\s+(?:main\.)?"?users"?\b/i;
 const reachesProject = /\bproject_members\b|\bproject_id\b/i;
 
+/* ------------------------------------------------------------------ *
+ * Finding the strings — properly this time
+ *
+ * This used to be one regex alternation over quoted spans, and it was
+ * quietly wrong in a way that matters more than being wrong loudly.
+ * The views are template literals containing `${...}` containing more
+ * template literals, several deep; the moment a nested backtick closed
+ * what the regex thought was the outer string, everything after it was
+ * read as code rather than string, and the scan never recovered.
+ *
+ * It examined 22 statements. There are 114 in src/index.ts alone. It
+ * then printed "every query stays inside its project", which is the
+ * worst thing a checker can do: a boundary nobody is watching, with a
+ * green tick over it.
+ *
+ * So: a real lexer. It tracks comments, both quote styles and template
+ * literals with their `${}` expressions, which is the only way to know
+ * where a string actually ends.
+ * ------------------------------------------------------------------ */
+
+function literals(src) {
+  const out = [];
+  const n = src.length;
+  let i = 0;
+  let line = 1;
+
+  /* One entry per template literal we are inside of.
+     `depth` is how deep we are in its `${...}` — 0 means we are in the
+     template's own text, and anything above means we are in code that
+     happens to sit inside it. One flat pass with this stack, rather
+     than recursion over slices: the views are a thousand lines of
+     nested templates, and re-slicing at every one of them turned a
+     linear scan into a quadratic one that never finished. */
+  const stack = [];
+
+  while (i < n) {
+    const top = stack.length ? stack[stack.length - 1] : null;
+    const c = src[i];
+
+    /* Inside a template's text. */
+    if (top && top.depth === 0) {
+      if (c === '\\') { top.buf += src.slice(i, i + 2); i += 2; continue; }
+      if (c === '`') {
+        top.buf += '`';
+        out.push({ text: top.buf, line: top.startLine });
+        stack.pop();
+        i++;
+        continue;
+      }
+      if (c === '$' && src[i + 1] === '{') {
+        /* The expression is code. Replace it with a space so `${x}`
+           between two words cannot glue them into a table name that
+           was never written. */
+        top.buf += ' ';
+        top.depth = 1;
+        i += 2;
+        continue;
+      }
+      if (c === '\n') line++;
+      top.buf += c;
+      i++;
+      continue;
+    }
+
+    /* Code: the top level, or inside a `${ }`. */
+    if (c === '\n') { line++; i++; continue; }
+
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < n && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) {
+        if (src[i] === '\n') line++;
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+
+    if (c === "'" || c === '"') {
+      const q = c;
+      const start = i;
+      const startLine = line;
+      i++;
+      while (i < n && src[i] !== q) {
+        if (src[i] === '\\') i++;
+        else if (src[i] === '\n') line++;
+        i++;
+      }
+      i++;
+      out.push({ text: src.slice(start, i), line: startLine });
+      continue;
+    }
+
+    if (c === '`') {
+      stack.push({ buf: '`', startLine: line, depth: 0 });
+      i++;
+      continue;
+    }
+
+    if (top) {
+      if (c === '{') { top.depth++; i++; continue; }
+      if (c === '}') { top.depth--; i++; continue; }
+    }
+
+    i++;
+  }
+
+  return out;
+}
+
 let bad = 0;
 let ok = 0;
 const waived = [];
@@ -75,25 +189,11 @@ for (const file of FILES) {
   }
   const lines = src.split('\n');
 
-  /* Comments have to go first. An apostrophe in prose — song's,
-     teacher's — otherwise opens a "string" that swallows the real code
-     after it, and the statements inside that span are never examined.
-     The checker then reports zero problems for a reason that has
-     nothing to do with the code being right. Blank them out rather than
-     deleting, so line numbers still point at the truth. */
-  const blanked = src
-    .replace(/\/\*[\s\S]*?\*\//g, (m2) => m2.replace(/[^\n]/g, ' '))
-    .replace(/(^|[^:])\/\/[^\n]*/g, (m2, p1) => p1 + ' '.repeat(m2.length - p1.length));
-
-  const re = /(`(?:[^`\\]|\\.)*`|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g;
-  let m;
-  while ((m = re.exec(blanked))) {
-    const sql = m[1];
+  for (const { text: sql, line: lineNo } of literals(src)) {
     const isScoped = touches.test(sql);
     const isUsers = touchesUsers.test(sql);
     if (!isScoped && !isUsers) continue;
 
-    const lineNo = blanked.slice(0, m.index).split('\n').length;
     /* Six lines, not three. A waiver worth writing is usually a
        sentence or two of why, and a three-line window silently missed
        the first line of every one of them — which reads, from the
@@ -111,8 +211,8 @@ for (const file of FILES) {
         continue;
       }
       bad++;
-      const firstU = sql.replace(/\s+/g, ' ').slice(1, 110);
-      console.log(`\n  ${file}:${lineNo}  ${YEL}[users]${OFF}`);
+      const firstU = sql.replace(/\s+/g, ' ').slice(1, 130);
+      console.log(`\n  ${RED}${file}:${lineNo}${OFF}  ${YEL}[users]${OFF}`);
       console.log(`    ${firstU}…`);
       continue;
     }
@@ -123,8 +223,8 @@ for (const file of FILES) {
     }
 
     bad++;
-    const first = sql.replace(/\s+/g, ' ').slice(1, 110);
-    console.log(`\n  ${file}:${lineNo}`);
+    const first = sql.replace(/\s+/g, ' ').slice(1, 130);
+    console.log(`\n  ${RED}${file}:${lineNo}${OFF}`);
     console.log(`    ${first}…`);
   }
 }
