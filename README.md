@@ -64,6 +64,7 @@ wrangler.toml       Cloudflare configuration
 
 | | |
 |---|---|
+| `CONTRIBUTING.md` | Changing the code: the shape of a request, the five rules you must not break, how to know you haven't, and a recipe for each common change. Start here if you are about to edit something. |
 | `PRD.md` | What the product is, who it is for, what it must do and why. The decisions and what they cost, what is deliberately absent, and what comes next. |
 | `docs-design-book.html` | How it is built — architecture, data model, access rules, the time-zone engine, the interface system. Open it in a browser. |
 | `BACKUP.md` | The backup strategy, the setup, and the restore procedure. |
