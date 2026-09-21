@@ -44,7 +44,7 @@ BOOTSTRAP_ADMIN_EMAIL = "mailratish@gmail.com"
 #   workers-ai  Whisper, inside Cloudflare, free at this volume. The default.
 #   sarvam      Built for Indian languages; needs SARVAM_API_KEY. ~Rs 0.50/min.
 # Set DICTATE = "off" to hide the microphone entirely.
-DICTATE_PROVIDER = "workers-ai"
+DICTATE_PROVIDER = "sarvam"
 
 # Backing the database up into Google Drive from the admin page.
 #
