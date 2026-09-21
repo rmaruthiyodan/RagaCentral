@@ -28,6 +28,22 @@ export interface ProjectSummary extends Project {
   last_activity: string | null;
 }
 
+/**
+ * Somebody who signed in and belongs to no practice.
+ *
+ * They are invisible to every teacher — the approvals page joins
+ * project_members, and these people have no membership to join to — so
+ * this is the only screen in the app where they appear at all.
+ */
+export interface Stranded {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url: string | null;
+  created_at: string;
+  turned_away_at: string | null;
+}
+
 /** One person's place in a project, as the admin sees it. */
 export interface MemberRow {
   user_id: string;
@@ -48,6 +64,106 @@ const STATUS_LABEL: Record<string, string> = {
   disabled: 'Declined',
 };
 
+
+/**
+ * The people nobody can see but the admin.
+ *
+ * Put at the top of the page and not behind a link, because the whole
+ * failure this fixes is that nothing anywhere said these people were
+ * waiting. A list you have to remember to go and look at is the same
+ * bug with an extra click.
+ */
+function waitingBlock(
+  waiting: Stranded[],
+  projects: ProjectSummary[],
+  showTurnedAway: boolean,
+): string {
+  const open = projects.filter((p) => p.status === 'active');
+  const here = waiting.filter((w) => !w.turned_away_at);
+  const aside = waiting.filter((w) => w.turned_away_at);
+
+  if (!here.length && !aside.length) return '';
+
+  const options = open
+    .map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`)
+    .join('');
+
+  const row = (w: Stranded) => `<div class="row place-row">
+    ${avatar(w)}
+    <div class="row-main">
+      <div class="row-title">${esc(w.name)}</div>
+      <div class="row-meta">
+        <span>${esc(w.email)}</span>
+        <span>${esc(t('signed in %s', relativeDate(w.created_at)))}</span>
+      </div>
+    </div>
+    <div class="row-actions">
+      ${
+        open.length
+          ? `<form method="post" action="/admin/place" class="place-form">
+               <input type="hidden" name="user_id" value="${esc(w.id)}">
+               <label class="sr-only" for="p-${esc(w.id)}">${esc(t('Practice'))}</label>
+               <select id="p-${esc(w.id)}" name="project_id">${options}</select>
+               <label class="sr-only" for="r-${esc(w.id)}">${esc(t('Role'))}</label>
+               <select id="r-${esc(w.id)}" name="role">
+                 <option value="student">${esc(t('Student'))}</option>
+                 <option value="teacher">${esc(t('Teacher'))}</option>
+               </select>
+               <button class="btn btn-sm btn-primary" type="submit">${esc(t('Add them'))}</button>
+             </form>`
+          : `<span class="local-unknown">${esc(t('make a practice first'))}</span>`
+      }
+      <form method="post" action="/admin/turn-away">
+        <input type="hidden" name="user_id" value="${esc(w.id)}">
+        <button class="btn btn-sm btn-quiet" type="submit">${esc(t('Not ours'))}</button>
+      </form>
+    </div>
+  </div>`;
+
+  const asideRow = (w: Stranded) => `<div class="row is-dim">
+    <div class="row-main">
+      <div class="row-title">${esc(w.name)}</div>
+      <div class="row-meta"><span>${esc(w.email)}</span>
+        <span>${esc(t('set aside %s', relativeDate(w.turned_away_at ?? '')))}</span></div>
+    </div>
+    <div class="row-actions">
+      <form method="post" action="/admin/allow-again">
+        <input type="hidden" name="user_id" value="${esc(w.id)}">
+        <button class="btn btn-sm" type="submit">${esc(t('Put back'))}</button>
+      </form>
+    </div>
+  </div>`;
+
+  return `${
+    here.length
+      ? `<div class="section-head">
+           <div><h2>${esc(
+             here.length === 1 ? t('1 person is waiting') : t('%s people are waiting', here.length),
+           )}</h2>
+             <p class="lede">${t(
+               'They signed in and belong to no practice yet, so no teacher can see them. Put them where they belong.',
+             )}</p>
+           </div>
+         </div>
+         <div class="rows">${here.map(row).join('')}</div>`
+      : ''
+  }
+${
+  aside.length && showTurnedAway
+    ? `<div class="section-head" style="margin-top:18px">
+         <div><h2>${esc(t('Set aside'))}</h2></div>
+         <a class="btn btn-sm" href="/admin">${esc(t('Hide these'))}</a>
+       </div>
+       <div class="rows">${aside.map(asideRow).join('')}</div>`
+    : aside.length
+      ? `<p class="hint" style="margin:8px 0 18px">
+           ${t('%s set aside.', aside.length)}
+           <a href="/admin?aside=1">${esc(t('Show them'))}</a>
+         </p>`
+      : ''
+}`;
+}
+
 /* ------------------------------------------------------------------ *
  * Every practice
  * ------------------------------------------------------------------ */
@@ -55,8 +171,10 @@ const STATUS_LABEL: Record<string, string> = {
 export function adminHome(
   user: User,
   projects: ProjectSummary[],
+  waiting: Stranded[],
   siteName: string,
   msg?: string,
+  showTurnedAway = false,
 ): string {
   setLang(user.lang);
 
@@ -102,6 +220,8 @@ export function adminHome(
 
   return page(
     `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
+
+${waitingBlock(waiting, projects, showTurnedAway)}
 
 <div class="section-head">
   <div>

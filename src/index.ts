@@ -465,7 +465,17 @@ app.get('/admin', requireAdmin, async (c) => {
   const r = await c.env.DB.prepare(
     `${PROJECT_SUMMARY} ORDER BY p.status, p.name COLLATE NOCASE`,
   ).all<Adm.ProjectSummary>();
-  return c.html(Adm.adminHome(c.get('user'), r.results ?? [], site(c), c.req.query('msg')));
+  const aside = c.req.query('aside') === '1';
+  return c.html(
+    Adm.adminHome(
+      c.get('user'),
+      r.results ?? [],
+      await strandedUsers(c.env, aside),
+      site(c),
+      c.req.query('msg'),
+      aside,
+    ),
+  );
 });
 
 app.post('/admin/projects', requireAdmin, async (c) => {
@@ -605,6 +615,104 @@ app.post('/admin/p/:id/members/:uid/remove', requireAdmin, async (c) => {
   /* The membership goes; the person, and everything they recorded or
      were taught, stays. Removing somebody is not a way to delete them. */
   return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('Taken out of this practice.'));
+});
+
+/* ------------------------------------------------------------------ *
+ * People who signed in and landed nowhere
+ *
+ * Someone who signs in with Google and was never invited gets a `users`
+ * row and no membership at all. The teacher's approvals page joins
+ * project_members, so an account with no membership cannot appear on
+ * it — for any teacher, ever. They sat on the waiting page and nobody
+ * was told.
+ *
+ * Until each practice has its own address and a sign-in can say which
+ * one it meant, the admin is the only person who can answer "whose
+ * student is this?", so the decision lives here.
+ * ------------------------------------------------------------------ */
+
+async function strandedUsers(env: Env, includeTurnedAway = false): Promise<Adm.Stranded[]> {
+  /* unscoped: the whole point of this query is people who belong to NO
+     project — a membership join would return exactly nobody. Admin only,
+     and the only query in the app that deliberately looks outside every
+     practice at once. */
+  const r = await env.DB.prepare(
+    `SELECT u.id, u.name, u.email, u.avatar_url, u.created_at, u.turned_away_at
+       FROM users u
+      WHERE u.is_admin = 0
+        AND u.google_sub IS NOT NULL
+        AND (?1 = 1 OR u.turned_away_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = u.id)
+      ORDER BY u.created_at`,
+  )
+    .bind(includeTurnedAway ? 1 : 0)
+    .all<Adm.Stranded>();
+  return r.results ?? [];
+}
+
+app.post('/admin/place', requireAdmin, async (c) => {
+  const f = await c.req.formData();
+  const userId = String(f.get('user_id') ?? '');
+  const projectId = String(f.get('project_id') ?? '');
+  const role = String(f.get('role')) === 'teacher' ? 'teacher' : 'student';
+
+  const project = await getProject(c.env, projectId);
+  if (!project || project.status !== 'active')
+    return c.redirect('/admin?msg=' + encodeURIComponent('That practice is not open.'));
+
+  /* Only somebody who is actually stranded. An id typed into the form
+     for a person who already belongs somewhere would otherwise move
+     them, from a page that is not about moving anyone. */
+  const waiting = await strandedUsers(c.env, true);
+  const person = waiting.find((w) => w.id === userId);
+  if (!person)
+    return c.redirect('/admin?msg=' + encodeURIComponent('That person is already in a practice.'));
+
+  await addMember(c.env, {
+    projectId,
+    userId,
+    role,
+    status: 'active',
+    approvedBy: c.get('user').id,
+  });
+  /* Placed, so no longer turned away — the two states contradict.
+     unscoped: clearing a flag on the person just placed, by their own
+     id; the membership that scopes them was written a line above. */
+  await c.env.DB.prepare('UPDATE users SET turned_away_at = NULL WHERE id = ?')
+    .bind(userId)
+    .run();
+
+  return c.redirect(
+    '/admin?msg=' +
+      encodeURIComponent(
+        `${person.name} is in ${project.name} as a ${role}. They will see it next time they open the site.`,
+      ),
+  );
+});
+
+app.post('/admin/turn-away', requireAdmin, async (c) => {
+  const f = await c.req.formData();
+  await c.env.DB.prepare(
+    /* unscoped: a person who belongs to no project — see strandedUsers */
+    'UPDATE users SET turned_away_at = ? WHERE id = ? AND is_admin = 0',
+  )
+    .bind(now(), String(f.get('user_id') ?? ''))
+    .run();
+  return c.redirect(
+    '/admin?msg=' +
+      encodeURIComponent('Set aside. Their account still exists and you can let them in later.'),
+  );
+});
+
+app.post('/admin/allow-again', requireAdmin, async (c) => {
+  const f = await c.req.formData();
+  await c.env.DB.prepare(
+    /* unscoped: a person who belongs to no project — see strandedUsers */
+    'UPDATE users SET turned_away_at = NULL WHERE id = ?',
+  )
+    .bind(String(f.get('user_id') ?? ''))
+    .run();
+  return c.redirect('/admin?msg=' + encodeURIComponent('Back on the list.'));
 });
 
 /* ------------------------------------------------------------------ *

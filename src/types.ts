@@ -62,6 +62,8 @@ export interface User {
   /** Above every project. `role` and `status` above are no longer read —
       a person's role and standing now live on their project membership. */
   is_admin: number;
+  /** Set when an admin decided a self-registered sign-in is not joining. */
+  turned_away_at?: string | null;
 }
 
 /**

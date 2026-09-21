@@ -1190,6 +1190,9 @@ async function main() {
       ['disconnecting one', 'POST', '/admin/drive/disconnect'],
       ['running a backup', 'POST', '/admin/backup/run'],
       ['testing the connection', 'POST', '/admin/backup/check'],
+      ['placing a stranded person', 'POST', '/admin/place'],
+      ['setting one aside', 'POST', '/admin/turn-away'],
+      ['putting one back', 'POST', '/admin/allow-again'],
       ['the Drive callback', 'GET', '/admin/drive/callback?code=x&state=y'],
     ]) {
       const got = method === 'GET' ? await GET(jar, path) : await POST(jar, path, {});
@@ -1406,6 +1409,102 @@ async function main() {
   check('a student cannot forge their way in as the admin',
     forgedIn.status === 302 && forgedIn.location !== '/t/schedule/week',
     `${forgedIn.line} -> ${forgedIn.status} ${forgedIn.location ?? ''} — the cookie granted teacher powers`);
+  /* ================================================================
+   * 12. Somebody who signed in and belongs nowhere
+   *
+   * The bug: a person who signs in with Google and was never invited
+   * gets a users row and no membership. The teacher's approvals page
+   * joins project_members, so they cannot appear on it — for any
+   * teacher, ever. They waited and nobody was told.
+   * ================================================================ */
+
+  console.log('\n--- somebody who signed in and belongs nowhere ---');
+
+  const strayEmail = `iso-stray-${RUN}@iso.test`;
+  const stray = new Jar('stray');
+  await GET(stray, `/dev/login?email=${encodeURIComponent(strayEmail)}`);
+  const strayId = d1one(`SELECT id FROM users WHERE lower(email)='${strayEmail}'`)[0]?.id;
+  check('a fresh sign-in makes an account', Boolean(strayId), 'no user row');
+  check(
+    '  …with no membership anywhere',
+    d1one(`SELECT COUNT(*) AS n FROM project_members WHERE user_id='${strayId}'`)[0].n === 0,
+    'they were put in a practice by something',
+  );
+
+  const strayLanding = await GET(stray, '/');
+  check('  …and they are sent to the waiting page',
+    strayLanding.status === 302 && strayLanding.location === '/waiting',
+    `${strayLanding.line} -> ${strayLanding.status} ${strayLanding.location ?? ''}`);
+
+  /* The bug itself, pinned: no teacher can see them. This is not a
+     regression test for a fix, it is a statement of why the admin
+     screen has to exist. */
+  const approvalsA = await GET(ta, '/t/approvals');
+  const approvalsB = await GET(tb, '/t/approvals');
+  check('no teacher can see them on their approvals page',
+    !(approvalsA.text ?? '').includes(strayEmail) && !(approvalsB.text ?? '').includes(strayEmail),
+    'a teacher could see somebody who belongs to no practice');
+
+  /* The admin can. */
+  admin.cookies.delete('sruti_project');
+  const adminHome = await GET(admin, '/admin');
+  if (checkStatus('the admin page loads', adminHome, 200)) {
+    check('  …and lists the person waiting', adminHome.text.includes(strayEmail),
+      'the stranded person is not on the admin page');
+    check('  …with somewhere to put them', adminHome.text.includes('/admin/place'),
+      'no placement form');
+  }
+
+  r = await POST(admin, '/admin/place', { user_id: strayId, project_id: A.id, role: 'student' });
+  checkStatus('the admin places them in a practice', r, 302);
+  const placed = d1one(
+    `SELECT project_id, role, status FROM project_members WHERE user_id='${strayId}'`,
+  )[0];
+  check('  …as an active student of that practice',
+    placed?.project_id === A.id && placed?.role === 'student' && placed?.status === 'active',
+    `membership is ${JSON.stringify(placed)}`);
+
+  const nowIn = await GET(stray, '/');
+  check('  …and they are no longer stranded when they come back',
+    nowIn.status === 302 && nowIn.location === '/me',
+    `${nowIn.line} -> ${nowIn.status} ${nowIn.location ?? ''}`);
+  const theirPage = await GET(stray, '/me');
+  checkStatus('  …their own page opens', theirPage, 200);
+  check('  …showing nothing of the other practice',
+    !(theirPage.text ?? '').includes(N.songB), "B's material leaked to a newly placed student");
+
+  const afterPlacing = await GET(admin, '/admin');
+  check('  …and they drop off the waiting list', !afterPlacing.text.includes(strayEmail),
+    'still listed after being placed');
+
+  /* Placing is only for people who are actually stranded. */
+  const again = await POST(admin, '/admin/place', {
+    user_id: strayId, project_id: B.id, role: 'student',
+  });
+  check('placing cannot be used to move somebody who already belongs somewhere',
+    d1one(`SELECT project_id FROM project_members WHERE user_id='${strayId}'`)[0]?.project_id === A.id,
+    `they were moved: ${again.line}`);
+
+  /* Setting somebody aside, and changing your mind. */
+  const spamEmail = `iso-spam-${RUN}@iso.test`;
+  const spam = new Jar('spam');
+  await GET(spam, `/dev/login?email=${encodeURIComponent(spamEmail)}`);
+  const spamId = d1one(`SELECT id FROM users WHERE lower(email)='${spamEmail}'`)[0]?.id;
+
+  await POST(admin, '/admin/turn-away', { user_id: spamId });
+  const hidden = await GET(admin, '/admin');
+  check('somebody set aside leaves the list', !hidden.text.includes(spamEmail), 'still listed');
+  check('  …but the account is not deleted',
+    d1one(`SELECT COUNT(*) AS n FROM users WHERE id='${spamId}'`)[0].n === 1,
+    'the account was destroyed');
+
+  const shown = await GET(admin, '/admin?aside=1');
+  check('  …and can be found again on purpose', shown.text.includes(spamEmail),
+    'set-aside people cannot be seen at all');
+
+  await POST(admin, '/admin/allow-again', { user_id: spamId });
+  const back = await GET(admin, '/admin');
+  check('  …and put back', back.text.includes(spamEmail), 'not back on the list');
 }
 
 /* ================================================================== */

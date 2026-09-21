@@ -78,7 +78,12 @@ CREATE TABLE IF NOT EXISTS users (
   status_changed_at TEXT,
   -- Above every project. Set on one account by BOOTSTRAP_ADMIN_EMAIL,
   -- and by another admin thereafter.
-  is_admin     INTEGER NOT NULL DEFAULT 0
+  is_admin     INTEGER NOT NULL DEFAULT 0,
+  -- An admin looked at this sign-in and decided they are not joining.
+  -- Not a deletion: the account still exists and can be let back in, and
+  -- a stranger who signed in once should not be erasable by accident.
+  -- Only meaningful for someone who belongs to no project.
+  turned_away_at TEXT
 );
 
 -- Teacher-defined groupings for the song catalogue. Whatever he actually uses:

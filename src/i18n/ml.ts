@@ -805,4 +805,20 @@ export const ML: Record<string, string> = {
   'You will be asked to allow this site to add files to your Drive. It is only ever able to see the files it creates there.': 'നിങ്ങളുടെ Drive-ൽ ഫയലുകൾ ചേർക്കാൻ ഈ സൈറ്റിന് അനുമതി ചോദിക്കും. അവിടെ അതുണ്ടാക്കുന്ന ഫയലുകൾ മാത്രമേ അതിന് കാണാനാകൂ.',
   'A copy of the database, in a Google Drive you choose. The recordings are not included — they are backed up separately; see BACKUP.md.': 'നിങ്ങൾ തിരഞ്ഞെടുക്കുന്ന Google Drive-ൽ ഡാറ്റാബേസിന്റെ ഒരു പകർപ്പ്. റെക്കോർഡുകൾ ഇതിൽ ഉൾപ്പെടില്ല — അവ വേറെ ബാക്കപ്പ് എടുക്കുന്നു; BACKUP.md കാണുക.',
   'The dump is made by Cloudflare rather than by this site, which needs %s. Until they are set, the button stays off.': 'ഡമ്പ് ഉണ്ടാക്കുന്നത് Cloudflare ആണ്, അതിന് %s ആവശ്യമാണ്. അവ ക്രമീകരിക്കുന്നതുവരെ ബട്ടൺ ഓഫ്ഫായിരിക്കും.',
+
+  /* ---- Placing someone who signed in and belongs nowhere ---- */
+  '1 person is waiting': 'ഒരാൾ കാതിരിക്കുന്നു',
+  '%s people are waiting': '%s പേർ കാത്തിരിക്കുന്നു',
+  'They signed in and belong to no practice yet, so no teacher can see them. Put them where they belong.': 'അവർ പ്രവേശിച്ചു, പക്ഷേ ഇതുവരെ ഒരു ക്ലാസ്സിലും ഉൾപ്പെടിട്ടില്ല, അതുകൊണ്ട് ഒരു ഗുരുവിനും അവരെ കാണാൻ കഴിയില്ല. അവരെ ചേരേണ്ട ഇടത്ത് ചേർക്കുക.',
+  'Add them': 'ചേർക്കുക',
+  'Not ours': 'നമ്മുടെയല്ല',
+  'Practice': 'ക്ലാസ്സ്',
+  'Role': 'വേഷം',
+  'Set aside': 'മാറ്റിവച്ചവർ',
+  'set aside %s': '%s മാറ്റിവച്ചു',
+  '%s set aside.': '%s പേരെ മാറ്റിവച്ചിട്ടുണ്ട്.',
+  'Show them': 'അവരെ കാണിക്കുക',
+  'Hide these': 'ഇവ മറയ്ക്കുക',
+  'Put back': 'തിരികെ ചേർക്കുക',
+  'make a practice first': 'ആദ്യം ഒരു ക്ലാസ്സ് ഉണ്ടാക്കുക',
 };
