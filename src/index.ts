@@ -1439,7 +1439,12 @@ async function loadExceptions(env: Env, projectId: string, from: string, to: str
  * ------------------------------------------------------------------ */
 
 /**
- * How many lessons on one page. Roughly two screens of reading.
+ * How many lessons on one page.
+ *
+ * Four, because a lesson is not a row: it carries what was covered,
+ * where the class stopped and what to practise, in two scripts, and
+ * four of them is already a screenful. The number is small on purpose —
+ * paging is cheap and scrolling past things you are not reading is not.
  *
  * Not exported, and that is not tidiness. This module is the Worker's
  * entry point, and the runtime reads its exports as handlers: a `const`
@@ -1451,7 +1456,7 @@ async function loadExceptions(env: Env, projectId: string, from: string, to: str
  * which is a dead site, not a warning. Exported functions are fine;
  * exported values are not.
  */
-const LESSONS_PER_PAGE = 10;
+const LESSONS_PER_PAGE = 4;
 
 export interface LessonPage {
   rows: SessionRow[];

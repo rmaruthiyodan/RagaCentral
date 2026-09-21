@@ -1341,35 +1341,7 @@ a.wa:hover{text-decoration:underline}
    button off to the horizon. */
 .section-head .lede{max-width:56ch}
 
-/* ------------------------------------------------------------------
-   A year of lessons, in one screen's worth of page.
 
-   The log is the tall thing on this tab — fifty classes, each with what
-   was covered, where it stopped and what to practise — and the calendar
-   sits after it. Unbounded, the calendar is several screens down and
-   nobody finds it. Bounded, the whole history is still here; it is just
-   behind one scroll instead of ten.
-
-   The cap is in vh so it is always about a screen, whatever the screen.
-   Below the fold on a phone a nested scroll is more annoying than
-   useful, so it only applies where there is room to see the edges of
-   the box and understand what is scrolling.
-   ------------------------------------------------------------------ */
-@media (min-width:700px){
-  .lesson-scroll{
-    max-height:min(72vh, 900px);
-    overflow-y:auto;
-    overscroll-behavior:contain;
-    padding:2px 14px 2px 2px;
-    border:1px solid var(--line);
-    border-radius:var(--radius);
-    background:var(--paper);
-  }
-  /* An anchor landing flush against the top edge reads as cut off. */
-  .lesson-scroll .lesson{scroll-margin-top:12px}
-}
-/* The fade says "there is more below" without a scrollbar having to. */
-.lesson-scroll{position:relative}
 
 /* ------------------------------------------------------------------
    Started, and finished.

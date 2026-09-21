@@ -328,12 +328,10 @@ export function lessonsTab(
   <h2>${t('Past classes')}</h2>
   <p class="lede">${t('What you covered, and where each class stopped.')}</p>
 </div>
-${/* The same ceiling the teacher's tab has, and for the same reason: a
-     student two years in has a hundred of these. What is not on this
-     page was never fetched. */ ''}
-<div class="lesson-scroll">
-  ${lessonLog(sessions, { isTeacher: false, studentId: user.id, assigned, totals, pager })}
-</div>`,
+${/* Four at a time, like the teacher's. What is not on this page was
+     never fetched, so a student two years in loads no more than one two
+     months in. */ ''}
+${lessonLog(sessions, { isTeacher: false, studentId: user.id, assigned, totals, pager })}`,
     ),
     { title: t('Past classes'), user, siteName, nav: 'mine', hideNav: true },
   );

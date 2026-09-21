@@ -1251,7 +1251,7 @@ async function main() {
   console.log('\n--- a long history, a page at a time ---');
 
   const manyId = d1one(`SELECT id FROM users WHERE lower(email)='${N.studentA}'`)[0].id;
-  const PAGE = 10;
+  const PAGE = 4;
   const EXTRA = 14; // enough for a second and a third page
   for (let i = 0; i < EXTRA; i++) {
     const day = `2026-0${1 + (i % 6)}-${String(1 + i).padStart(2, '0')}`;

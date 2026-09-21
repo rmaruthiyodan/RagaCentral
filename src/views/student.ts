@@ -372,18 +372,14 @@ export function lessonsTab(
       counts,
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 
-${/* The log first, and inside a box with a ceiling.
-      A student a year in has fifty classes here, each with what was
-      covered, where they stopped and what to practise. Rendered
-      straight down the page that is several screens of scrolling
-      before the calendar — which is the thing you came here to click —
-      even appears. Capping the list at roughly a screen puts the two
-      side by side in the reading rather than a year apart, and losing
-      nothing: the whole history is still there, one scroll inside the
-      box. The anchors the calendar links to (#l-<id>) still work; a
-      browser scrolls a container to reach them. */ ''}
-<div class="lesson-scroll">
-  ${lessonLog(d.sessions, {
+${/* The log first, four classes of it, then the pager.
+      This was briefly a box with its own scrollbar, which solved the
+      length and introduced something worse: a scroll inside a scroll,
+      where the wheel does one thing over the box and another either
+      side of it, and where no scrollbar position means anything. Four
+      on the page and a link to the next four is the same amount of
+      reading with none of that. */ ''}
+${lessonLog(d.sessions, {
     isTeacher: true,
     studentId: student.id,
     assigned: d.assigned,
@@ -392,7 +388,6 @@ ${/* The log first, and inside a box with a ceiling.
     totals: d.totals,
     pager: d.pager,
   })}
-</div>
 
 ${/* Outside the box, and directly under it. Writing down the class that
       just finished is the most frequent thing done on this tab; it must
