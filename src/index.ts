@@ -28,6 +28,10 @@ import { isLang } from './i18n';
 import { transcribe, DictateError, CARNATIC_TERMS } from './transcribe';
 import * as V from './views/pages';
 import * as Adm from './views/admin';
+import {
+  getLink, driveConsentUrl, saveLink, forgetLink, runBackup, checkBackup,
+  recentRuns, BackupError,
+} from './backup';
 import type { StudentRow } from './views/pages';
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -601,6 +605,93 @@ app.post('/admin/p/:id/members/:uid/remove', requireAdmin, async (c) => {
   /* The membership goes; the person, and everything they recorded or
      were taught, stays. Removing somebody is not a way to delete them. */
   return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('Taken out of this practice.'));
+});
+
+/* ------------------------------------------------------------------ *
+ * Backing up into Google Drive
+ *
+ * Admin only, and that is not a convenience: a D1 export is the whole
+ * database, every practice in it. See src/backup.ts.
+ * ------------------------------------------------------------------ */
+
+const driveRedirect = (c: Context<AppEnv, any, any>) =>
+  new URL('/admin/drive/callback', c.req.url).toString();
+
+app.get('/admin/backup', requireAdmin, async (c) => {
+  return c.html(
+    Adm.adminBackup(
+      c.get('user'),
+      await getLink(c.env),
+      await recentRuns(c.env),
+      {
+        accountId: Boolean(c.env.CF_ACCOUNT_ID),
+        databaseId: Boolean(c.env.D1_DATABASE_ID),
+        apiToken: Boolean(c.env.CF_API_TOKEN),
+      },
+      site(c),
+      c.req.query('msg'),
+      c.req.query('err'),
+    ),
+  );
+});
+
+app.post('/admin/drive/connect', requireAdmin, (c) => {
+  if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET)
+    return c.redirect(
+      '/admin/backup?err=' + encodeURIComponent('Google sign-in is not configured on this deployment.'),
+    );
+  const state = newId();
+  setOAuthState(c, state);
+  return c.redirect(driveConsentUrl(c.env, driveRedirect(c), state));
+});
+
+app.get('/admin/drive/callback', requireAdmin, async (c) => {
+  const { code, state, error } = c.req.query();
+  const expected = takeOAuthState(c);
+  if (error)
+    return c.redirect('/admin/backup?err=' + encodeURIComponent('Google access was declined.'));
+  if (!code || !state || state !== expected)
+    return c.redirect('/admin/backup?err=' + encodeURIComponent('That link expired. Try again.'));
+
+  try {
+    await saveLink(c.env, code, driveRedirect(c), c.get('user').id);
+  } catch (e) {
+    const known = e instanceof BackupError;
+    if (!known) console.error('drive connect', e);
+    return c.redirect(
+      '/admin/backup?err=' +
+        encodeURIComponent(known ? (e as Error).message : 'Could not connect that Drive.'),
+    );
+  }
+  return c.redirect('/admin/backup?msg=' + encodeURIComponent('Google Drive is connected.'));
+});
+
+app.post('/admin/drive/disconnect', requireAdmin, async (c) => {
+  await forgetLink(c.env);
+  /* The token is gone from here, but Google still lists this app until
+     the person revokes it, and the backups already in the Drive are
+     theirs and are left alone. Say so rather than implying otherwise. */
+  return c.redirect(
+    '/admin/backup?msg=' +
+      encodeURIComponent(
+        'Disconnected. Backups already in the Drive are untouched; remove this app at ' +
+          'myaccount.google.com/permissions to revoke it there too.',
+      ),
+  );
+});
+
+app.post('/admin/backup/run', requireAdmin, async (c) => {
+  const run = await runBackup(c.env, c.get('user').id, site(c));
+  return c.redirect(
+    run.status === 'done'
+      ? '/admin/backup?msg=' + encodeURIComponent(`Saved to Drive as ${run.file_name}.`)
+      : '/admin/backup?err=' + encodeURIComponent(run.detail ?? 'The backup failed.'),
+  );
+});
+
+app.post('/admin/backup/check', requireAdmin, async (c) => {
+  const notes = await checkBackup(c.env);
+  return c.redirect('/admin/backup?msg=' + encodeURIComponent(notes.join('  ·  ')));
 });
 
 /* ------------------------------------------------------------------ *

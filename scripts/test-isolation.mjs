@@ -1179,6 +1179,38 @@ async function main() {
     `cookie is ${onlyA.cookies.get('sruti_project')}`);
 
   /* Nor can they claim to be the admin. */
+  /* The backup pages are the only place in the app where one request
+     can reach every project's data at once — a D1 export is the whole
+     database. Nobody but an admin gets near any of it. */
+  console.log('\n--- the backup pages are admin-only ---');
+  for (const [who, jar] of [['a teacher', ta], ['a student', onlyA]]) {
+    for (const [what, method, path] of [
+      ['the backup page', 'GET', '/admin/backup'],
+      ['connecting a Drive', 'POST', '/admin/drive/connect'],
+      ['disconnecting one', 'POST', '/admin/drive/disconnect'],
+      ['running a backup', 'POST', '/admin/backup/run'],
+      ['testing the connection', 'POST', '/admin/backup/check'],
+      ['the Drive callback', 'GET', '/admin/drive/callback?code=x&state=y'],
+    ]) {
+      const got = method === 'GET' ? await GET(jar, path) : await POST(jar, path, {});
+      check(
+        `${who} is turned away from ${what}`,
+        got.status === 302 && got.location === '/',
+        `${got.line} -> ${got.status} ${got.location ?? ''}`,
+      );
+    }
+  }
+  check(
+    'and no Drive link was created by any of that',
+    d1one("SELECT COUNT(*) AS n FROM drive_link")[0].n === 0,
+    'a drive_link row appeared',
+  );
+  check(
+    'and no backup was recorded',
+    d1one("SELECT COUNT(*) AS n FROM backup_runs")[0].n === 0,
+    'a backup_runs row appeared',
+  );
+
   const claimAdmin = await POST(onlyA, '/hats/choose', { to: 'admin' });
   check('a student cannot choose the admin hat', claimAdmin.status === 302 && claimAdmin.location === '/hats',
     `${claimAdmin.line} -> ${claimAdmin.status} ${claimAdmin.location ?? ''}`);

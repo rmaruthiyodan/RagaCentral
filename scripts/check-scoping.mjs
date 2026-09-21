@@ -43,7 +43,18 @@ const SCOPED = [
   'class_slots',
 ];
 
-const FILES = ['src/index.ts', ...readdirSync('src/views').map((f) => `src/views/${f}`)];
+/* Ordinary app code. auth.ts and projects.ts are deliberately absent:
+   the first is sign-in, which is identity and happens before any
+   project exists, and the second is the machinery that defines the
+   boundary rather than code that sits inside it. Anything else that
+   queries the database belongs on this list — a new file with SQL in
+   it that nobody scans is exactly how the boundary stops being
+   checked. */
+const FILES = [
+  'src/index.ts',
+  'src/backup.ts',
+  ...readdirSync('src/views').map((f) => `src/views/${f}`),
+];
 
 const touches = new RegExp(
   String.raw`\b(?:FROM|JOIN|UPDATE|INTO|DELETE\s+FROM)\s+(?:main\.)?"?(${SCOPED.join('|')})"?\b`,

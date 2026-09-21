@@ -40,3 +40,5 @@ CREATE INDEX IF NOT EXISTS idx_notes_proj  ON notes(project_id, section_id, sort
 CREATE INDEX IF NOT EXISTS idx_sess_proj   ON sessions(project_id, student_id, held_on DESC);
 CREATE INDEX IF NOT EXISTS idx_slots_proj  ON class_slots(project_id, student_id);
 CREATE INDEX IF NOT EXISTS idx_adminlog    ON admin_log(project_id, at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_backup_runs_started ON backup_runs(started_at DESC);

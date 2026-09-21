@@ -261,3 +261,38 @@ CREATE TABLE IF NOT EXISTS note_shares (
   created_at    TEXT NOT NULL,
   PRIMARY KEY (note_id, student_id)
 );
+
+-- ===================================================================
+-- Backing up into Google Drive
+--
+-- Above projects, like the admin who uses it: a D1 export is the whole
+-- database, every practice in it, so this is not a per-project thing
+-- and there is deliberately no project_id here.
+-- ===================================================================
+
+-- One row, id 'the'. The Drive that backups go into.
+CREATE TABLE IF NOT EXISTS drive_link (
+  id            TEXT PRIMARY KEY,          -- always 'the'
+  account_email TEXT,                      -- shown on the page; not used to authenticate
+  -- AES-GCM under a key derived from SESSION_SECRET. The database on
+  -- its own is not enough to use it; rotating SESSION_SECRET means
+  -- reconnecting Drive.
+  refresh_token TEXT NOT NULL,
+  folder_id     TEXT,                      -- made on first use, remade if deleted
+  connected_at  TEXT NOT NULL,
+  connected_by  TEXT REFERENCES users(id)
+);
+
+-- What happened, and when. Small on purpose: the backup itself lives
+-- in Drive, and this is only the receipt.
+CREATE TABLE IF NOT EXISTS backup_runs (
+  id          TEXT PRIMARY KEY,
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  status      TEXT NOT NULL,               -- done | failed
+  file_name   TEXT,
+  file_id     TEXT,
+  bytes       INTEGER,
+  detail      TEXT,                        -- why it failed, in words
+  started_by  TEXT REFERENCES users(id)
+);

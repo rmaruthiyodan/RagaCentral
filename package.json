@@ -8,7 +8,7 @@
     "db:local": "wrangler d1 execute sruti --local -y --file=./schema.sql && wrangler d1 execute sruti --local -y --file=./indexes.sql && wrangler d1 execute sruti --local -y --file=./backfill.sql",
     "db:remote": "node scripts/guard-prod.mjs \"the schema\" && wrangler d1 execute sruti --remote -y --file=./schema.sql && node scripts/sync-schema.mjs --remote && wrangler d1 execute sruti --remote -y --file=./indexes.sql && wrangler d1 execute sruti --remote -y --file=./backfill.sql",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types test-tz.mjs",
+    "test": "node --experimental-strip-types test-tz.mjs && node --experimental-strip-types test-backup.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:scope": "node scripts/check-scoping.mjs",
     "test:isolation": "node scripts/test-isolation.mjs"

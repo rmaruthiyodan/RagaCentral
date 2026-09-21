@@ -16,6 +16,7 @@ import { esc, fmtDate, fmtBytes, relativeDate } from '../util';
 import { t, setLang } from '../i18n';
 import type { User } from '../types';
 import type { Project, AdminLogRow } from '../projects';
+import type { DriveLink, BackupRun } from '../backup';
 
 /** A project with the numbers worth seeing without opening it. */
 export interface ProjectSummary extends Project {
@@ -109,6 +110,7 @@ export function adminHome(
       t('One project is one teacher and the students they teach. Nothing crosses between them.'),
     )}</p>
   </div>
+  <a class="btn btn-sm" href="/admin/backup">${esc(t('Backup'))}</a>
 </div>
 
 ${
@@ -150,7 +152,7 @@ ${
     </form>
   </div>
 </details>`,
-    { title: t('Practices'), user, siteName, nav: null, bodyClass: 'narrow' },
+    { title: t('Practices'), user, siteName, nav: null, hideNav: true, bodyClass: 'narrow' },
   );
 }
 
@@ -331,6 +333,120 @@ ${disclosure({
     </form>
   </div>
 </details>`,
-    { title: p.name, user, siteName, nav: null, bodyClass: 'narrow' },
+    { title: p.name, user, siteName, nav: null, hideNav: true, bodyClass: 'narrow' },
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Backing up into Google Drive
+ * ------------------------------------------------------------------ */
+
+/**
+ * The backup page.
+ *
+ * Three things, in the order somebody actually needs them: is this set
+ * up, a button, and what happened last time. The settings check is
+ * first and not hidden, because "nothing happens when I press it" is
+ * the failure this page exists to prevent.
+ */
+export function adminBackup(
+  user: User,
+  link: DriveLink | null,
+  runs: BackupRun[],
+  cf: { accountId: boolean; databaseId: boolean; apiToken: boolean },
+  siteName: string,
+  msg?: string,
+  err?: string,
+): string {
+  setLang(user.lang);
+
+  const ready = cf.accountId && cf.databaseId && cf.apiToken;
+  const missing = [
+    cf.accountId ? null : 'CF_ACCOUNT_ID',
+    cf.databaseId ? null : 'D1_DATABASE_ID',
+    cf.apiToken ? null : 'CF_API_TOKEN',
+  ].filter(Boolean) as string[];
+
+  const runRow = (r: BackupRun) => `<div class="row">
+    <div class="row-main">
+      <div class="row-title">${esc(fmtDate(r.started_at))}
+        ${
+          r.status === 'done'
+            ? `<span class="pill p-good">${esc(t('saved'))}</span>`
+            : `<span class="pill p-bad">${esc(t('failed'))}</span>`
+        }</div>
+      <div class="row-meta">
+        ${r.file_name ? `<span>${esc(r.file_name)}</span>` : ''}
+        ${r.bytes ? `<span>${esc(fmtBytes(r.bytes))}</span>` : ''}
+        ${r.detail ? `<span>${esc(r.detail)}</span>` : ''}
+      </div>
+    </div>
+  </div>`;
+
+  return page(
+    `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
+${err ? `<div class="flash err">${esc(err)}</div>` : ''}
+<a class="crumb" href="/admin">← ${esc(t('Every practice'))}</a>
+<div class="page-head">
+  <h1>${esc(t('Backup'))}</h1>
+  <p class="lede">${t(
+    'A copy of the database, in a Google Drive you choose. The recordings are not included — they are backed up separately; see BACKUP.md.',
+  )}</p>
+</div>
+
+<div class="section-head"><h2>${esc(t('Google Drive'))}</h2></div>
+<div class="panel"><div class="panel-body">
+${
+  link
+    ? `<p>${t(
+        'Connected%s, since %s.',
+        link.account_email ? ` — <strong>${esc(link.account_email)}</strong>` : '',
+        esc(fmtDate(link.connected_at)),
+      )}</p>
+       <p class="hint">${t(
+         'This site can only see the files it puts there. It cannot read anything else in that Drive.',
+       )}</p>
+       <div class="btn-row" style="margin-top:12px">
+         <form method="post" action="/admin/backup/run">
+           <button class="btn btn-primary" type="submit"${ready ? '' : ' disabled'}>${esc(
+             t('Back up now'),
+           )}</button>
+         </form>
+         <form method="post" action="/admin/backup/check">
+           <button class="btn" type="submit">${esc(t('Test the connection'))}</button>
+         </form>
+         <form method="post" action="/admin/drive/disconnect">
+           <button class="btn btn-quiet" type="submit">${esc(t('Disconnect'))}</button>
+         </form>
+       </div>`
+    : `<p>${t('No Drive is connected yet.')}</p>
+       <p class="hint">${t(
+         'You will be asked to allow this site to add files to your Drive. It is only ever able to see the files it creates there.',
+       )}</p>
+       <form method="post" action="/admin/drive/connect" style="margin-top:12px">
+         <button class="btn btn-primary" type="submit">${esc(t('Connect Google Drive'))}</button>
+       </form>`
+}
+</div></div>
+
+${
+  ready
+    ? ''
+    : `<div class="empty" style="margin-top:14px"><strong>${esc(
+        t('Cloudflare is not configured yet'),
+      )}</strong>
+       ${t(
+         'The dump is made by Cloudflare rather than by this site, which needs %s. Until they are set, the button stays off.',
+         `<code>${missing.map(esc).join('</code>, <code>')}</code>`,
+       )}</div>`
+}
+
+<div class="section-head"><h2>${esc(t('Last few'))}</h2></div>
+${
+  runs.length
+    ? `<div class="rows">${runs.map(runRow).join('')}</div>`
+    : `<div class="empty">${esc(t('Nothing has been backed up from here yet.'))}</div>`
+}`,
+    { title: t('Backup'), user, siteName, nav: null, hideNav: true, bodyClass: 'narrow' },
   );
 }

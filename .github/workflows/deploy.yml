@@ -39,8 +39,9 @@ jobs:
         run: npx tsc --noEmit
 
       # Real DST transitions in New York, London and Sydney, date
-      # rollover, and a class moved across a week boundary.
-      - name: Time-zone tests
+      # rollover, a class moved across a week boundary — and the
+      # encryption that keeps the Google Drive refresh token.
+      - name: Unit tests
         run: npm test
 
       # A dropped %s or a stray apostrophe in the Malayalam breaks a page

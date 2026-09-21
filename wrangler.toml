@@ -46,6 +46,24 @@ BOOTSTRAP_ADMIN_EMAIL = "mailratish@gmail.com"
 # Set DICTATE = "off" to hide the microphone entirely.
 DICTATE_PROVIDER = "workers-ai"
 
+# Backing the database up into Google Drive from the admin page.
+#
+# The dump is made by Cloudflare's own export API, not by this Worker —
+# reading a database into JavaScript would be far over the free plan's
+# 10ms CPU budget. That API needs to know which account and which
+# database, and needs a token to prove it may.
+#
+# Neither of these is a secret: an account id appears in every dashboard
+# URL, and the database id is already in this file below. The token IS a
+# secret and is not here:
+#
+#   npx wrangler secret put CF_API_TOKEN
+#
+# Make it at dash.cloudflare.com/profile/api-tokens with one permission,
+# D1:Edit on this account, and nothing else.
+CF_ACCOUNT_ID = "b2567db916c149b8fdfb42ca24b729ca"
+D1_DATABASE_ID = "31fe8aa6-9900-4844-ad5e-4035c57a4dc7"
+
 # Secrets — set these with `npx wrangler secret put <NAME>`, never in this file:
 #   GOOGLE_CLIENT_ID
 #   GOOGLE_CLIENT_SECRET

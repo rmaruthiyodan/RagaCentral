@@ -1,4 +1,4 @@
-import { t, lang } from './i18n';
+import { t, lang } from './i18n/index.ts';
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz'; // Crockford-ish, no look-alikes
 

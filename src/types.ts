@@ -18,6 +18,18 @@ export interface Env {
   SARVAM_API_KEY?: string;
   SARVAM_MODEL?: string;
   SARVAM_BASE?: string; // override for rehearsals; defaults to api.sarvam.ai
+
+  /* Backing the database up into Google Drive from the admin page.
+     All optional: with none of them set the panel says what is missing
+     and the button is not offered. CF_API_TOKEN is a secret; the other
+     two are plain identifiers and live in wrangler.toml.
+
+     The token needs D1:Edit on this account and nothing else — it is
+     what lets the Worker ask Cloudflare for a dump, which is the only
+     way to get one without reading the whole database into memory. */
+  CF_ACCOUNT_ID?: string;
+  D1_DATABASE_ID?: string;
+  CF_API_TOKEN?: string;
 }
 
 export interface User {

@@ -786,4 +786,23 @@ export const ML: Record<string, string> = {
   'Older →': 'പഴയത് →',
   'Page %1$s of %2$s': '%2$s-ൽ %1$s-ാം പേജ്',
   'More lessons': 'കൂടുതൽ ക്ലാസ്സുകൾ',
+
+  /* ---- Backing up into Google Drive ---- */
+  'Backup': 'ബാക്കപ്പ്',
+  'Google Drive': 'Google Drive',
+  'Connect Google Drive': 'Google Drive ബന്ധിപ്പിക്കുക',
+  'Disconnect': 'ബന്ധം വിച്ഛേദിക്കുക',
+  'Back up now': 'ഇപ്പോൾ ബാക്കപ്പ് എടുക്കുക',
+  'Test the connection': 'ബന്ധം പരിശോധിക്കുക',
+  'No Drive is connected yet.': 'ഇതുവരെ ഒരു Drive-ഉം ബന്ധിപ്പിച്ചിട്ടില്ല.',
+  'Connected%s, since %s.': '%2$s മുതൽ ബന്ധിപ്പിച്ചിരിക്കുന്നു%1$s.',
+  'Last few': 'അവസാനത്തെ കുറച്ചത്',
+  'saved': 'സേവ് ചെയ്തു',
+  'failed': 'പരാജയപ്പെട്ടു',
+  'Nothing has been backed up from here yet.': 'ഇവിടെ നിന്ന് ഇതുവരെ ഒന്നും ബാക്കപ്പ് എടുത്തിട്ടില്ല.',
+  'Cloudflare is not configured yet': 'Cloudflare ഇതുവരെ ക്രമീകരിച്ചിട്ടില്ല',
+  'This site can only see the files it puts there. It cannot read anything else in that Drive.': 'ഈ സൈറ്റ് അവിടെ ഇടുന്ന ഫയലുകൾ മാത്രമേ കാണുന്നുള്ളൂ. ആ Drive-ലെ മറ്റൊന്നും വായിക്കാൻ കഴിയില്ല.',
+  'You will be asked to allow this site to add files to your Drive. It is only ever able to see the files it creates there.': 'നിങ്ങളുടെ Drive-ൽ ഫയലുകൾ ചേർക്കാൻ ഈ സൈറ്റിന് അനുമതി ചോദിക്കും. അവിടെ അതുണ്ടാക്കുന്ന ഫയലുകൾ മാത്രമേ അതിന് കാണാനാകൂ.',
+  'A copy of the database, in a Google Drive you choose. The recordings are not included — they are backed up separately; see BACKUP.md.': 'നിങ്ങൾ തിരഞ്ഞെടുക്കുന്ന Google Drive-ൽ ഡാറ്റാബേസിന്റെ ഒരു പകർപ്പ്. റെക്കോർഡുകൾ ഇതിൽ ഉൾപ്പെടില്ല — അവ വേറെ ബാക്കപ്പ് എടുക്കുന്നു; BACKUP.md കാണുക.',
+  'The dump is made by Cloudflare rather than by this site, which needs %s. Until they are set, the button stays off.': 'ഡമ്പ് ഉണ്ടാക്കുന്നത് Cloudflare ആണ്, അതിന് %s ആവശ്യമാണ്. അവ ക്രമീകരിക്കുന്നതുവരെ ബട്ടൺ ഓഫ്ഫായിരിക്കും.',
 };

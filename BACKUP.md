@@ -42,6 +42,83 @@ cannot help if the database or the account itself is gone.
 
 ---
 
+## Layer 0.5 — the button on the admin page
+
+**What it is.** `/admin/backup` connects a Google Drive and copies the
+database into it, on demand, from the browser. Admin only, and not by
+oversight: a D1 export is the *whole* database, every practice in it, so
+letting a teacher press it would hand them every other teacher's
+students, notes and phone numbers in one file.
+
+**What it does not do.** The recordings. Those are Layer 2 below, and they
+stay there — media is gigabytes, and a Worker copying it would hit the
+free plan's 50-subrequests-per-request ceiling about a dozen files in.
+
+### Setting it up, once
+
+Three things, and the button stays off until all three are there. The
+page says which are missing.
+
+1. **Tell the Worker which database to export.** Already in
+   `wrangler.toml` as `CF_ACCOUNT_ID` and `D1_DATABASE_ID`. Neither is a
+   secret — an account id is in every dashboard URL.
+
+2. **A Cloudflare API token.** At
+   [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens),
+   create a token with **one** permission: `D1 : Edit`, on this account.
+   Nothing else. Then:
+
+   ```bash
+   npx wrangler secret put CF_API_TOKEN
+   ```
+
+3. **Let Google send you back.** In the Google Cloud console, add this to
+   the OAuth client's **Authorised redirect URIs**, alongside the sign-in
+   one that is already there:
+
+   ```
+   https://<your site>/admin/drive/callback
+   ```
+
+Then open `/admin/backup`, press **Connect Google Drive**, and choose the
+account. Press **Test the connection** before trusting it: it checks the
+API token and the Drive and changes nothing.
+
+### What it asks Google for
+
+`drive.file`, and nothing else. That scope lets an app see and manage
+*the files it creates* and is blind to everything else in the Drive — so
+a mistake in this code cannot read your documents. It is classified
+non-sensitive, which is why no Google security review is involved.
+
+### The one thing to be careful about
+
+Connecting stores a **refresh token** — a long-lived credential to that
+Drive — in this application's own database. It is encrypted with AES-GCM
+under a key derived from `SESSION_SECRET`, so the database on its own is
+not enough to use it. Two consequences worth knowing:
+
+- Rotating `SESSION_SECRET` means reconnecting Drive.
+- **Disconnect** removes it from here, but Google still lists the app
+  until you revoke it at
+  [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+  Backups already in the Drive are yours and are left alone.
+
+### Where the files go
+
+A folder called `RP Sajeev Music backups`, made on first use, one file
+per run: `2026-09-21T09-00-00-database.sql`. Restoring from one is the
+same procedure as restoring the weekly export — see **Restoring** below.
+
+### Why it is safe on the free plan
+
+The Worker never touches the data. Cloudflare's export API makes the dump
+and answers with a signed URL; the Worker pipes that URL straight into a
+Drive upload as a stream, so the bytes go from Cloudflare to Google
+without ever being a JavaScript value. What runs here is a few hundred
+bytes of JSON and some waiting, which is well inside the 10 ms of CPU a
+free-plan request gets.
+
 ## Layer 1 — the weekly export · GitHub Actions
 
 `.github/workflows/backup.yml` runs every **Sunday 19:30 UTC (Monday 01:00
