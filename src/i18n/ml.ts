@@ -432,8 +432,8 @@ export const ML: Record<string, string> = {
   Remove: 'ഒഴിവാക്കുക',
   'Remove this song from their list? Recordings are kept.':
     'ഈ പാട്ട് അവരുടെ പട്ടികയിൽ നിന്ന് ഒഴിവാക്കണോ? റെക്കോർഡിംഗുകൾ നിലനിൽക്കും.',
-  'Remove this weekly slot? Past lessons are untouched.':
-    'ആഴ്ചയിലെ ഈ സമയം ഒഴിവാക്കണോ? കഴിഞ്ഞ ക്ലാസുകളെ ഇത് ബാധിക്കില്ല.',
+  'Remove %s’s class on %s? Past lessons are untouched.':
+    '%s-ന്റെ %s ക്ലാസ് ഒഴിവാക്കണോ? കഴിഞ്ഞ ക്ലാസുകളെ ഇത് ബാധിക്കില്ല.',
   Reopen: 'വീണ്ടും തുറക്കുക',
   Repeats: 'ആവർത്തനം',
   Reschedule: 'സമയം മാറ്റുക',

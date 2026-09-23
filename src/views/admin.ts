@@ -12,7 +12,7 @@
  * ================================================================== */
 
 import { page, avatar, disclosure } from './layout';
-import { esc, fmtDate, fmtBytes, relativeDate } from '../util';
+import { esc, escConfirm, fmtDate, fmtBytes, relativeDate } from '../util';
 import { t, setLang } from '../i18n';
 import type { User } from '../types';
 import type { Project, AdminLogRow } from '../projects';
@@ -387,7 +387,7 @@ export function adminProject(
   </div>
   <div class="row-actions">
     <form method="post" action="/admin/p/${esc(p.id)}/members/${esc(m.user_id)}/remove"
-          onsubmit="return confirm('${esc(
+          onsubmit="return confirm('${escConfirm(
             t('Take %s out of this practice? Their recordings and lessons stay.', m.name),
           )}')">
       <button class="btn btn-sm btn-danger" type="submit">${esc(t('Remove'))}</button>

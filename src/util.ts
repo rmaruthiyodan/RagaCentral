@@ -25,6 +25,30 @@ export function esc(v: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Escape text for use inside `onsubmit="return confirm('...')"` (a single-quoted
+ * JS string literal sitting inside a double-quoted HTML attribute).
+ *
+ * `esc()` alone is NOT enough here: the browser HTML-decodes the attribute value
+ * before handing it to the JS parser, so `esc()`'s `'` -> `&#39;` turns right back
+ * into a raw `'` and breaks out of the JS string (e.g. a student named "O'Brien").
+ * This backslash-escapes the JS special characters first, then HTML-escapes the
+ * rest (but leaves the now-literal backslash/quote pair alone, since neither is
+ * an HTML entity and both survive HTML decoding unchanged).
+ */
+export function escConfirm(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  return String(v)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export function fmtBytes(n: number): string {
   if (!n) return '—';
   if (n < 1024) return `${n} B`;

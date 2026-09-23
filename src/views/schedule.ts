@@ -1,6 +1,6 @@
 import { page, avatar } from './layout';
 import type { Visiting } from './layout';
-import { esc } from '../util';
+import { esc, escConfirm } from '../util';
 import type { User, ClassSlot } from '../types';
 import {
   WEEKDAYS, COMMON_ZONES, TEACHER_ZONE, prettyIst, prettyIstZ, prettyIstDate,
@@ -210,7 +210,9 @@ function slotRow(s: ClassSlot, student: WithZone): string {
   </div>
   <div class="slot-local">${local}</div>
   <form method="post" action="/t/slots/${esc(s.id)}/delete"
-        onsubmit="return confirm('${t('Remove this weekly slot? Past lessons are untouched.')}')">
+        onsubmit="return confirm('${escConfirm(
+          t('Remove %s’s class on %s? Past lessons are untouched.', student.name, when),
+        )}')">
     <button class="btn btn-sm btn-danger" type="submit">${t('Remove')}</button>
   </form>
 </div>`;
