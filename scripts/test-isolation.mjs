@@ -1193,6 +1193,7 @@ async function main() {
       ['placing a stranded person', 'POST', '/admin/place'],
       ['setting one aside', 'POST', '/admin/turn-away'],
       ['putting one back', 'POST', '/admin/allow-again'],
+      ['moving a waiting person', 'POST', '/admin/move'],
       ['the Drive callback', 'GET', '/admin/drive/callback?code=x&state=y'],
     ]) {
       const got = method === 'GET' ? await GET(jar, path) : await POST(jar, path, {});
@@ -1456,26 +1457,75 @@ async function main() {
   }
 
   r = await POST(admin, '/admin/place', { user_id: strayId, project_id: A.id, role: 'student' });
-  checkStatus('the admin places them in a practice', r, 302);
+  checkStatus('the admin sends them to a practice', r, 302);
   const placed = d1one(
     `SELECT project_id, role, status FROM project_members WHERE user_id='${strayId}'`,
   )[0];
-  check('  …as an active student of that practice',
-    placed?.project_id === A.id && placed?.role === 'student' && placed?.status === 'active',
+  /* The admin routes; the teacher decides. Placing must NOT approve
+     anybody — only the teacher of that practice knows whether this is
+     actually their student. */
+  check('  …as a question for that practice, not as an approval',
+    placed?.project_id === A.id && placed?.role === 'student' && placed?.status === 'pending',
     `membership is ${JSON.stringify(placed)}`);
 
+  const stillOut = await GET(stray, '/');
+  check('  …and they are still waiting, because nobody has said yes yet',
+    stillOut.status === 302 && stillOut.location === '/waiting',
+    `${stillOut.line} -> ${stillOut.status} ${stillOut.location ?? ''}`);
+
+  /* Now the teacher can see them, which is the whole point. */
+  const queueA = await GET(ta, '/t/approvals');
+  check('  …and now their teacher CAN see them', (queueA.text ?? '').includes(strayEmail),
+    'the teacher still cannot see somebody sent to their practice');
+  const queueB = await GET(tb, '/t/approvals');
+  check('  …and the other teacher still cannot', !(queueB.text ?? '').includes(strayEmail),
+    'a question meant for A appeared in B');
+
+  /* The admin can see the queue across every practice, which no teacher
+     can — the reason this screen exists. */
+  const acrossAll = await GET(admin, '/admin');
+  check('  …and the admin can see them waiting, with which practice',
+    acrossAll.text.includes(strayEmail) && acrossAll.text.includes('/t/approvals'),
+    'the cross-practice queue does not list them');
+
+  r = await POST(ta, `/t/approvals/${strayId}`, { action: 'student' });
+  checkStatus('the teacher approves them', r, 302);
   const nowIn = await GET(stray, '/');
-  check('  …and they are no longer stranded when they come back',
+  check('  …and only then do they get in',
     nowIn.status === 302 && nowIn.location === '/me',
     `${nowIn.line} -> ${nowIn.status} ${nowIn.location ?? ''}`);
   const theirPage = await GET(stray, '/me');
   checkStatus('  …their own page opens', theirPage, 200);
   check('  …showing nothing of the other practice',
-    !(theirPage.text ?? '').includes(N.songB), "B's material leaked to a newly placed student");
+    !(theirPage.text ?? '').includes(N.songB), "B's material leaked to a newly approved student");
 
   const afterPlacing = await GET(admin, '/admin');
-  check('  …and they drop off the waiting list', !afterPlacing.text.includes(strayEmail),
-    'still listed after being placed');
+  check('  …and they are off the admin lists entirely once approved',
+    !afterPlacing.text.includes(strayEmail), 'still listed after approval');
+
+  /* Sent to the wrong teacher: the admin can take the question elsewhere. */
+  const mixEmail = `iso-mix-${RUN}@iso.test`;
+  const mix = new Jar('mixup');
+  await GET(mix, `/dev/login?email=${encodeURIComponent(mixEmail)}`);
+  const mixId = d1one(`SELECT id FROM users WHERE lower(email)='${mixEmail}'`)[0].id;
+  await POST(admin, '/admin/place', { user_id: mixId, project_id: A.id, role: 'student' });
+  r = await POST(admin, '/admin/move', { user_id: mixId, project_id: B.id });
+  checkStatus('the admin moves a waiting person to a different practice', r, 302);
+  const moved = d1one(
+    `SELECT project_id, status FROM project_members WHERE user_id='${mixId}'`,
+  );
+  check('  …and the question is asked in exactly one place',
+    moved.length === 1 && moved[0]?.project_id === B.id && moved[0]?.status === 'pending',
+    `memberships: ${JSON.stringify(moved)}`);
+  const qA = await GET(ta, '/t/approvals');
+  check('  …so the first teacher no longer sees them', !(qA.text ?? '').includes(mixEmail),
+    'the moved person is still in the old queue');
+
+  /* Moving is only for somebody still waiting. */
+  const noMove = await POST(admin, '/admin/move', { user_id: strayId, project_id: B.id });
+  check('somebody a teacher has already approved cannot be moved from a list',
+    d1one(`SELECT project_id FROM project_members WHERE user_id='${strayId}'`)[0]?.project_id === A.id,
+    `an approved student was moved: ${noMove.line}`);
 
   /* Placing is only for people who are actually stranded. */
   const again = await POST(admin, '/admin/place', {

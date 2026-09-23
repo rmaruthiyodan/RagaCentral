@@ -821,4 +821,11 @@ export const ML: Record<string, string> = {
   'Hide these': 'ഇവ മറയ്ക്കുക',
   'Put back': 'തിരികെ ചേർക്കുക',
   'make a practice first': 'ആദ്യം ഒരു ക്ലാസ്സ് ഉണ്ടാക്കുക',
+
+  /* ---- Waiting for a teacher to answer ---- */
+  '1 person is waiting for a teacher': 'ഒരാൾ ഗുരുവിനായി കാത്തിരിക്കുന്നു',
+  '%s people are waiting for a teacher': '%s പേർ ഗുരുവിനായി കാത്തിരിക്കുന്നു',
+  'Open approvals': 'അംഗീകാരങ്ങൾ തുറക്കുക',
+  'asked %s': '%s ചോദിച്ചു',
+  'Sent to a practice and not yet answered. Only that practice’s teacher sees them on their own Approvals page, so this is the only place they can all be seen at once.': 'ഒരു ക്ലാസ്സിലേക്ക് അയച്ചു, ഇതുവരെ മറുപടി ലഭിച്ചിട്ടില്ല. ആ ക്ലാസ്സിന്റെ ഗുരുവിനു മാത്രമേ അവരെ അംഗീകാര പേജിൽ കാണാനാകൂ, അതുകൊണ്ട് എല്ലാവരെയും ഒരുമിച്ച് കാണാൻ കഴിയുന്ന ഏക ഇടം ഇതാണ്.',
 };

@@ -44,6 +44,27 @@ export interface Stranded {
   turned_away_at: string | null;
 }
 
+/**
+ * Sent to a practice, waiting for its teacher to answer.
+ *
+ * Pending memberships are per-project by design — one teacher must not
+ * see another's queue — which means nobody at all could see them across
+ * practices. An admin looking for "the new student who signed up" had
+ * nowhere to look: not the teacher's approvals page, which only shows
+ * the practice they happen to be acting in, and not here. This is that
+ * missing view.
+ */
+export interface AwaitingRow {
+  user_id: string;
+  name: string;
+  email: string;
+  avatar_url: string | null;
+  project_id: string;
+  project_name: string;
+  joined_at: string;
+  role: string;
+}
+
 /** One person's place in a project, as the admin sees it. */
 export interface MemberRow {
   user_id: string;
@@ -64,6 +85,66 @@ const STATUS_LABEL: Record<string, string> = {
   disabled: 'Declined',
 };
 
+
+/**
+ * People a teacher has been asked about and has not answered.
+ *
+ * The one screen in the app that looks across every practice's queue at
+ * once, and the reason it exists: a pending membership belongs to one
+ * project, the teacher's approvals page shows only the project they are
+ * currently acting in, and so somebody who signs up and is waiting can
+ * be invisible to everyone — including the admin, who is usually the
+ * person being asked where they went.
+ */
+function awaitingBlock(awaiting: AwaitingRow[], projects: ProjectSummary[]): string {
+  if (!awaiting.length) return '';
+  const open = projects.filter((p) => p.status === 'active');
+
+  const row = (a: AwaitingRow) => `<div class="row place-row">
+    ${avatar(a)}
+    <div class="row-main">
+      <div class="row-title">${esc(a.name)}</div>
+      <div class="row-meta">
+        <span>${esc(a.email)}</span>
+        <span>${esc(t('for %s', a.project_name))}</span>
+        <span>${esc(t('asked %s', relativeDate(a.joined_at)))}</span>
+      </div>
+    </div>
+    <div class="row-actions">
+      <form method="post" action="/admin/switch/${esc(a.project_id)}">
+        <input type="hidden" name="to" value="/t/approvals">
+        <button class="btn btn-sm btn-primary" type="submit">${esc(t('Open approvals'))}</button>
+      </form>
+      ${
+        open.length > 1
+          ? `<form method="post" action="/admin/move" class="place-form">
+               <input type="hidden" name="user_id" value="${esc(a.user_id)}">
+               <select name="project_id" aria-label="${esc(t('Practice'))}">
+                 ${open
+                   .filter((p) => p.id !== a.project_id)
+                   .map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`)
+                   .join('')}
+               </select>
+               <button class="btn btn-sm" type="submit">${esc(t('Move'))}</button>
+             </form>`
+          : ''
+      }
+    </div>
+  </div>`;
+
+  return `<div class="section-head">
+    <div><h2>${esc(
+      awaiting.length === 1
+        ? t('1 person is waiting for a teacher')
+        : t('%s people are waiting for a teacher', awaiting.length),
+    )}</h2>
+      <p class="lede">${t(
+        'Sent to a practice and not yet answered. Only that practice’s teacher sees them on their own Approvals page, so this is the only place they can all be seen at once.',
+      )}</p>
+    </div>
+  </div>
+  <div class="rows">${awaiting.map(row).join('')}</div>`;
+}
 
 /**
  * The people nobody can see but the admin.
@@ -172,6 +253,7 @@ export function adminHome(
   user: User,
   projects: ProjectSummary[],
   waiting: Stranded[],
+  awaiting: AwaitingRow[],
   siteName: string,
   msg?: string,
   showTurnedAway = false,
@@ -221,6 +303,7 @@ export function adminHome(
   return page(
     `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 
+${awaitingBlock(awaiting, projects)}
 ${waitingBlock(waiting, projects, showTurnedAway)}
 
 <div class="section-head">

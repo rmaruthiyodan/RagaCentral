@@ -471,6 +471,7 @@ app.get('/admin', requireAdmin, async (c) => {
       c.get('user'),
       r.results ?? [],
       await strandedUsers(c.env, aside),
+      await awaitingTeacher(c.env),
       site(c),
       c.req.query('msg'),
       aside,
@@ -650,6 +651,21 @@ async function strandedUsers(env: Env, includeTurnedAway = false): Promise<Adm.S
   return r.results ?? [];
 }
 
+/** Sent to a practice, still waiting for its teacher to answer. */
+async function awaitingTeacher(env: Env): Promise<Adm.AwaitingRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT u.id AS user_id, u.name, u.email, u.avatar_url,
+            p.id AS project_id, p.name AS project_name,
+            m.joined_at, m.role
+       FROM project_members m
+       JOIN users u ON u.id = m.user_id
+       JOIN projects p ON p.id = m.project_id
+      WHERE m.status = 'pending'
+      ORDER BY m.joined_at`,
+  ).all<Adm.AwaitingRow>();
+  return r.results ?? [];
+}
+
 app.post('/admin/place', requireAdmin, async (c) => {
   const f = await c.req.formData();
   const userId = String(f.get('user_id') ?? '');
@@ -668,12 +684,23 @@ app.post('/admin/place', requireAdmin, async (c) => {
   if (!person)
     return c.redirect('/admin?msg=' + encodeURIComponent('That person is already in a practice.'));
 
+  /* Pending, not active — the admin routes, the teacher decides.
+     The admin can say which practice a stranger probably belongs to;
+     only the teacher knows whether they are actually their student. So
+     this puts them in the practice's approvals queue, which is a screen
+     that already exists and that the teacher already watches.
+
+     A teacher is the exception and has to go straight in: pending means
+     "somebody here will approve you", and in a practice with no teacher
+     yet there is nobody to do it. */
+  const status = role === 'teacher' ? 'active' : 'pending';
   await addMember(c.env, {
     projectId,
     userId,
     role,
-    status: 'active',
-    approvedBy: c.get('user').id,
+    status,
+    /* Deliberately not approvedBy: the admin did not approve them, they
+       decided where the question should be asked. */
   });
   /* Placed, so no longer turned away — the two states contradict.
      unscoped: clearing a flag on the person just placed, by their own
@@ -685,8 +712,49 @@ app.post('/admin/place', requireAdmin, async (c) => {
   return c.redirect(
     '/admin?msg=' +
       encodeURIComponent(
-        `${person.name} is in ${project.name} as a ${role}. They will see it next time they open the site.`,
+        status === 'pending'
+          ? `${person.name} has been sent to ${project.name}. Its teacher will see them under Approvals and can let them in or turn them down.`
+          : `${person.name} is now a teacher of ${project.name}.`,
       ),
+  );
+});
+
+/**
+ * Sent to the wrong practice: take the question to a different teacher.
+ *
+ * Only for somebody still waiting to be answered. Once a teacher has
+ * said yes they are that practice's student, and moving them is not an
+ * admin's decision to make from a list.
+ */
+app.post('/admin/move', requireAdmin, async (c) => {
+  const f = await c.req.formData();
+  const userId = String(f.get('user_id') ?? '');
+  const projectId = String(f.get('project_id') ?? '');
+
+  const project = await getProject(c.env, projectId);
+  if (!project || project.status !== 'active')
+    return c.redirect('/admin?msg=' + encodeURIComponent('That practice is not open.'));
+
+  const pending = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM project_members
+      WHERE user_id = ?1 AND status = 'pending'`,
+  )
+    .bind(userId)
+    .first<{ n: number }>();
+  if (!pending?.n)
+    return c.redirect('/admin?msg=' + encodeURIComponent('They are not waiting to be answered.'));
+
+  /* The old question goes away with the move — two practices both being
+     asked about the same person is how somebody gets approved twice. */
+  await c.env.DB.prepare(
+    "DELETE FROM project_members WHERE user_id = ?1 AND status = 'pending'",
+  )
+    .bind(userId)
+    .run();
+  await addMember(c.env, { projectId, userId, role: 'student', status: 'pending' });
+
+  return c.redirect(
+    '/admin?msg=' + encodeURIComponent(`Moved. ${project.name}'s teacher will see them now.`),
   );
 });
 
@@ -816,7 +884,13 @@ app.post('/admin/switch/:id', requireAdmin, async (c) => {
      otherwise press it and land on their own student page, with no way
      back to the teacher side of that practice. */
   setActiveProject(c, ADMIN_IN + p.id);
-  return c.redirect('/t/schedule/week');
+  /* Where the button that sent us here said it was going. Only ever a
+     path inside this site: a full URL from a form field would be an
+     open redirect, and this one is reachable by anyone who can reach
+     the admin pages. */
+  const to = String((await c.req.formData().catch(() => new FormData())).get('to') ?? '');
+  const safe = /^\/[A-Za-z0-9/_-]*$/.test(to) ? to : '/t/schedule/week';
+  return c.redirect(safe);
 });
 
 app.post('/admin/leave', requireAdmin, (c) => {
