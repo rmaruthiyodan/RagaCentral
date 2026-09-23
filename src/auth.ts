@@ -317,3 +317,18 @@ export const requireTeacherJson: MiddlewareHandler<AppEnv> = async (c, next) => 
   c.set('acting', acting);
   await next();
 };
+
+/** The same rule as requireUser, but for the endpoints a script calls — see requireTeacherJson above. */
+export const requireUserJson: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: 'You are signed out. Reload the page and sign in again.' }, 401);
+  c.set('user', user);
+
+  const acting = await resolveProject(c, user);
+  if (!acting) return c.json({ error: 'You are not part of a practice yet.' }, 403);
+  if (acting.membership && acting.membership.status !== 'active' && !acting.asAdmin)
+    return c.json({ error: 'Your account is not active in this project.' }, 403);
+
+  c.set('acting', acting);
+  await next();
+};

@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS recordings (
   sort_order    INTEGER NOT NULL DEFAULT 0,
   part          TEXT,                              -- pallavi, anupallavi, charanam…
   description   TEXT,                              -- a few lines on what this take shows
-  visibility    TEXT NOT NULL DEFAULT 'shared',    -- shared with everyone learning the song | private to student_id
+  visibility    TEXT NOT NULL DEFAULT 'shared',    -- shared | chosen (recording_shares) | self (student_id + any teacher only) — see Visibility in types.ts
   created_at    TEXT NOT NULL
 );
 

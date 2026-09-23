@@ -332,6 +332,8 @@ async function main() {
     teacherB: `iso-tb-${RUN}@iso.test`,
     studentA: `iso-sa-${RUN}@iso.test`,
     studentB: `iso-sb-${RUN}@iso.test`,
+    studentA2: `iso-sa2-${RUN}@iso.test`,
+    studentA2Name: `ChandraCharlie${RUN}`,
     dual: `iso-dual-${RUN}@iso.test`,
     projectA: `Iso Alpha ${RUN}`,
     projectB: `Iso Bravo ${RUN}`,
@@ -353,6 +355,7 @@ async function main() {
   const ta = new Jar('teacherA');
   const tb = new Jar('teacherB');
   const sa = new Jar('studentA');
+  const sa2 = new Jar('studentA2');
   const dual = new Jar('dualStudent');
 
   /* ================================================================
@@ -972,6 +975,98 @@ async function main() {
   check("A's student hears their own recording", ownMedia.status === 200, `${ownMedia.line} -> ${ownMedia.status}`);
   const teacherPage = await GET(sa, `/t/s/${A.studentId}`);
   check("A's student is bounced off the teacher pages", teacherPage.status === 302 && teacherPage.location === '/me', `${teacherPage.line} -> ${teacherPage.status} ${teacherPage.location ?? ''}`);
+
+  /* ================================================================
+   * 7a. A student records their own practice take — visible only to
+   *     them and a teacher, not to a classmate on the very same song
+   * ================================================================ */
+
+  console.log('\n--- a student records a practice take of their own ---');
+
+  r = await POST(ta, '/t/students', {
+    name: N.studentA2Name,
+    email: N.studentA2,
+    location: `Town${RUN}`,
+    phone: `+1001${RUN.slice(0, 4)}`,
+  });
+  checkStatus('teacher A adds a second student', r, 302);
+  const listA2 = await GET(ta, `/t?q=${encodeURIComponent(N.studentA2Name)}`);
+  const studentA2Id = firstMatch(listA2.text, new RegExp(`/t/s/(u_${ID})`), 'the second student');
+  r = await POST(ta, `/t/song/${A.sectionId}/assign`, { student_id: studentA2Id });
+  checkStatus('…and assigns them the same song as the first student', r, 302);
+
+  await signIn(sa2, N.studentA2);
+
+  const takeTitle = `SelfTake${RUN}`;
+  const fdSelf = new FormData();
+  fdSelf.set('file', new File([audioBytes(takeTitle)], `${takeTitle}.wav`, { type: 'audio/wav' }));
+  fdSelf.set('section_id', A.sectionId);
+  fdSelf.set('title', takeTitle);
+  // An attempt to escalate: file it under the classmate, and broadcast it —
+  // neither field is legitimate coming from a student, and neither should
+  // survive the request.
+  fdSelf.set('student_id', studentA2Id);
+  fdSelf.set('visibility', 'shared');
+  const selfUpload = await req(sa, 'POST', '/api/recordings', { multipart: fdSelf });
+  checkStatus('the student records a practice take of their own', selfUpload, 200);
+  const selfRecId = JSON.parse(selfUpload.text).id;
+
+  const selfRow = d1one(`SELECT student_id, visibility FROM recordings WHERE id='${selfRecId}' AND project_id='${A.id}'`)[0];
+  check(
+    '  …filed under the student themselves, not the classmate they named',
+    selfRow?.student_id === A.studentId,
+    `student_id was ${selfRow?.student_id}, wanted ${A.studentId}`,
+  );
+  check(
+    "  …and kept 'self', ignoring the visibility they sent",
+    selfRow?.visibility === 'self',
+    `visibility was ${selfRow?.visibility}`,
+  );
+
+  const ownView = await GET(sa, `/me/${A.sectionId}`);
+  if (checkStatus('the student sees their own practice take on the song page', ownView, 200))
+    check('  …unlocked, not sitting in the locked pile', ownView.text.includes(takeTitle), `"${takeTitle}" missing from the page`);
+  const ownPlay = await GET(sa, `/media/${selfRecId}`, { binary: true });
+  check('the student can hear their own practice take', ownPlay.status === 200, `${ownPlay.line} -> ${ownPlay.status}`);
+
+  const classmateView = await GET(sa2, `/me/${A.sectionId}`);
+  if (checkStatus('their classmate opens the very same song', classmateView, 200))
+    check(
+      "  …and the practice take isn't on the page at all — not even locked",
+      !classmateView.text.includes(takeTitle),
+      `"${takeTitle}" leaked onto the classmate's copy of the page`,
+    );
+  const classmatePlay = await GET(sa2, `/media/${selfRecId}`);
+  checkStatus('their classmate cannot stream it directly by id', classmatePlay, [403, 404]);
+
+  const teacherStudentPage = await GET(ta, `/t/s/${A.studentId}/${A.sectionId}`);
+  if (checkStatus("teacher A opens this student's own copy of the song", teacherStudentPage, 200))
+    check('  …and sees the practice take there', teacherStudentPage.text.includes(takeTitle), `"${takeTitle}" missing from the teacher's view`);
+  const teacherCataloguePage = await GET(ta, `/t/song/${A.sectionId}`);
+  if (checkStatus('teacher A opens the song in the catalogue', teacherCataloguePage, 200))
+    check('  …and sees it there too, attributed to the student', teacherCataloguePage.text.includes(takeTitle) && teacherCataloguePage.text.includes(N.studentAName), 'the take or its attribution is missing from the catalogue page');
+  const teacherPlay = await GET(ta, `/media/${selfRecId}`, { binary: true });
+  check('teacher A can hear it too', teacherPlay.status === 200, `${teacherPlay.line} -> ${teacherPlay.status}`);
+
+  /* Two more ways a student might try to record something that isn't
+     theirs to record: a song outside their own practice, and a song
+     inside it they were never assigned. */
+  const fdOutside = new FormData();
+  fdOutside.set('file', new File([audioBytes('outside')], 'outside.wav', { type: 'audio/wav' }));
+  fdOutside.set('section_id', B.sectionId);
+  fdOutside.set('title', 'Should not land');
+  const outsideAttempt = await req(sa, 'POST', '/api/recordings', { multipart: fdOutside });
+  checkStatus("a student can't record against a song in another practice", outsideAttempt, [403, 404]);
+
+  r = await POST(ta, '/t/sections', { title: `Unassigned${RUN}`, raga: '', taala: '', composer: '' });
+  checkStatus('teacher A adds a song nobody is assigned yet', r, 302);
+  const unassignedSongId = d1one(`SELECT id FROM sections WHERE project_id='${A.id}' AND title='Unassigned${RUN}'`)[0].id;
+  const fdUnassigned = new FormData();
+  fdUnassigned.set('file', new File([audioBytes('unassigned')], 'unassigned.wav', { type: 'audio/wav' }));
+  fdUnassigned.set('section_id', unassignedSongId);
+  fdUnassigned.set('title', 'Should not land either');
+  const unassignedAttempt = await req(sa, 'POST', '/api/recordings', { multipart: fdUnassigned });
+  checkStatus("a student can't record against a song they aren't assigned", unassignedAttempt, 403);
 
   /* ================================================================
    * 8. The admin crosses the boundary on purpose, and is recorded

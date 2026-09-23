@@ -729,6 +729,11 @@ export function songPage(opts: {
         <span class="rec-title">
           ${esc(r.title || (r.kind === 'video' ? t('Video clip') : t('Recording')))}
           ${r.part ? `<span class="part-tag">${esc(r.part)}</span>` : ''}
+          ${
+            r.visibility === 'self'
+              ? `<span class="pill p-brass">${isTeacher ? t('their practice take') : t('just you and your teacher')}</span>`
+              : ''
+          }
         </span>
         <span class="rec-meta">
           <span>${esc(fmtDate(r.created_at))}</span>
@@ -772,11 +777,18 @@ export function songPage(opts: {
       <a class="btn btn-sm" href="/media/${esc(r.id)}?download=1">${t('Download')}</a>
       ${
         isTeacher
-          ? `<form method="post" action="/t/recordings/${esc(r.id)}/unshare">
+          ? `${
+              // A 'self' take has no recording_shares row to revoke — it's
+              // already exclusive to this student by ownership, not by
+              // sharing — so there is nothing for "Lock" to do here.
+              r.visibility === 'self'
+                ? ''
+                : `<form method="post" action="/t/recordings/${esc(r.id)}/unshare">
                <input type="hidden" name="student_id" value="${esc(student.id)}">
                <input type="hidden" name="back" value="/t/s/${esc(student.id)}/${esc(section.id)}">
                <button class="btn btn-sm" type="submit"
-                 title="${t('Take this one back from %s', esc(student.name.split(' ')[0]))}">${t('Lock')}</button></form>
+                 title="${t('Take this one back from %s', esc(student.name.split(' ')[0]))}">${t('Lock')}</button></form>`
+            }
              <form method="post" action="/t/recordings/${esc(
                r.id,
              )}/delete" onsubmit="return confirm('${t('Delete this recording permanently?')}')">
@@ -832,12 +844,18 @@ export function songPage(opts: {
   /* Shut by default, like the one on the song page: recording is something
      you go and do, and until you do, the button and the whole apparatus are
      just a wall between the teacher and the takes they came to hear. No
-     data-disc — always closed on load rather than remembered. */
-  const recorderBlock = isTeacher
-    ? `<details class="panel addrec">
+     data-disc — always closed on load rather than remembered.
+     A student sees the same recorder a teacher does, but whatever they save
+     here always comes back as visibility 'self' — see /api/recordings — so
+     there is nothing here for them to pick an audience for. */
+  const recorderBlock = `<details class="panel addrec">
   <summary>
-    <span class="addrec-t">${t('Add a recording')}</span>
-    <span class="addrec-s">${t('record in the browser, or drop in files')}</span>
+    <span class="addrec-t">${isTeacher ? t('Add a recording') : t('Record a practice take')}</span>
+    <span class="addrec-s">${
+      isTeacher
+        ? t('record in the browser, or drop in files')
+        : t('just for you and your teacher — record in the browser, or drop in a file')
+    }</span>
   </summary>
   <div class="panel-body">
   <div class="tabs" role="tablist">
@@ -886,8 +904,7 @@ export function songPage(opts: {
     <div class="queue" data-queue></div>
   </div>
   </div>
-</details>`
-    : '';
+</details>`;
 
   return page(
     `${flash(msg)}

@@ -75,6 +75,7 @@ export const ML: Record<string, string> = {
   '%s person is waiting to be let in': '%s പേർ അനുമതിക്കായി കാത്തിരിക്കുന്നു',
   '%s private recording': '%s സ്വകാര്യ റെക്കോർഡിംഗ്',
   '%s private recordings': '%s സ്വകാര്യ റെക്കോർഡിംഗുകൾ',
+  '%s’s practice take': '%s-ന്റെ പരിശീലന റെക്കോർഡിംഗ്',
   '%s recording': '%s റെക്കോർഡിംഗ്',
   '%s recordings': '%s റെക്കോർഡിംഗുകൾ',
   '%s song': '%s പാട്ട്',
@@ -259,6 +260,9 @@ export const ML: Record<string, string> = {
   'Include paused, graduated and ended': 'നിർത്തിവെച്ചവരും പഠിച്ചിറങ്ങിയവരും അവസാനിപ്പിച്ചവരും ഉൾപ്പെടെ',
   'Invite someone by email': 'ഇമെയിൽ വഴി ഒരാളെ ക്ഷണിക്കുക',
   'joined %s': '%s ചേർന്നു',
+  'just for you and your teacher — record in the browser, or drop in a file':
+    'നിങ്ങൾക്കും അധ്യാപകനും മാത്രം — ബ്രൗസറിൽ റെക്കോർഡ് ചെയ്യുക, അല്ലെങ്കിൽ ഒരു ഫയൽ ഇടുക',
+  'just you and your teacher': 'നിങ്ങളും അധ്യാപകനും മാത്രം',
   'Just once': 'ഒരു തവണ മാത്രം',
   Label: 'പേര്',
   Language: 'ഭാഷ',
@@ -416,6 +420,7 @@ export const ML: Record<string, string> = {
   'Ready to start something new next time.': 'അടുത്ത തവണ പുതിയതെന്തെങ്കിലും തുടങ്ങാൻ തയ്യാർ.',
   'Reason — Onam, travel…': 'കാരണം — ഓണം, യാത്ര…',
   'Recent classes': 'അടുത്തിടെയുള്ള ക്ലാസുകൾ',
+  'Record a practice take': 'ഒരു പരിശീലന റെക്കോർഡിംഗ് ചെയ്യുക',
   'Record a take below, or unlock one of the others.':
     'താഴെ ഒരു റെക്കോർഡിംഗ് എടുക്കുക, അല്ലെങ്കിൽ മറ്റൊന്ന് തുറന്നുകൊടുക്കുക.',
   'record in the browser, or drop in files': 'ബ്രൗസറിൽ റെക്കോർഡ് ചെയ്യുക, അല്ലെങ്കിൽ ഫയലുകൾ ഇടുക',
@@ -503,6 +508,7 @@ export const ML: Record<string, string> = {
   Storage: 'സംഭരണം',
   'Struck through means no class; amber means moved; red means missed.':
     'വരയിട്ടത് ക്ലാസില്ല എന്നാണ്; മഞ്ഞ മാറ്റിയത്; ചുവപ്പ് മുടങ്ങിയത്.',
+  'a student': 'ഒരു വിദ്യാർത്ഥി',
   Student: 'വിദ്യാർത്ഥി',
   'Student unwell, no-show…': 'വിദ്യാർത്ഥിക്ക് സുഖമില്ല, വന്നില്ല…',
   Students: 'വിദ്യാർത്ഥികൾ',
@@ -522,6 +528,7 @@ export const ML: Record<string, string> = {
   'The zone is set automatically the first time they open the site.':
     'അവർ സൈറ്റ് ആദ്യമായി തുറക്കുമ്പോൾ സമയമേഖല സ്വയമേവ നിശ്ചയിക്കപ്പെടും.',
   'Their time zone': 'അവരുടെ സമയമേഖല',
+  'their practice take': 'അവരുടെ പരിശീലന റെക്കോർഡിംഗ്',
   'their time zone is not set': 'അവരുടെ സമയമേഖല നൽകിയിട്ടില്ല',
   Theory: 'സിദ്ധാന്തം',
   'These are the ones about the song itself — everyone learning it sees them unless you pick people.':

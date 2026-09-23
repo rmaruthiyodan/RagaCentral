@@ -56,8 +56,13 @@ function partsDatalist(): string {
 }
 
 /** Who this item reaches, as a pill you can read at a glance. */
-function audiencePill(visibility: string, shared: string[], students: SongStudent[]): string {
+function audiencePill(visibility: string, shared: string[], students: SongStudent[], ownerName?: string | null): string {
   if (visibility === 'shared') return `<span class="pill p-info">${t('everyone')}</span>`;
+  // A student's own practice take: it has no recording_shares row (access
+  // comes from owning it, not from being given it), so it must be caught
+  // here first or it would fall through to "nobody yet" below.
+  if (visibility === 'self')
+    return `<span class="pill p-brass">${t('%s’s practice take', esc((ownerName ?? t('a student')).split(' ')[0]))}</span>`;
   if (!shared.length) return `<span class="pill p-warn">${t('nobody yet')}</span>`;
   if (shared.length === 1) {
     const s = students.find((x) => x.id === shared[0]);
@@ -308,7 +313,7 @@ function recordingBlock(
         <span class="rec-title">
           ${esc(r.title || (r.kind === 'video' ? t('Video clip') : t('Recording')))}
           ${r.part ? `<span class="part-tag">${esc(r.part)}</span>` : ''}
-          ${audiencePill(r.visibility, o.shared, o.students)}
+          ${audiencePill(r.visibility, o.shared, o.students, r.student_name)}
           ${noteCount ? `<span class="note-count">${noteCount === 1 ? t('%s note', noteCount) : t('%s notes', noteCount)}</span>` : ''}
         </span>
         <span class="rec-meta">

@@ -16,7 +16,7 @@ import {
 import {
   currentUser, startSession, endSession, googleAuthUrl, setOAuthState,
   takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher, requireTeacherJson,
-  requireAdmin,
+  requireUserJson, requireAdmin,
 } from './auth';
 import {
   pid, acting, addMember, removeMember, createProject, getProject,
@@ -2324,17 +2324,23 @@ async function loadSong(env: Env, projectId: string, studentId: string, sectionI
     .first<Section & { group_name: string | null }>();
   if (!section) return null;
 
-  // Every recording on the song, each marked with whether this student may
-  // hear it. The ones they may not are still listed — locked — so they can see
-  // what the song holds and ask for it, and so the teacher can hand one over
-  // from the same screen instead of hunting for it in the catalogue.
+  // Every recording on the song this student may know about, each marked
+  // with whether they may actually hear it. A 'chosen' one they haven't been
+  // given yet is still listed — locked — so they can see what the song holds
+  // and ask for it, and so the teacher can hand one over from the same
+  // screen instead of hunting for it in the catalogue. A 'self' recording —
+  // another student's own practice take — isn't theirs to ask for, so it's
+  // left out of the list entirely rather than shown locked.
   const recordings = await env.DB.prepare(
     `SELECT r.*,
        CASE WHEN r.visibility = 'shared'
+              OR r.student_id = ?2
               OR EXISTS (SELECT 1 FROM recording_shares rs
                           WHERE rs.recording_id = r.id AND rs.student_id = ?2)
             THEN 0 ELSE 1 END AS locked
-     FROM recordings r WHERE r.section_id = ?1 AND r.project_id = ?3
+     FROM recordings r
+     WHERE r.section_id = ?1 AND r.project_id = ?3
+       AND (r.visibility != 'self' OR r.student_id = ?2)
      ORDER BY r.sort_order, r.created_at`,
   )
     .bind(sectionId, studentId, projectId)
@@ -2560,10 +2566,14 @@ async function studentMaySee(
   env: Env,
   projectId: string,
   studentId: string,
-  item: { id: string; section_id: string; visibility: string },
+  item: { id: string; section_id: string; visibility: string; student_id?: string },
   kind: 'recording' | 'note',
 ): Promise<boolean> {
-  if (item.visibility !== 'shared') {
+  // Whatever it's marked, a student may always hear their own take —
+  // that's the whole point of visibility 'self'. Still gated by the
+  // assignment check below, same as everything else.
+  const isOwn = kind === 'recording' && item.student_id === studentId;
+  if (item.visibility !== 'shared' && !isOwn) {
     // The share tables carry no project_id, so each is joined to its parent
     // and scoped there.
     const given = await env.DB.prepare(
@@ -2835,7 +2845,8 @@ export function dictateEnabled(env: Env): boolean {
   return Boolean(env.AI);
 }
 
-app.post('/api/recordings', requireTeacherJson, async (c) => {
+app.post('/api/recordings', requireUserJson, async (c) => {
+  const isTeacher = acting(c).isTeacher;
   let form: FormData;
   try {
     form = await c.req.formData();
@@ -2845,16 +2856,35 @@ app.post('/api/recordings', requireTeacherJson, async (c) => {
 
   const file = form.get('file');
   const sectionId = String(form.get('section_id') ?? '');
-  // A recording added from the song page belongs to no particular student. It
-  // is filed against the teacher and shared, which is what the access check
-  // actually reads; student_id only gates a recording marked private.
-  const studentId = String(form.get('student_id') ?? '') || c.get('user').id;
-  const shareIds = form.getAll('share_ids').map((v) => String(v)).filter(Boolean);
-  const visibility = String(form.get('visibility')) === 'chosen' && shareIds.length ? 'chosen' : 'shared';
   if (!(file instanceof File) || !sectionId)
     return c.json({ error: 'Missing file or song.' }, 400);
   if (!(await sectionInProject(c.env, pid(c), sectionId)))
     return c.json({ error: 'That song is not in this practice.' }, 404);
+
+  let studentId: string;
+  let shareIds: string[] = [];
+  let visibility: 'shared' | 'chosen' | 'self';
+  if (isTeacher) {
+    // A recording added from the song page belongs to no particular student.
+    // It is filed against the teacher and shared, which is what the access
+    // check actually reads; student_id here is attribution, not a gate.
+    studentId = String(form.get('student_id') ?? '') || c.get('user').id;
+    shareIds = form.getAll('share_ids').map((v) => String(v)).filter(Boolean);
+    visibility = String(form.get('visibility')) === 'chosen' && shareIds.length ? 'chosen' : 'shared';
+  } else {
+    // A student may only record themselves, only for a song they're
+    // actually assigned, and it's never shared beyond them and a teacher —
+    // there's no form field that can change any of that from the client.
+    studentId = c.get('user').id;
+    visibility = 'self';
+    const assigned = await c.env.DB.prepare(
+      'SELECT 1 AS x FROM assignments WHERE student_id = ? AND section_id = ? AND archived_at IS NULL AND project_id = ?',
+    )
+      .bind(studentId, sectionId, pid(c))
+      .first();
+    if (!assigned) return c.json({ error: 'That song is not on your list.' }, 403);
+  }
+
   if (file.size === 0) return c.json({ error: 'That file is empty.' }, 400);
   if (file.size > MAX_UPLOAD)
     return c.json({ error: `That file is ${(file.size / 1048576).toFixed(0)} MB. The limit is 90 MB.` }, 413);

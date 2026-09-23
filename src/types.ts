@@ -104,11 +104,16 @@ export interface Section {
 /**
  * 'shared'  — everyone learning the song.
  * 'chosen'  — only the students listed in recording_shares / note_shares.
- * 'private' — what 'chosen' used to be called, before one item could go to
- *             several students. Treated as 'chosen' everywhere, so a database
- *             the backfill hasn't reached yet stays closed rather than open.
+ * 'self'    — a student's own take on a song: heard only by them
+ *             (recordings.student_id) and by any teacher. Never listed, even
+ *             locked, on anyone else's copy of the song page.
+ * 'private' — legacy: what 'chosen' used to be called, before one item could
+ *             go to several students. backfill.sql rewrites any row still
+ *             carrying it to 'chosen' on every deploy — never write it, and
+ *             don't reuse the name for anything else, or the next deploy's
+ *             backfill will quietly rewrite it out from under you.
  */
-export type Visibility = 'shared' | 'chosen' | 'private';
+export type Visibility = 'shared' | 'chosen' | 'self' | 'private';
 
 export interface Recording {
   id: string;
