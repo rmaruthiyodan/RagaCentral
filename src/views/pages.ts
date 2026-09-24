@@ -697,15 +697,23 @@ export function songPage(opts: {
   </div>
 </div>`;
 
-  const renderRec = (r: Recording, seq: number) => {
-    const { idx, total } = partIndex.get(r.id) ?? { idx: 0, total: 1 };
+  const renderRec = (
+    r: Recording,
+    seq: number,
+    total: number,
+    partIndexMap: Map<string, { idx: number; total: number }>,
+  ) => {
+    const { idx, total: partTotal } = partIndexMap.get(r.id) ?? { idx: 0, total: 1 };
     const media =
       r.kind === 'video'
         ? `<video controls preload="metadata" playsinline src="/media/${esc(r.id)}"></video>`
         : `<audio controls preload="metadata" src="/media/${esc(r.id)}"></audio>`;
     const attached = notesFor(r.id);
     // The top recording opens, so there's always something to press play on.
-    const open = seq === 0 || recCount <= 2;
+    // `total` is the size of whichever list this recording belongs to — the
+    // shared recordings, or the practice takes — now that they render as two
+    // separate sections instead of one interleaved list.
+    const open = seq === 0 || total <= 2;
     /* The reorder form sits outside the <details> and the buttons reach it
        by id: a <form> isn't valid inside a <summary>, and anything inside
        the details is hidden while it's closed — which is exactly when you
@@ -750,7 +758,7 @@ export function songPage(opts: {
       <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="up"
         data-keep-open title="${esc(t('Move up'))}"${idx === 0 ? ' disabled' : ''}>&uarr;</button>
       <button class="btn btn-sm" type="submit" form="mv-${esc(r.id)}" name="dir" value="down"
-        data-keep-open title="${esc(t('Move down'))}"${idx === total - 1 ? ' disabled' : ''}>&darr;</button>
+        data-keep-open title="${esc(t('Move down'))}"${idx === partTotal - 1 ? ' disabled' : ''}>&darr;</button>
     </span>`
         : ''
     }
@@ -823,23 +831,33 @@ export function songPage(opts: {
   const generalNotes = notesFor(null);
   const open = recordings.filter((r) => !r.locked);
   const locked = recordings.filter((r) => r.locked);
-  const recCount = open.length;
+  // Split what's unlocked into the shared/teacher-given recordings and the
+  // student's own practice takes: these now render as two separate
+  // sections (mainOpen below the song's notes, selfOpen in its own
+  // collapsible section) instead of one interleaved list.
+  const mainOpen = open.filter((r) => r.visibility !== 'self');
+  const selfOpen = open.filter((r) => r.visibility === 'self');
 
   /* The server moves a recording within its own part, so the arrows have to
      be disabled by position within the part — not within the whole list, or
-     the first take of a second part offers an "up" that does nothing. */
-  const partIndex = new Map<string, { idx: number; total: number }>();
-  {
+     the first take of a second part offers an "up" that does nothing.
+     Built separately per section shown (shared recordings vs. practice
+     takes) so the up/down state matches what's actually adjacent on screen. */
+  function buildPartIndex(list: Recording[]): Map<string, { idx: number; total: number }> {
+    const partIndex = new Map<string, { idx: number; total: number }>();
     const byPart = new Map<string, Recording[]>();
-    for (const r of open) {
+    for (const r of list) {
       const k = r.part || '';
-      let list = byPart.get(k);
-      if (!list) byPart.set(k, (list = []));
-      list.push(r);
+      let arr = byPart.get(k);
+      if (!arr) byPart.set(k, (arr = []));
+      arr.push(r);
     }
-    for (const list of byPart.values())
-      list.forEach((r, i) => partIndex.set(r.id, { idx: i, total: list.length }));
+    for (const arr of byPart.values())
+      arr.forEach((r, i) => partIndex.set(r.id, { idx: i, total: arr.length }));
+    return partIndex;
   }
+  const partIndex = buildPartIndex(mainOpen);
+  const selfPartIndex = buildPartIndex(selfOpen);
 
   /* Shut by default, like the one on the song page: recording is something
      you go and do, and until you do, the button and the whole apparatus are
@@ -940,19 +958,19 @@ ${
             isTeacher
               ? t(
                   '%s to practise, and %s not yet given to %s.',
-                  open.length,
+                  mainOpen.length,
                   locked.length,
                   esc(student.name.split(' ')[0]),
                 )
-              : t("%s to practise, and %s your teacher hasn't shared yet.", open.length, locked.length)
+              : t("%s to practise, and %s your teacher hasn't shared yet.", mainOpen.length, locked.length)
           }</p>`
         : ''
     }</div>
 </div>
-${open.length > 2 ? discloseAll(t('Your browser remembers what you leave open.')) : ''}
+${mainOpen.length + selfOpen.length > 2 ? discloseAll(t('Your browser remembers what you leave open.')) : ''}
 ${
-  open.length
-    ? open.map((r, i) => renderRec(r, i)).join('')
+  mainOpen.length
+    ? mainOpen.map((r, i) => renderRec(r, i, mainOpen.length, partIndex)).join('')
     : `<div class="empty"><strong>${t('Nothing to play yet')}</strong>${
         isTeacher
           ? t('Record a take below, or unlock one of the others.')
@@ -975,6 +993,31 @@ ${
       }</p></div>
   </div>
   ${locked.map(renderLocked).join('')}`
+    : ''
+}
+
+${
+  selfOpen.length
+    ? disclosure({
+        key: `practice:${student.id}:${section.id}`,
+        cls: 'disc-part',
+        open: false,
+        title: esc(isTeacher ? t('Practice takes') : t('Your practice takes')),
+        meta:
+          selfOpen.length === 1
+            ? t('%s recording', selfOpen.length)
+            : t('%s recordings', selfOpen.length),
+        body: `<p class="hint" style="margin:0 0 12px">${
+          isTeacher
+            ? t(
+                'Recorded by %s for themselves — heard only by them and you, never listed for anyone else.',
+                esc(student.name.split(' ')[0]),
+              )
+            : t(
+                "Recorded by you — heard only by you and your teacher, never shown to anyone else you're learning alongside.",
+              )
+        }</p>${selfOpen.map((r, i) => renderRec(r, i, selfOpen.length, selfPartIndex)).join('')}`,
+      })
     : ''
 }
 

@@ -407,6 +407,7 @@ export const ML: Record<string, string> = {
   'Part of the song': 'പാട്ടിന്റെ ഭാഗം',
   'Past classes': 'കഴിഞ്ഞ ക്ലാസുകൾ',
   'Pick up from here': 'ഇവിടെനിന്ന് തുടരുക',
+  'Practice takes': 'പരിശീലന റെക്കോർഡിംഗുകൾ',
   'Previous week': 'കഴിഞ്ഞ ആഴ്ച',
   'Put it back': 'തിരികെ വെക്കുക',
 
@@ -421,6 +422,10 @@ export const ML: Record<string, string> = {
   'Reason — Onam, travel…': 'കാരണം — ഓണം, യാത്ര…',
   'Recent classes': 'അടുത്തിടെയുള്ള ക്ലാസുകൾ',
   'Record a practice take': 'ഒരു പരിശീലന റെക്കോർഡിംഗ് ചെയ്യുക',
+  'Recorded by %s for themselves — heard only by them and you, never listed for anyone else.':
+    '%s സ്വയം റെക്കോർഡ് ചെയ്തത് — അവർക്കും നിങ്ങൾക്കും മാത്രം കേൾക്കാം, മറ്റാർക്കും ലിസ്റ്റിൽ കാണില്ല.',
+  "Recorded by you — heard only by you and your teacher, never shown to anyone else you're learning alongside.":
+    'നിങ്ങൾ റെക്കോർഡ് ചെയ്തത് — നിങ്ങൾക്കും അധ്യാപകനും മാത്രം കേൾക്കാം, ഒപ്പം പഠിക്കുന്ന മറ്റാർക്കും കാണില്ല.',
   'Record a take below, or unlock one of the others.':
     'താഴെ ഒരു റെക്കോർഡിംഗ് എടുക്കുക, അല്ലെങ്കിൽ മറ്റൊന്ന് തുറന്നുകൊടുക്കുക.',
   'record in the browser, or drop in files': 'ബ്രൗസറിൽ റെക്കോർഡ് ചെയ്യുക, അല്ലെങ്കിൽ ഫയലുകൾ ഇടുക',
@@ -626,6 +631,7 @@ export const ML: Record<string, string> = {
     'നിങ്ങൾ %s ആയി പ്രവേശിച്ചിരിക്കുന്നു. ക്ലാസുകൾ കാണണമെങ്കിൽ അധ്യാപകൻ ഈ അക്കൗണ്ട് അനുവദിക്കണം. അത് നടക്കുന്ന മാത്രയിൽ അവ ഇവിടെ കാണാം.',
   'Your browser remembers what you leave open.':
     'നിങ്ങൾ തുറന്നിട്ടത് ബ്രൗസർ ഓർത്തുവെക്കും.',
+  'Your practice takes': 'നിങ്ങളുടെ പരിശീലന റെക്കോർഡിംഗുകൾ',
   'Your recordings are private. Only you and your teacher can play them.':
     'നിങ്ങളുടെ റെക്കോർഡിംഗുകൾ സ്വകാര്യമാണ്. നിങ്ങൾക്കും അധ്യാപകനും മാത്രമേ കേൾക്കാനാകൂ.',
   "Your teacher hasn't added a recording for this song yet.":

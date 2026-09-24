@@ -1024,8 +1024,16 @@ async function main() {
   );
 
   const ownView = await GET(sa, `/me/${A.sectionId}`);
-  if (checkStatus('the student sees their own practice take on the song page', ownView, 200))
+  const practiceDiscKey = `practice:${A.studentId}:${A.sectionId}`;
+  if (checkStatus('the student sees their own practice take on the song page', ownView, 200)) {
     check('  …unlocked, not sitting in the locked pile', ownView.text.includes(takeTitle), `"${takeTitle}" missing from the page`);
+    check(
+      '  …inside its own collapsed "Your practice takes" section, not the main recordings list',
+      ownView.text.includes(`data-disc="${practiceDiscKey}"`) &&
+        !ownView.text.includes(`data-disc="${practiceDiscKey}" open`),
+      'the practice-takes disclosure is missing, or already open on load',
+    );
+  }
   const ownPlay = await GET(sa, `/media/${selfRecId}`, { binary: true });
   check('the student can hear their own practice take', ownPlay.status === 200, `${ownPlay.line} -> ${ownPlay.status}`);
 
@@ -1040,11 +1048,23 @@ async function main() {
   checkStatus('their classmate cannot stream it directly by id', classmatePlay, [403, 404]);
 
   const teacherStudentPage = await GET(ta, `/t/s/${A.studentId}/${A.sectionId}`);
-  if (checkStatus("teacher A opens this student's own copy of the song", teacherStudentPage, 200))
+  if (checkStatus("teacher A opens this student's own copy of the song", teacherStudentPage, 200)) {
     check('  …and sees the practice take there', teacherStudentPage.text.includes(takeTitle), `"${takeTitle}" missing from the teacher's view`);
+    check(
+      '  …in its own collapsed section, same as the student sees',
+      teacherStudentPage.text.includes(`data-disc="${practiceDiscKey}"`) &&
+        !teacherStudentPage.text.includes(`data-disc="${practiceDiscKey}" open`),
+      'the practice-takes disclosure is missing, or already open on load',
+    );
+  }
+  // Practice takes are deliberately absent from the shared catalogue view —
+  // a teacher only sees a student's own take from that student's own song
+  // page (checked just above). The catalogue lists everyone's recordings on
+  // one page, and a take meant for one student's eyes has no business
+  // showing up there for the teacher to click through from a shared list.
   const teacherCataloguePage = await GET(ta, `/t/song/${A.sectionId}`);
   if (checkStatus('teacher A opens the song in the catalogue', teacherCataloguePage, 200))
-    check('  …and sees it there too, attributed to the student', teacherCataloguePage.text.includes(takeTitle) && teacherCataloguePage.text.includes(N.studentAName), 'the take or its attribution is missing from the catalogue page');
+    check("  …and the practice take is NOT listed there — only on the student's own page", !teacherCataloguePage.text.includes(takeTitle), `"${takeTitle}" leaked into the shared catalogue view`);
   const teacherPlay = await GET(ta, `/media/${selfRecId}`, { binary: true });
   check('teacher A can hear it too', teacherPlay.status === 200, `${teacherPlay.line} -> ${teacherPlay.status}`);
 
