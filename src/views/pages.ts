@@ -1014,11 +1014,14 @@ ${
       siteName,
       nav: isTeacher ? 'students' : 'mine',
       visiting: opts.visiting ?? null,
-      scripts: isTeacher
-        ? dictate
+      // The recorder now shows for a student too — see recorderBlock above —
+      // so /recorder.js has to load for both roles, not just the teacher's.
+      // /dictate.js stays teacher-only: it's wired to the lesson-note box,
+      // which only a teacher ever sees on this page.
+      scripts:
+        isTeacher && dictate
           ? ['/player.js', '/recorder.js', '/dictate.js']
-          : ['/player.js', '/recorder.js']
-        : ['/player.js'],
+          : ['/player.js', '/recorder.js'],
     },
   );
 }
