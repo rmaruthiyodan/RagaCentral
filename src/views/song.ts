@@ -630,7 +630,8 @@ ${
   <div class="panel-body">
 
 <p class="lede" style="margin-top:10px">${t('Audio becomes MP3 before it uploads.')}
-  ${t("Every take needs a name — it's how you'll find it again.")}</p>
+  ${t("Every take needs a name — it's how you'll find it again.")}
+  ${t('Up to %s minutes per take.', 6)}</p>
 
 ${
   everyone.length

@@ -26,8 +26,10 @@
      Raising this changes new recordings only; everything already uploaded
      stays as it was encoded. */
   var MP3_KBPS = 160;             // mono; ~1.2 MB per minute
-  var VIDEO_MAX_SEC = 120;        // keep clips short so storage stays predictable
-  var AUDIO_MAX_SEC = 20 * 60;
+  // One ceiling for every take, audio or video, recorded here or dropped in
+  // as a file — the same number /api/recordings enforces server-side, so a
+  // take that's allowed to finish here is never rejected once it arrives.
+  var MAX_RECORD_SEC = 6 * 60;
 
   var $ = function (sel) { return root.querySelector(sel); };
   var dot = $('[data-dot]');
@@ -151,9 +153,9 @@
       preview.hidden = true;
       if (levelWrap) levelWrap.hidden = false;
       startMeter(s);
-      say(wantVideo ? 'Recording video. Clips are capped at two minutes.' : 'Recording.');
+      say('Recording. Capped at ' + (MAX_RECORD_SEC / 60) + ' minutes.');
 
-      var cap = wantVideo ? VIDEO_MAX_SEC : AUDIO_MAX_SEC;
+      var cap = MAX_RECORD_SEC;
       ticker = setInterval(function () {
         var secs = (Date.now() - startedAt) / 1000;
         timerEl.textContent = fmt(secs);
@@ -382,6 +384,33 @@
 
   /* ---------------- file uploads ---------------- */
 
+  /* How long a dropped-in file runs, read from the file itself rather than
+     guessed from its size — an upload's bitrate is unknown, so size alone
+     can't stand in for duration the way it can for browser-recorded MP3.
+     An offscreen <audio>/<video> element loading only its metadata is the
+     cheapest way to ask the browser. Some files (a webm with no duration in
+     its header is the common case) come back as Infinity or NaN; those are
+     resolved as null rather than guessed at, and the server lets an unknown
+     duration through rather than blocking a file it can't itself measure. */
+  function probeDuration(file) {
+    return new Promise(function (resolve) {
+      var isVideo = file.type.indexOf('video/') === 0;
+      var el = document.createElement(isVideo ? 'video' : 'audio');
+      el.preload = 'metadata';
+      var url = URL.createObjectURL(file);
+      var settle = function (secs) {
+        URL.revokeObjectURL(url);
+        el.removeAttribute('src');
+        resolve(secs);
+      };
+      el.onloadedmetadata = function () {
+        settle(isFinite(el.duration) && el.duration > 0 ? el.duration : null);
+      };
+      el.onerror = function () { settle(null); };
+      el.src = url;
+    });
+  }
+
   var drop = document.querySelector('[data-drop]');
   if (drop) {
     var fileInput = drop.querySelector('[data-file]');
@@ -418,20 +447,33 @@
         var file = list[i];
         var el = items[i];
         var state = el.querySelector('.qstate');
-        state.textContent = 'uploading…';
+        state.textContent = 'checking…';
 
-        var fd = new FormData();
-        fd.append('file', file, file.name);
-        if (drop.dataset.student) fd.append('student_id', drop.dataset.student);
-        fd.append('section_id', drop.dataset.section);
-        fd.append('title', file.name.replace(/\.[^.]+$/, ''));
-        fd.append('kind', file.type.indexOf('video/') === 0 ? 'video' : 'audio');
-        fd.append('source', 'upload');
-        addAudience(fd);
+        probeDuration(file).then(function (secs) {
+          // Caught here, the file never leaves the browser — the same limit
+          // the server would apply, just without the wait. A length that
+          // couldn't be read is sent up and left for the server to decide.
+          if (secs !== null && secs > MAX_RECORD_SEC) {
+            state.textContent = 'too long — over ' + (MAX_RECORD_SEC / 60) + ' min, not uploaded';
+            i++; next();
+            return;
+          }
 
-        upload(fd, function (pct) { state.textContent = pct + '%'; })
-          .then(function () { state.textContent = 'saved'; i++; next(); })
-          .catch(function (err) { state.textContent = err.message; i++; next(); });
+          state.textContent = 'uploading…';
+          var fd = new FormData();
+          fd.append('file', file, file.name);
+          if (drop.dataset.student) fd.append('student_id', drop.dataset.student);
+          fd.append('section_id', drop.dataset.section);
+          fd.append('title', file.name.replace(/\.[^.]+$/, ''));
+          fd.append('kind', file.type.indexOf('video/') === 0 ? 'video' : 'audio');
+          fd.append('source', 'upload');
+          if (secs !== null) fd.append('duration_sec', String(Math.round(secs)));
+          addAudience(fd);
+
+          upload(fd, function (pct) { state.textContent = pct + '%'; })
+            .then(function () { state.textContent = 'saved'; i++; next(); })
+            .catch(function (err) { state.textContent = err.message; i++; next(); });
+        });
       })();
     }
   }

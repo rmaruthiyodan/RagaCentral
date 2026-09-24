@@ -1113,6 +1113,125 @@ async function main() {
   checkStatus("a student can't record against a song they aren't assigned", unassignedAttempt, 403);
 
   /* ================================================================
+   * 7b. Two caps on recordings: how long one may run, and — for a
+   *     student's own practice takes only — how many may exist, per
+   *     song and across the whole practice.
+   * ================================================================ */
+
+  console.log('\n--- capping recording length and practice-take counts ---');
+
+  // Length: too long is refused before anything is written, for a
+  // student's own take and for one a teacher adds alike — the cap in
+  // /api/recordings doesn't care who's uploading.
+  const fdTooLong = new FormData();
+  fdTooLong.set('file', new File([audioBytes('toolong')], 'toolong.wav', { type: 'audio/wav' }));
+  fdTooLong.set('section_id', A.sectionId);
+  fdTooLong.set('title', `TooLong${RUN}`);
+  fdTooLong.set('duration_sec', '400'); // over the 360s (6 min) cap
+  const tooLong = await req(sa, 'POST', '/api/recordings', { multipart: fdTooLong });
+  if (checkStatus('a take longer than 6 minutes is refused', tooLong, 413))
+    check(
+      '  …with a message that says why, not a generic failure',
+      /6 minutes/.test(JSON.parse(tooLong.text).error || ''),
+      `error was: ${tooLong.text}`,
+    );
+  check(
+    '  …and nothing was written for it',
+    d1one(`SELECT COUNT(*) AS n FROM recordings WHERE project_id='${A.id}' AND title='TooLong${RUN}'`)[0].n === 0,
+    'an over-length recording landed in the database anyway',
+  );
+
+  const fdTooLongTeacher = new FormData();
+  fdTooLongTeacher.set('file', new File([audioBytes('toolong-t')], 'toolong-t.wav', { type: 'audio/wav' }));
+  fdTooLongTeacher.set('section_id', A.sectionId);
+  fdTooLongTeacher.set('title', `TooLongTeacher${RUN}`);
+  fdTooLongTeacher.set('duration_sec', '450');
+  const tooLongTeacher = await req(ta, 'POST', '/api/recordings', { multipart: fdTooLongTeacher });
+  checkStatus('the same length cap applies to a recording the teacher adds', tooLongTeacher, 413);
+
+  // Per song: the earlier self-take already put one row on A.sectionId for
+  // this student. Nine more, seeded directly rather than uploaded one at a
+  // time, bring it to the cap of 10 — it's the real endpoint's refusal of an
+  // 11th that's actually under test, not the seeding.
+  const seedTs = new Date().toISOString();
+  const insertFillers = (rows) =>
+    d1(`INSERT INTO recordings
+          (project_id, id, section_id, student_id, title, kind, r2_key, mime_type,
+           duration_sec, size_bytes, source, uploaded_by, sort_order, part, description, visibility, created_at)
+        VALUES ${rows.join(',')}`);
+
+  insertFillers(
+    Array.from({ length: 9 }, (_, i) => {
+      const fid = `r_fill_song_${RUN}_${i}`;
+      return `('${A.id}','${fid}','${A.sectionId}','${A.studentId}','FillerSong${i}','audio','fake/${fid}.mp3','audio/mpeg',NULL,0,'upload','${A.studentId}',0,NULL,NULL,'self','${seedTs}')`;
+    }),
+  );
+  check(
+    'nine seeded practice takes bring this song to the 10-take cap',
+    d1one(`SELECT COUNT(*) AS n FROM recordings WHERE section_id='${A.sectionId}' AND student_id='${A.studentId}' AND visibility='self'`)[0].n === 10,
+    'seeding did not land 10 rows on this song',
+  );
+
+  const fdEleventh = new FormData();
+  fdEleventh.set('file', new File([audioBytes('eleventh')], 'eleventh.wav', { type: 'audio/wav' }));
+  fdEleventh.set('section_id', A.sectionId);
+  fdEleventh.set('title', `Eleventh${RUN}`);
+  const eleventh = await req(sa, 'POST', '/api/recordings', { multipart: fdEleventh });
+  if (checkStatus('an 11th practice take on the same song is refused', eleventh, 409))
+    check(
+      '  …with a message pointing at the per-song limit',
+      /10 practice takes/.test(JSON.parse(eleventh.text).error || ''),
+      `error was: ${eleventh.text}`,
+    );
+  check(
+    '  …and the song still has exactly 10',
+    d1one(`SELECT COUNT(*) AS n FROM recordings WHERE section_id='${A.sectionId}' AND student_id='${A.studentId}' AND visibility='self'`)[0].n === 10,
+    'the rejected upload was written anyway',
+  );
+
+  // Overall: ninety more, seeded the same way (piled onto the same song —
+  // fine, since seeding skips the endpoint and its per-song check entirely),
+  // bring this student to exactly 100 practice takes across the practice.
+  // A brand new song, freshly assigned and with none of its own, still
+  // refuses a first take — proof that it's the OVERALL cap doing the
+  // refusing here, not the per-song one, which this new song is nowhere
+  // near.
+  insertFillers(
+    Array.from({ length: 90 }, (_, i) => {
+      const fid = `r_fill_total_${RUN}_${i}`;
+      return `('${A.id}','${fid}','${A.sectionId}','${A.studentId}','FillerTotal${i}','audio','fake/${fid}.mp3','audio/mpeg',NULL,0,'upload','${A.studentId}',0,NULL,NULL,'self','${seedTs}')`;
+    }),
+  );
+  check(
+    'ninety more seeded takes bring this student to exactly 100 overall',
+    d1one(`SELECT COUNT(*) AS n FROM recordings WHERE project_id='${A.id}' AND student_id='${A.studentId}' AND visibility='self'`)[0].n === 100,
+    'seeding did not land a total of 100 rows',
+  );
+
+  r = await POST(ta, '/t/sections', { title: `OverallCapSong${RUN}`, raga: '', taala: '', composer: '' });
+  checkStatus('teacher A adds one more song, with no practice takes on it yet', r, 302);
+  const overallCapSongId = d1one(`SELECT id FROM sections WHERE project_id='${A.id}' AND title='OverallCapSong${RUN}'`)[0].id;
+  r = await POST(ta, `/t/song/${overallCapSongId}/assign`, { student_id: A.studentId });
+  checkStatus('…and assigns the first student to it', r, 302);
+
+  const fdOverCap = new FormData();
+  fdOverCap.set('file', new File([audioBytes('overcap')], 'overcap.wav', { type: 'audio/wav' }));
+  fdOverCap.set('section_id', overallCapSongId);
+  fdOverCap.set('title', `OverCap${RUN}`);
+  const overCap = await req(sa, 'POST', '/api/recordings', { multipart: fdOverCap });
+  if (checkStatus('a take on a brand new song is still refused — the overall cap, not the per-song one', overCap, 409))
+    check(
+      '  …with a message pointing at the overall limit',
+      /100 practice takes/.test(JSON.parse(overCap.text).error || ''),
+      `error was: ${overCap.text}`,
+    );
+  check(
+    '  …and nothing was written on the new song',
+    d1one(`SELECT COUNT(*) AS n FROM recordings WHERE section_id='${overallCapSongId}'`)[0].n === 0,
+    'the rejected upload landed on the new song anyway',
+  );
+
+  /* ================================================================
    * 8. The admin crosses the boundary on purpose, and is recorded
    * ================================================================ */
 

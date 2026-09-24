@@ -2554,6 +2554,30 @@ app.get('/me/:secid', requireUser, async (c) => {
 const MAX_UPLOAD = 90 * 1024 * 1024; // Workers caps request bodies at 100 MB.
 
 /**
+ * One ceiling on how long a single take may run — recorded in the browser or
+ * uploaded as a file, by a teacher or a student. recorder.js enforces the
+ * same number while recording (stopping the capture on its own) and while
+ * probing an uploaded file's length before it ever reaches the network, but
+ * neither of those is trustworthy on its own: a client can be old, patched,
+ * or simply lying. This is the check that actually decides.
+ */
+const MAX_RECORDING_SEC = 6 * 60;
+
+/**
+ * A teacher chooses to add a recording; a student's own practice takes are
+ * the one kind nobody but the student decided to create, one at a time,
+ * with nothing stopping them from recording forever. Two ceilings, so
+ * "record often" can't turn into "fill the shared R2 bucket without
+ * meaning to": one per song, because that's where they actually pile up,
+ * and one across the whole practice, because a student assigned to twenty
+ * songs could otherwise still get to two hundred takes ten at a time.
+ * Neither limit touches recordings a teacher adds — those stay unlimited,
+ * as before.
+ */
+const MAX_PRACTICE_TAKES_PER_SONG = 10;
+const MAX_PRACTICE_TAKES_TOTAL = 100;
+
+/**
  * Can this student see this recording or note?
  *  - shared → yes, if the song is assigned to them
  *  - chosen → yes, only if they are one of the students it was given to
@@ -2883,6 +2907,37 @@ app.post('/api/recordings', requireUserJson, async (c) => {
       .bind(studentId, sectionId, pid(c))
       .first();
     if (!assigned) return c.json({ error: 'That song is not on your list.' }, 403);
+
+    // Two quotas, checked before anything is written or uploaded, so a
+    // student who has hit one gets turned away without the file ever
+    // touching R2. Both count only their own practice takes — a teacher's
+    // recordings on this song, or on any other, are never in this tally.
+    const perSong = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM recordings
+        WHERE section_id = ? AND student_id = ? AND project_id = ? AND visibility = 'self'`,
+    )
+      .bind(sectionId, studentId, pid(c))
+      .first<{ n: number }>();
+    if ((perSong?.n ?? 0) >= MAX_PRACTICE_TAKES_PER_SONG)
+      return c.json(
+        {
+          error: `You've reached the limit of ${MAX_PRACTICE_TAKES_PER_SONG} practice takes for this song. Delete an older one before adding a new one.`,
+        },
+        409,
+      );
+
+    const total = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM recordings WHERE student_id = ? AND project_id = ? AND visibility = 'self'`,
+    )
+      .bind(studentId, pid(c))
+      .first<{ n: number }>();
+    if ((total?.n ?? 0) >= MAX_PRACTICE_TAKES_TOTAL)
+      return c.json(
+        {
+          error: `You've reached your overall limit of ${MAX_PRACTICE_TAKES_TOTAL} practice takes for this practice. Delete some older recordings before adding new ones.`,
+        },
+        409,
+      );
   }
 
   if (file.size === 0) return c.json({ error: 'That file is empty.' }, 400);
@@ -2897,6 +2952,16 @@ app.post('/api/recordings', requireUserJson, async (c) => {
   if (!title) return c.json({ error: 'Give this recording a name first.' }, 400);
   const durationRaw = Number(form.get('duration_sec'));
   const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
+  // Known and over the cap is a hard stop, for a recording or an upload,
+  // teacher's or student's. Unknown (an upload whose length couldn't be read
+  // client-side) is let through rather than guessed at — see recorder.js.
+  if (duration !== null && duration > MAX_RECORDING_SEC)
+    return c.json(
+      {
+        error: `Recordings are capped at ${Math.round(MAX_RECORDING_SEC / 60)} minutes. This one runs ${Math.ceil(duration / 60)}. Trim it and try again.`,
+      },
+      413,
+    );
   const source = String(form.get('source') ?? 'upload') === 'recorded' ? 'recorded' : 'upload';
 
   const id = newId('r');

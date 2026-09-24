@@ -866,6 +866,9 @@ export function songPage(opts: {
      A student sees the same recorder a teacher does, but whatever they save
      here always comes back as visibility 'self' — see /api/recordings — so
      there is nothing here for them to pick an audience for. */
+  // The numbers here are copy only — the actual limits are enforced in
+  // /api/recordings (MAX_RECORDING_SEC, MAX_PRACTICE_TAKES_PER_SONG,
+  // MAX_PRACTICE_TAKES_TOTAL). Keep these in step with those if they change.
   const recorderBlock = `<details class="panel addrec">
   <summary>
     <span class="addrec-t">${isTeacher ? t('Add a recording') : t('Record a practice take')}</span>
@@ -876,6 +879,16 @@ export function songPage(opts: {
     }</span>
   </summary>
   <div class="panel-body">
+  <p class="hint" style="margin:0 0 14px">
+    ${
+      isTeacher
+        ? t('Up to %s minutes per take.', 6)
+        : t(
+            'Up to %s minutes per take — and up to %s practice takes for this song, %s across every song.',
+            6, 10, 100,
+          )
+    }
+  </p>
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="record">${t('Record now')}</button>
     <button role="tab" aria-selected="false" data-tab="upload">${t('Upload files')}</button>

@@ -598,6 +598,9 @@ export const ML: Record<string, string> = {
   'Update status': 'സ്ഥിതി പുതുക്കുക',
   'updated %s': '%s പുതുക്കി',
   'Upload files': 'ഫയലുകൾ അപ്‌ലോഡ് ചെയ്യുക',
+  'Up to %s minutes per take.': 'ഓരോ റെക്കോർഡിംഗിനും പരമാവധി %s മിനിറ്റ്.',
+  'Up to %s minutes per take — and up to %s practice takes for this song, %s across every song.':
+    'ഓരോ റെക്കോർഡിംഗിനും പരമാവധി %s മിനിറ്റ് — ഈ പാട്ടിന് പരമാവധി %s പരിശീലന റെക്കോർഡിംഗുകൾ, എല്ലാ പാട്ടുകളും ചേർത്ത് പരമാവധി %s.',
   'Video clip': 'വീഡിയോ',
   'Waiting for approval': 'അനുമതിക്കായി കാത്തിരിക്കുന്നു',
   'was still in progress': 'ഇനിയും നടന്നുകൊണ്ടിരിക്കുകയായിരുന്നു',
