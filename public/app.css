@@ -840,7 +840,11 @@ video{background:#000;max-height:420px}
 .slot-row{
   display:flex;align-items:center;gap:16px;flex-wrap:wrap;
   padding:11px 0;border-top:1px solid var(--line);
+  position:relative; /* the Edit panel spans this row, not its button */
 }
+/* A row with its panel open has to paint above the rows below it, or their
+   backgrounds and borders show through the panel's shadow. */
+.slot-row:has(details.change[open]){z-index:31}
 .slot-when{flex:1;min-width:190px}
 .slot-when b{font-size:14.5px}
 .slot-time{display:block;font-family:var(--f-mono);font-size:12px;color:var(--ink-3);margin-top:1px}

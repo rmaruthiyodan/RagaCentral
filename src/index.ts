@@ -3419,6 +3419,45 @@ app.post('/t/students/:id/slots', requireTeacher, async (c) => {
   return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('Class slot added.'));
 });
 
+/**
+ * Change an existing slot's own rule — its day/date, time, length or label —
+ * rather than deleting it and adding a replacement. A recurring slot keeps
+ * its id and its history of exceptions (skips, moves) either way; only the
+ * rule itself changes, from here on.
+ */
+app.post('/t/slots/:id', requireTeacher, async (c) => {
+  const id = c.req.param('id');
+  const f = await c.req.formData();
+  const onDate = String(f.get('on_date') ?? '').trim();
+  const kind = String(f.get('kind')) === 'once' || onDate ? 'once' : 'weekly';
+  const time = String(f.get('time_ist') ?? '').trim();
+  if (!/^\d{2}:\d{2}$/.test(time))
+    return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('That time did not look right.'));
+  if (kind === 'once' && !onDate)
+    return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('A one-off class needs a date.'));
+
+  const dur = Number(f.get('duration_min'));
+  await c.env.DB.prepare(
+    /* :id is a slot id from the URL, so this only ever touches a slot that
+       already belongs to the acting project — nothing to check beforehand. */
+    `UPDATE class_slots
+        SET kind = ?1, weekday = ?2, on_date = ?3, time_ist = ?4, duration_min = ?5, label = ?6
+      WHERE id = ?7 AND project_id = ?8`,
+  )
+    .bind(
+      kind,
+      kind === 'weekly' ? Number(f.get('weekday')) || 0 : null,
+      kind === 'once' ? onDate : null,
+      time,
+      Number.isFinite(dur) && dur > 0 ? Math.round(dur) : 60,
+      String(f.get('label') ?? '').trim() || null,
+      id,
+      pid(c),
+    )
+    .run();
+  return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('Class slot updated.'));
+});
+
 app.post('/t/slots/:id/delete', requireTeacher, async (c) => {
   await c.env.DB.prepare('DELETE FROM class_slots WHERE id = ? AND project_id = ?')
     .bind(c.req.param('id'), pid(c))

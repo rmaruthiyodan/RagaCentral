@@ -209,6 +209,50 @@ function slotRow(s: ClassSlot, student: WithZone): string {
     ${s.label ? `<span class="slot-label">${esc(s.label)}</span>` : ''}
   </div>
   <div class="slot-local">${local}</div>
+  <details class="change" data-reveal>
+    <summary class="btn btn-sm btn-quiet">${t('Edit')}</summary>
+    <div class="change-body" data-reveal-body>
+      <form method="post" action="/t/slots/${esc(s.id)}">
+        <div class="field-row">
+          <div class="field">
+            <label for="ek-${esc(s.id)}">${t('Repeats')}</label>
+            <select id="ek-${esc(s.id)}" name="kind">
+              <option value="weekly"${s.kind === 'weekly' ? ' selected' : ''}>${t('Every week')}</option>
+              <option value="once"${s.kind === 'once' ? ' selected' : ''}>${t('Just once')}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ew-${esc(s.id)}">${t('Day')}</label>
+            <select id="ew-${esc(s.id)}" name="weekday">
+              ${WEEKDAYS.map(
+                (d, i) => `<option value="${i}"${(s.weekday ?? 0) === i ? ' selected' : ''}>${t(d)}</option>`,
+              ).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label for="ed-${esc(s.id)}">${t('Or a date')} <span class="opt">${t('— for one-offs')}</span></label>
+            <input id="ed-${esc(s.id)}" name="on_date" type="date" value="${esc(s.on_date ?? '')}">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="et-${esc(s.id)}">${t('Time')} <span class="opt">${t('— Indian time')}</span></label>
+            <input id="et-${esc(s.id)}" name="time_ist" type="time" value="${esc(s.time_ist)}" required>
+          </div>
+          <div class="field">
+            <label for="edur-${esc(s.id)}">${t('Length')}</label>
+            <input id="edur-${esc(s.id)}" name="duration_min" type="number" min="15" max="240" value="${esc(String(s.duration_min))}">
+          </div>
+          <div class="field">
+            <label for="el-${esc(s.id)}">${t('Label')} <span class="opt">${t('— optional')}</span></label>
+            <input id="el-${esc(s.id)}" name="label" type="text" value="${esc(s.label ?? '')}" placeholder="${t('Theory')}">
+          </div>
+        </div>
+        <p class="hint">${t('Past lessons already logged keep their own date — this only changes classes from now on.')}</p>
+        <button class="btn btn-sm btn-primary" type="submit">${t('Save changes')}</button>
+      </form>
+    </div>
+  </details>
   <form method="post" action="/t/slots/${esc(s.id)}/delete"
         onsubmit="return confirm('${escConfirm(
           t('Remove %s’s class on %s? Past lessons are untouched.', student.name, when),

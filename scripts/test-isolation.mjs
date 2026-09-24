@@ -628,6 +628,7 @@ async function main() {
     ["mark B's lesson finished", 'POST', `/t/sessions/${B.sessionId}/complete`, {}],
     ["delete B's lesson", 'POST', `/t/sessions/${B.sessionId}/delete`, {}],
     ["log a lesson against B's student", 'POST', `/t/s/${B.studentId}/sessions`, { held_on: '2026-09-13', status: 'completed', covered: `HIJACKED${RUN}` }],
+    ["edit B's class slot", 'POST', `/t/slots/${B.slotId}`, { kind: 'once', on_date: '2020-01-01', time_ist: '05:00', duration_min: '10', label: `HIJACKED${RUN}` }],
     ["delete B's class slot", 'POST', `/t/slots/${B.slotId}/delete`, {}],
     ["skip an occurrence of B's class slot", 'POST', `/t/slots/${B.slotId}/skip`, { on_date: '2026-09-16', reason: 'hijacked' }],
     ["mark an occurrence of B's slot missed", 'POST', `/t/slots/${B.slotId}/missed`, { on_date: '2026-09-17', reason: 'hijacked' }],
@@ -667,6 +668,22 @@ async function main() {
       d1one(`SELECT COUNT(*) AS n FROM class_slots WHERE student_id='${B.studentId}' AND project_id='${A.id}'`)[0].n === 0,
     "rows for B's student were written into project A",
   );
+  {
+    const row = d1one(
+      `SELECT kind, weekday, on_date, time_ist, duration_min, label
+         FROM class_slots WHERE id='${B.slotId}' AND project_id='${B.id}'`,
+    )[0];
+    check(
+      "teacher A's edit attempt left B's class slot exactly as it was",
+      row?.kind === 'weekly' &&
+        row?.weekday === 3 &&
+        row?.on_date === null &&
+        row?.time_ist === '18:30' &&
+        row?.duration_min === 45 &&
+        row?.label === `Slot${RUN}`,
+      `B's slot now reads ${JSON.stringify(row)}`,
+    );
+  }
 
   /* --- and the two creates that name one of B's rows as a parent --- */
   const fdX = new FormData();
@@ -864,6 +881,13 @@ async function main() {
       () => d1one(`SELECT raga FROM sections WHERE id='${A.sectionId}'`)[0]?.raga === `Raga${RUN}-edited`],
     ["edit their own lesson", `/t/sessions/${A.sessionId}`, { held_on: '2026-09-10', status: 'completed', covered: `${N.songA} edited`, left_off: N.leftA },
       () => d1one(`SELECT covered FROM sessions WHERE id='${A.sessionId}'`)[0]?.covered === `${N.songA} edited`],
+    ["edit their own class slot's rule, in place", `/t/slots/${A.slotId}`, { kind: 'weekly', weekday: '5', time_ist: '20:15', duration_min: '90', label: `Slot${RUN}-edited` },
+      () => {
+        const row = d1one(`SELECT id, weekday, time_ist, duration_min, label FROM class_slots WHERE id='${A.slotId}'`)[0];
+        // Same id, new rule — this is an edit, not a delete-and-recreate.
+        return row?.id === A.slotId && row?.weekday === 5 && row?.time_ist === '20:15' &&
+          row?.duration_min === 90 && row?.label === `Slot${RUN}-edited`;
+      }],
     ["skip an occurrence of their own class slot", `/t/slots/${A.slotId}/skip`, { on_date: '2026-09-23', reason: 'holiday' },
       () => d1one(`SELECT COUNT(*) AS n FROM slot_exceptions WHERE slot_id='${A.slotId}' AND action='skip'`)[0].n === 1],
     ["move an occurrence of their own class slot", `/t/slots/${A.slotId}/move`, { on_date: '2026-09-30', new_date: '2026-10-01', new_time_ist: '19:00' },

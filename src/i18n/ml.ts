@@ -406,6 +406,8 @@ export const ML: Record<string, string> = {
   'Pallavi, slow': 'പല്ലവി, പതുക്കെ',
   'Part of the song': 'പാട്ടിന്റെ ഭാഗം',
   'Past classes': 'കഴിഞ്ഞ ക്ലാസുകൾ',
+  'Past lessons already logged keep their own date — this only changes classes from now on.':
+    'ഇതിനകം രേഖപ്പെടുത്തിയ ക്ലാസുകളുടെ തീയതി മാറില്ല — ഇനി മുതലുള്ള ക്ലാസുകൾക്ക് മാത്രമേ ഈ മാറ്റം ബാധകമാകൂ.',
   'Pick up from here': 'ഇവിടെനിന്ന് തുടരുക',
   'Practice takes': 'പരിശീലന റെക്കോർഡിംഗുകൾ',
   'Previous week': 'കഴിഞ്ഞ ആഴ്ച',
