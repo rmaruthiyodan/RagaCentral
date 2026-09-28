@@ -23,7 +23,7 @@ import {
   setActiveProject, clearActiveProject, recentAdminLog, resolveProject, logAdmin,
   hatsFor, chosenHat, ADMIN_HAT, ADMIN_IN,
 } from './projects';
-import { newId, now, extFor, slugify } from './util';
+import { newId, now, extFor, slugify, safeBack, withMsg, uploadType, serveType, lockDownUpload } from './util';
 import { isLang } from './i18n';
 import { transcribe, DictateError, CARNATIC_TERMS } from './transcribe';
 import * as V from './views/pages';
@@ -35,6 +35,87 @@ import {
 import type { StudentRow } from './views/pages';
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
+
+/* ==================================================================
+ * Security headers, on every response
+ *
+ * - nosniff: a browser never second-guesses a Content-Type into HTML.
+ * - frame-ancestors / X-Frame-Options: no other site can frame these
+ *   pages and trick a click on a Delete button.
+ * - Permissions-Policy: the microphone and camera the recorder needs,
+ *   for this site only, and nothing else.
+ * - A Content-Security-Policy for pages. It still allows inline script,
+ *   because every Delete button confirms with an inline onsubmit and the
+ *   time-zone reporter is an inline block; what it does is pin every
+ *   script, style, font, image, media and fetch to this site (plus Google
+ *   Fonts and Google profile photos), and forbid plugins and <base>.
+ * An upload already carries its own, stricter policy (lockDownUpload),
+ * which is left alone.
+ * ================================================================== */
+const PAGE_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https://*.googleusercontent.com",
+  "media-src 'self' blob:",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+app.use('*', async (c, next) => {
+  await next();
+  const set = (h: Headers) => {
+    h.set('X-Content-Type-Options', 'nosniff');
+    h.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    h.set('X-Frame-Options', 'DENY');
+    h.set('Permissions-Policy', 'microphone=(self), camera=(self), geolocation=(), payment=(), usb=()');
+    if (new URL(c.req.url).protocol === 'https:')
+      h.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    if (!h.has('Content-Security-Policy') && (h.get('Content-Type') ?? '').startsWith('text/html'))
+      h.set('Content-Security-Policy', PAGE_CSP);
+  };
+  try {
+    set(c.res.headers);
+  } catch {
+    // A response whose headers are frozen: copy it once, then set them.
+    c.res = new Response(c.res.body, c.res);
+    set(c.res.headers);
+  }
+});
+
+/* ==================================================================
+ * No changes from other sites
+ *
+ * The session cookie is SameSite=Lax, which already keeps it off a POST
+ * that another site's page makes — so such a POST arrives signed out.
+ * Not every route needs a session to do something, though (signing out
+ * is one), and Lax is a browser's promise rather than ours. So a
+ * state-changing request that says it came from another origin is
+ * refused outright. Browsers send Origin on every cross-site POST; a
+ * request with no Origin at all (curl, an old client) is left to the
+ * route's own sign-in check, as before.
+ * ================================================================== */
+app.use('*', async (c, next) => {
+  const m = c.req.method;
+  if (m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS') {
+    const origin = c.req.header('origin');
+    const fetchSite = c.req.header('sec-fetch-site');
+    const here = new URL(c.req.url).origin;
+    /* A modern browser says where a request came from outright; only this
+       site itself (or the person typing an address) may change anything.
+       Otherwise fall back to Origin — and "null", which a sandboxed frame
+       on any site can produce, is not this site either. */
+    const foreign = fetchSite
+      ? fetchSite !== 'same-origin' && fetchSite !== 'none'
+      : Boolean(origin) && origin !== here;
+    if (foreign) return c.text('That request came from another site, so it was not carried out.', 403);
+  }
+  await next();
+});
 
 const site = (c: { env: Env }) => c.env.SITE_NAME || 'RP Sajeev Music';
 
@@ -56,10 +137,15 @@ function visiting(c: Context<AppEnv, any, any>): Visiting | null {
  * which is the failure worth being woken for.
  * ================================================================== */
 
+/* The R2 half of the check is a List call, which is billed. The page
+   needs no sign-in, so without this anyone hammering it spends money;
+   with it, the store is asked at most every 30 seconds per worker. */
+let mediaCheckedAt = 0;
+let mediaOk = false;
+
 app.get('/healthz', async (c) => {
   const started = Date.now();
   let db = false;
-  let media = false;
 
   try {
     const r = await c.env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>();
@@ -68,12 +154,16 @@ app.get('/healthz', async (c) => {
     db = false;
   }
 
-  try {
-    await c.env.MEDIA.list({ limit: 1 });
-    media = true;
-  } catch {
-    media = false;
+  if (Date.now() - mediaCheckedAt > 30_000) {
+    try {
+      await c.env.MEDIA.list({ limit: 1 });
+      mediaOk = true;
+    } catch {
+      mediaOk = false;
+    }
+    mediaCheckedAt = Date.now();
   }
+  const media = mediaOk;
 
   const ok = db && media;
   return c.json(
@@ -300,6 +390,10 @@ app.post('/profiles/add', async (c) => {
     return c.redirect('/profiles?msg=' + encodeURIComponent(`One sign-in can hold up to ${MAX_PROFILES_PER_EMAIL} people.`));
   if (profiles.some((u) => u.name.trim().toLowerCase() === name.toLowerCase()))
     return c.redirect('/profiles?msg=' + encodeURIComponent(`There is already a ${name} on this sign-in.`));
+  /* Each new profile also asks a teacher to let them in, so this is capped
+     per day as well as in total — the Approvals page is not a place to spam. */
+  if (!(await spend(c.env, user.id, 'profile_add', PROFILE_ADDS_PER_DAY)))
+    return c.redirect('/profiles?msg=' + encodeURIComponent('That is enough new profiles for one day. Try again tomorrow.'));
 
   const id = newId('u');
   /* A household shares a clock, a place and usually a phone, so those
@@ -519,7 +613,10 @@ async function sectionInProject(env: Env, projectId: string, sectionId: string):
  * teach, and only when the request actually succeeded — a rejected
  * change is not a change.
  * ------------------------------------------------------------------ */
-app.use('/t/*', async (c, next) => {
+/* Every change an admin makes inside somebody else's practice — including
+   the few teacher actions that live outside /t/: deleting a note, and
+   uploading a recording through the JSON endpoint. */
+async function auditAdmin(c: Context<AppEnv, any, any>, next: () => Promise<void>) {
   await next();
   if (c.req.method !== 'POST') return;
   const a = c.get('acting');
@@ -527,7 +624,10 @@ app.use('/t/*', async (c, next) => {
   const status = c.res.status;
   if (status >= 400) return;
   await logAdmin(c, a, `${c.req.method} ${new URL(c.req.url).pathname}`, describeChange(c));
-});
+}
+app.use('/t/*', auditAdmin);
+app.use('/notes/*', auditAdmin);
+app.use('/api/recordings', auditAdmin);
 
 /** A short readable line for the log, from the path alone. */
 function describeChange(c: Context<AppEnv, any, any>): string {
@@ -544,7 +644,8 @@ function describeChange(c: Context<AppEnv, any, any>): string {
     [/^\/t\/s\/[^/]+\/sessions$/, 'Logged a lesson'],
     [/^\/t\/recordings\/[^/]+\/delete$/, 'Deleted a recording'],
     [/^\/t\/recordings\//, 'Changed a recording'],
-    [/^\/t\/notes\/[^/]+\/delete$/, 'Deleted a note'],
+    [/^\/t\/notes\/[^/]+\/delete$|^\/notes\/[^/]+\/delete$/, 'Deleted a note'],
+    [/^\/api\/recordings$/, 'Added a recording'],
     [/^\/t\/notes/, 'Changed a note'],
     [/^\/t\/sections\/[^/]+\/delete$/, 'Deleted a song'],
     [/^\/t\/sections/, 'Changed a song'],
@@ -1020,8 +1121,7 @@ app.post('/admin/switch/:id', requireAdmin, async (c) => {
      open redirect, and this one is reachable by anyone who can reach
      the admin pages. */
   const to = String((await c.req.formData().catch(() => new FormData())).get('to') ?? '');
-  const safe = /^\/[A-Za-z0-9/_-]*$/.test(to) ? to : '/t/schedule/week';
-  return c.redirect(safe);
+  return c.redirect(safeBack(to, '/t/schedule/week'));
 });
 
 app.post('/admin/leave', requireAdmin, (c) => {
@@ -1147,6 +1247,18 @@ function formFields(f: FormData, keys: string[]): Record<string, string> {
   return out;
 }
 
+/**
+ * Who a teacher may edit the global details of — name, phone, place, clock.
+ * Those follow a person into every practice, so a teacher may only change
+ * them for someone who is a STUDENT here and belongs to no other practice
+ * (and is not an admin). Anyone else — a co-teacher, the admin, a student
+ * who also learns elsewhere — changes their own, from their own Settings.
+ * The rule is spelled out in each UPDATE (see /t/students/:id/details and
+ * /t/students/:id/zone) so the scoping check can read it.
+ */
+const NOT_ONLY_YOURS =
+  'Not changed — they also belong to another practice (or teach), so only they can change their own details, from their Settings.';
+
 const STUDENT_STATUSES = ['active', 'paused', 'graduated', 'ended'] as const;
 
 app.post('/t/students', requireTeacher, async (c) => {
@@ -1217,10 +1329,10 @@ app.post('/t/students/:id/status', requireTeacher, async (c) => {
   )
     .bind(status, String(f.get('status_note') ?? '').trim() || null, now(), c.req.param('id'), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || `/t/s/${c.req.param('id')}`;
+  const back = safeBack(f.get('back'), `/t/s/${c.req.param('id')}`);
   const label =
     status === 'active' ? 'active again' : status === 'paused' ? 'paused' : status;
-  return c.redirect(`${back}?msg=` + encodeURIComponent(`Marked ${label}.`));
+  return c.redirect(withMsg(back, `Marked ${label}.`));
 });
 
 /** Name, email and where they are — editable without going through the schedule screen. */
@@ -1235,10 +1347,13 @@ app.post('/t/students/:id/details', requireTeacher, async (c) => {
      person appears, which is right for a phone number. That is exactly why
      the EXISTS matters — only a teacher of a project this person is actually
      in may edit them at all. */
-  await c.env.DB.prepare(
+  const r = await c.env.DB.prepare(
     `UPDATE users SET name = ?1, location = ?2, phone = ?3, time_zone = ?4
-      WHERE id = ?5
-        AND EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = users.id AND m.project_id = ?6)`,
+      WHERE id = ?5 AND users.is_admin = 0
+        AND EXISTS (SELECT 1 FROM project_members m
+                     WHERE m.user_id = users.id AND m.project_id = ?6 AND m.role = 'student')
+        AND NOT EXISTS (SELECT 1 FROM project_members o
+                         WHERE o.user_id = users.id AND o.project_id <> ?6 AND o.status <> 'disabled')`,
   )
     .bind(
       name,
@@ -1249,6 +1364,8 @@ app.post('/t/students/:id/details', requireTeacher, async (c) => {
       pid(c),
     )
     .run();
+  if (!r.meta?.changes)
+    return c.redirect(`/t/s/${c.req.param('id')}?msg=` + encodeURIComponent(NOT_ONLY_YOURS));
   return c.redirect(`/t/s/${c.req.param('id')}?msg=` + encodeURIComponent('Saved.'));
 });
 
@@ -1394,8 +1511,8 @@ app.post('/t/sections/:id', requireTeacher, async (c) => {
   )
     .bind(str('group_id'), title, str('title_ml'), str('raga'), str('taala'), str('composer'), c.req.param('id'), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || '/t/catalogue';
-  return c.redirect(`${back}?msg=` + encodeURIComponent(`"${title}" updated.`));
+  const back = safeBack(f.get('back'), '/t/catalogue');
+  return c.redirect(withMsg(back, `"${title}" updated.`));
 });
 
 /** Change a recording's name, which part it covers, and who can hear it. */
@@ -1443,8 +1560,8 @@ app.post('/t/recordings/:id', requireTeacher, async (c) => {
       .bind(...vals, rec.id, pid(c))
       .run();
   }
-  const back = String(f.get('back') ?? '') || `/t/song/${rec.section_id}`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent(msg));
+  const back = safeBack(f.get('back'), `/t/song/${rec.section_id}`);
+  return c.redirect(withMsg(back, msg));
 });
 
 /** Edit a note's text and who can see it. */
@@ -1489,8 +1606,8 @@ app.post('/t/notes/:id', requireTeacher, async (c) => {
       .bind(...vals, note.id, pid(c))
       .run();
   }
-  const back = String(f.get('back') ?? '') || `/t/song/${note.section_id}`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent(msg));
+  const back = safeBack(f.get('back'), `/t/song/${note.section_id}`);
+  return c.redirect(withMsg(back, msg));
 });
 
 /** Reorder a note within its song, same swap as recordings. */
@@ -1531,7 +1648,7 @@ app.post('/t/notes/:id/move', requireTeacher, async (c) => {
       c.env.DB.prepare('UPDATE notes SET sort_order = ? WHERE id = ? AND project_id = ?').bind(newB, neighbour.id, pid(c)),
     ]);
   }
-  const back = String(f.get('back') ?? '') || `/t/song/${note.section_id}`;
+  const back = safeBack(f.get('back'), `/t/song/${note.section_id}`);
   return c.redirect(back);
 });
 
@@ -2363,10 +2480,9 @@ app.post('/t/s/:id/sessions', requireTeacher, async (c) => {
     .run();
   await setSessionSections(c.env, pid(c), id, d.sectionIds);
 
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/lessons`;
+  const back = safeBack(f.get('back'), `/t/s/${studentId}/lessons`);
   return c.redirect(
-    `${back}?msg=` +
-      encodeURIComponent(
+    withMsg(back,
         d.status === 'ongoing'
           ? 'Lesson logged. It stays pinned at the top until you mark it finished.'
           : 'Lesson logged.',
@@ -2433,8 +2549,8 @@ app.post('/t/s/:id/assign', requireTeacher, async (c) => {
   )
     .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
     .run();
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/songs`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Song assigned.'));
+  const back = safeBack(f.get('back'), `/t/s/${studentId}/songs`);
+  return c.redirect(withMsg(back, 'Song assigned.'));
 });
 
 /** Mark a song finished for this student — kept on their page, not removed. */
@@ -2447,8 +2563,8 @@ app.post('/t/s/:id/complete-song', requireTeacher, async (c) => {
   )
     .bind(done ? now() : null, studentId, String(f.get('section_id') ?? ''), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent(done ? 'Marked as finished.' : 'Back in progress.'));
+  const back = safeBack(f.get('back'), `/t/s/${studentId}`);
+  return c.redirect(withMsg(back, done ? 'Marked as finished.' : 'Back in progress.'));
 });
 
 /**
@@ -2484,8 +2600,8 @@ app.post('/t/s/:id/song-dates', requireTeacher, async (c) => {
     .bind(started, finished, studentId, sectionId, pid(c))
     .run();
 
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${sectionId}`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Dates saved.'));
+  const back = safeBack(f.get('back'), `/t/s/${studentId}/${sectionId}`);
+  return c.redirect(withMsg(back, 'Dates saved.'));
 });
 
 app.post('/t/s/:id/unassign', requireTeacher, async (c) => {
@@ -2496,8 +2612,8 @@ app.post('/t/s/:id/unassign', requireTeacher, async (c) => {
   )
     .bind(now(), studentId, String(f.get('section_id') ?? ''), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/songs`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Removed from their list. Recordings kept.'));
+  const back = safeBack(f.get('back'), `/t/s/${studentId}/songs`);
+  return c.redirect(withMsg(back, 'Removed from their list. Recordings kept.'));
 });
 
 /* ================================================================== *
@@ -2924,6 +3040,26 @@ function postedShareIds(f: FormData): string[] {
  * has been open since before this fix, still sending a whole WAV. Hence
  * the mention of reloading. */
 const MAX_DICTATE = 1_500_000;
+const DICTATE_PER_DAY = 150;
+const PROFILE_ADDS_PER_DAY = 10;
+
+/**
+ * Take one from a person's daily allowance of something — true if there
+ * was one to take. The check and the count are one statement, so two
+ * requests at the same moment cannot both squeeze under the limit.
+ */
+async function spend(env: Env, userId: string, kind: string, limit: number): Promise<boolean> {
+  const day = new Date().toISOString().slice(0, 10);
+  const r = await env.DB.prepare(
+    /* unscoped: a per-person allowance (spoken notes, profiles added) — a fact about the person, not about any one practice */
+    `INSERT INTO usage_counters (user_id, day, kind, n) VALUES (?1, ?2, ?3, 1)
+     ON CONFLICT(user_id, day, kind) DO UPDATE SET n = n + 1 WHERE n < ?4
+     RETURNING n`,
+  )
+    .bind(userId, day, kind, limit)
+    .first<{ n: number }>();
+  return Boolean(r);
+}
 
 app.post('/t/api/dictate', requireTeacherJson, async (c) => {
   if (!dictateEnabled(c.env))
@@ -2975,6 +3111,15 @@ app.post('/t/api/dictate', requireTeacherJson, async (c) => {
   }
 
   if (!b64) return c.json({ error: 'Nothing was recorded.' }, 400);
+  /* The declared length above can be absent (a chunked body); this is the
+     length actually read, which cannot. */
+  if (b64.length > MAX_DICTATE)
+    return c.json({ error: 'That clip is too big to read back. Keep it to a sentence or two.' }, 413);
+  /* Every call here is billed by the transcription service, so each person
+     gets a daily allowance — far more than a day of lessons uses, far less
+     than a script in a loop would. */
+  if (!(await spend(c.env, c.get('user').id, 'dictate', DICTATE_PER_DAY)))
+    return c.json({ error: `That's the day's ${DICTATE_PER_DAY} spoken notes used up. Type it instead — it resets tomorrow.` }, 429);
 
   /* The vocabulary the model has no reason to know: the Carnatic terms,
      plus the titles and ragas of the songs this teacher actually
@@ -3083,6 +3228,10 @@ app.post('/api/recordings', requireUserJson, async (c) => {
     // It is filed against the teacher and shared, which is what the access
     // check actually reads; student_id here is attribution, not a gate.
     studentId = String(form.get('student_id') ?? '') || c.get('user').id;
+    /* Attribution only, but it still has to be somebody in this practice —
+       otherwise a stranger's name turns up on this practice's song page. */
+    if (studentId !== c.get('user').id && !(await memberHere(c.env, pid(c), studentId)))
+      return c.json({ error: 'That student is not in this practice.' }, 404);
     shareIds = form.getAll('share_ids').map((v) => String(v)).filter(Boolean);
     visibility = String(form.get('visibility')) === 'chosen' && shareIds.length ? 'chosen' : 'shared';
   } else {
@@ -3134,7 +3283,14 @@ app.post('/api/recordings', requireUserJson, async (c) => {
   if (file.size > MAX_UPLOAD)
     return c.json({ error: `That file is ${(file.size / 1048576).toFixed(0)} MB. The limit is 90 MB.` }, 413);
 
-  const mime = file.type || 'application/octet-stream';
+  /* Only audio and video, whatever the browser claims — see uploadType.
+     A take declared as text/html would otherwise be served back as a page. */
+  const mime = uploadType(file.type, file.name, 'media');
+  if (!mime)
+    return c.json(
+      { error: 'That kind of file can’t be added here. Use an audio or video file — MP3, M4A, WAV, WebM or MP4.' },
+      415,
+    );
   const kind = mime.startsWith('video/') || String(form.get('kind')) === 'video' ? 'video' : 'audio';
   // Every recording carries a name. An upload falls back to its filename; a
   // take recorded in the browser is named in the form before it can be saved.
@@ -3220,8 +3376,7 @@ app.post('/t/recordings/:id/move', requireTeacher, async (c) => {
       c.env.DB.prepare('UPDATE recordings SET sort_order = ? WHERE id = ? AND project_id = ?').bind(newB, neighbour.id, pid(c)),
     ]);
   }
-  const back = String(f.get('back') ?? '');
-  return c.redirect(back || `/t/song/${rec.section_id}`);
+  return c.redirect(safeBack(f.get('back'), `/t/song/${rec.section_id}`));
 });
 
 app.post('/t/recordings/:id/delete', requireTeacher, async (c) => {
@@ -3253,9 +3408,13 @@ app.get('/media/:id', requireUser, async (c) => {
   headers.set('etag', obj.httpEtag);
   headers.set('accept-ranges', 'bytes');
   headers.set('cache-control', 'private, max-age=3600');
-  if (!headers.get('content-type')) headers.set('content-type', rec.mime_type);
+  /* Served as an audio or video type or not at all inline — never as
+     whatever was stored, which an uploader chose. */
+  const served = serveType(rec.mime_type, 'media');
+  headers.set('content-type', served.type);
+  lockDownUpload(headers);
 
-  if (c.req.query('download')) {
+  if (c.req.query('download') || !served.inline) {
     const name = `${slugify(rec.title ?? 'recording')}.${extFor(rec.mime_type)}`;
     headers.set('content-disposition', `attachment; filename="${name}"`);
   }
@@ -3303,8 +3462,8 @@ app.post('/t/recordings/:id/share', requireTeacher, async (c) => {
       .bind(rec.id, studentId, now(), pid(c))
       .run();
   }
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${rec.section_id}`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Unlocked for this student.'));
+  const back = safeBack(f.get('back'), `/t/s/${studentId}/${rec.section_id}`);
+  return c.redirect(withMsg(back, 'Unlocked for this student.'));
 });
 
 app.post('/t/recordings/:id/unshare', requireTeacher, async (c) => {
@@ -3340,8 +3499,8 @@ app.post('/t/recordings/:id/unshare', requireTeacher, async (c) => {
       .bind(rec.id, studentId)
       .run();
   }
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${rec.section_id}`;
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Locked for this student.'));
+  const back = safeBack(f.get('back'), `/t/s/${studentId}/${rec.section_id}`);
+  return c.redirect(withMsg(back, 'Locked for this student.'));
 });
 
 /* ================================================================== *
@@ -3360,10 +3519,12 @@ app.post('/t/notes', requireTeacher, async (c) => {
   const body = String(f.get('body') ?? '').trim() || null;
   const bodyMl = String(f.get('body_ml') ?? '').trim() || null;
   const image = f.get('image');
-  const back = String(f.get('back') ?? '') || `/t/s/${studentId}/${sectionId}`;
+  const back = safeBack(f.get('back'), `/t/s/${studentId}/${sectionId}`);
 
   if (!sectionId) return c.redirect('/t');
   if (!(await sectionInProject(c.env, pid(c), sectionId)))
+    return c.html(V.notFound(c.get('user'), site(c)), 404);
+  if (studentId !== c.get('user').id && !(await memberHere(c.env, pid(c), studentId)))
     return c.html(V.notFound(c.get('user'), site(c)), 404);
 
   let imageKey: string | null = null;
@@ -3373,8 +3534,10 @@ app.post('/t/notes', requireTeacher, async (c) => {
   const id = newId('n');
   if (image instanceof File && image.size > 0) {
     if (image.size > 12 * 1024 * 1024)
-      return c.redirect(`${back}?msg=` + encodeURIComponent('That image is over 12 MB — try a smaller one.'));
-    imageMime = image.type || 'image/png';
+      return c.redirect(withMsg(back, 'That image is over 12 MB — try a smaller one.'));
+    const im = uploadType(image.type, image.name, 'image');
+    if (!im) return c.redirect(withMsg(back, 'That kind of image can’t be added — use PNG, JPEG, WebP or GIF.'));
+    imageMime = im;
     imageBytes = image.size;
     imageKey = `note/${studentId}/${sectionId}/${id}.${extFor(imageMime)}`;
     await c.env.MEDIA.put(imageKey, image.stream(), { httpMetadata: { contentType: imageMime } });
@@ -3403,7 +3566,7 @@ app.post('/t/notes', requireTeacher, async (c) => {
 
   if (wantChosen) await setShares(c.env, pid(c), 'note', id, 'chosen', shareIds);
 
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Note saved.'));
+  return c.redirect(withMsg(back, 'Note saved.'));
 });
 
 app.post('/notes/:id/delete', requireTeacher, async (c) => {
@@ -3431,9 +3594,12 @@ app.get('/img/:id', requireUser, async (c) => {
   obj.writeHttpMetadata(headers);
   headers.set('cache-control', 'private, max-age=86400');
   headers.set('etag', obj.httpEtag);
-  if (!headers.get('content-type')) headers.set('content-type', note.image_mime ?? 'image/png');
+  /* A raster image or an opaque download — never SVG, never HTML. */
+  const served = serveType(note.image_mime, 'image');
+  headers.set('content-type', served.type);
+  lockDownUpload(headers);
   // ?download=1 turns the same URL into a save-to-disk, named after the note.
-  if (c.req.query('download')) {
+  if (c.req.query('download') || !served.inline) {
     const ext = extFor(note.image_mime ?? 'image/png');
     headers.set(
       'content-disposition',
@@ -3534,6 +3700,14 @@ app.get('/t/schedule', requireTeacher, async (c) => {
   );
 });
 
+/** Is this person in this practice at all (any role, any standing)? */
+async function memberHere(env: Env, projectId: string, userId: string): Promise<boolean> {
+  const r = await env.DB.prepare('SELECT 1 AS x FROM project_members WHERE project_id = ? AND user_id = ?')
+    .bind(projectId, userId)
+    .first();
+  return Boolean(r);
+}
+
 /** Every active student in the project, for a "pick a student" control. */
 async function activeStudentRoster(env: Env, projectId: string): Promise<Sched.WithZone[]> {
   const rows = await env.DB.prepare(
@@ -3629,10 +3803,10 @@ app.post('/t/schedule/day/:date/add', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const studentId = String(f.get('student_id') ?? '').trim();
   const time = String(f.get('time_ist') ?? '').trim();
-  const back = String(f.get('back') ?? '') || `/t/schedule/day/${date}`;
-  if (!studentId) return c.redirect(`${back}?msg=` + encodeURIComponent('Pick a student.'));
+  const back = safeBack(f.get('back'), `/t/schedule/day/${date}`);
+  if (!studentId) return c.redirect(withMsg(back, 'Pick a student.'));
   if (!/^\d{2}:\d{2}$/.test(time))
-    return c.redirect(`${back}?msg=` + encodeURIComponent('That time did not look right.'));
+    return c.redirect(withMsg(back, 'That time did not look right.'));
 
   const dur = Number(f.get('duration_min'));
   await c.env.DB.prepare(
@@ -3655,7 +3829,7 @@ app.post('/t/schedule/day/:date/add', requireTeacher, async (c) => {
       c.get('user').id, now(),
     )
     .run();
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Class added.'));
+  return c.redirect(withMsg(back, 'Class added.'));
 });
 
 /** A class that should have happened and didn't. Distinct from a cancellation. */
@@ -3674,8 +3848,8 @@ app.post('/t/slots/:id/missed', requireTeacher, async (c) => {
   )
     .bind(newId('ex'), c.req.param('id'), onDate, String(f.get('reason') ?? '').trim() || null, now(), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || '/t/schedule';
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Marked as missed. Reschedule it below if you want to.'));
+  const back = safeBack(f.get('back'), '/t/schedule');
+  return c.redirect(withMsg(back, 'Marked as missed. Reschedule it below if you want to.'));
 });
 
 app.get('/t/schedule/slots', requireTeacher, async (c) => {
@@ -3792,8 +3966,8 @@ app.post('/t/slots/:id/skip', requireTeacher, async (c) => {
   )
     .bind(newId('ex'), c.req.param('id'), onDate, String(f.get('reason') ?? '').trim() || null, now(), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || '/t/schedule';
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Marked as no class.'));
+  const back = safeBack(f.get('back'), '/t/schedule');
+  return c.redirect(withMsg(back, 'Marked as no class.'));
 });
 
 /** Move one occurrence to another date or time, in Indian time. */
@@ -3817,8 +3991,8 @@ app.post('/t/slots/:id/move', requireTeacher, async (c) => {
     .bind(newId('ex'), c.req.param('id'), onDate, newDate, newTime,
       String(f.get('reason') ?? '').trim() || null, now(), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || '/t/schedule';
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Class moved. The student sees the new time on their own clock.'));
+  const back = safeBack(f.get('back'), '/t/schedule');
+  return c.redirect(withMsg(back, 'Class moved. The student sees the new time on their own clock.'));
 });
 
 app.post('/t/slots/:id/restore', requireTeacher, async (c) => {
@@ -3830,8 +4004,8 @@ app.post('/t/slots/:id/restore', requireTeacher, async (c) => {
   )
     .bind(c.req.param('id'), String(f.get('on_date') ?? ''), pid(c))
     .run();
-  const back = String(f.get('back') ?? '') || '/t/schedule';
-  return c.redirect(`${back}?msg=` + encodeURIComponent('Back to normal.'));
+  const back = safeBack(f.get('back'), '/t/schedule');
+  return c.redirect(withMsg(back, 'Back to normal.'));
 });
 
 /* ---------------- where people are ---------------- */
@@ -3844,13 +4018,17 @@ app.post('/t/students/:id/zone', requireTeacher, async (c) => {
   /* Where someone is and what clock they keep are global — they do not change
      per teacher — so the EXISTS is what keeps a teacher to the people who are
      actually in their project. */
-  await c.env.DB.prepare(
+  const r = await c.env.DB.prepare(
     `UPDATE users SET time_zone = ?1, location = ?2
-      WHERE id = ?3
-        AND EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = users.id AND m.project_id = ?4)`,
+      WHERE id = ?3 AND users.is_admin = 0
+        AND EXISTS (SELECT 1 FROM project_members m
+                     WHERE m.user_id = users.id AND m.project_id = ?4 AND m.role = 'student')
+        AND NOT EXISTS (SELECT 1 FROM project_members o
+                         WHERE o.user_id = users.id AND o.project_id <> ?4 AND o.status <> 'disabled')`,
   )
     .bind(tz || null, String(f.get('location') ?? '').trim() || null, c.req.param('id'), pid(c))
     .run();
+  if (!r.meta?.changes) return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent(NOT_ONLY_YOURS));
   return c.redirect('/t/schedule/slots?msg=' + encodeURIComponent('Saved.'));
 });
 

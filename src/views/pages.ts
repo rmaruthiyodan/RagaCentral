@@ -5,7 +5,7 @@ import type { Visiting } from './layout';
 import { resumeCard, lessonLog, spoken } from './sessions';
 import { zoneOptions } from './schedule';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
-import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
+import { esc, escConfirm, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
 import type { Hat } from '../projects';
 import { t, setLang } from '../i18n';
@@ -566,10 +566,10 @@ export function teacherCatalogue(
                 }>&darr;</button></form>
           </span>
           <a class="btn btn-sm btn-primary" href="/t/song/${esc(s.id)}">${t('Open')}</a>
-          <form method="post" action="/t/sections/${esc(s.id)}/delete" onsubmit="return confirm('${t(
+          <form method="post" action="/t/sections/${esc(s.id)}/delete" onsubmit="return confirm('${escConfirm(t(
             'Delete %s? Every recording and note filed under it will be deleted too.',
-            `&quot;${esc(s.title)}&quot;`,
-          )}')">
+            `"${s.title}"`,
+          ))}')">
             <button class="btn btn-sm btn-danger" type="submit">${t('Delete')}</button></form>
         </div>
       </div>`,
@@ -579,7 +579,7 @@ export function teacherCatalogue(
   }${
     id !== '__none'
       ? `<form method="post" action="/t/groups/${esc(id)}/delete" style="margin-top:14px"
-           onsubmit="return confirm('${t('Delete this group? The songs in it stay, but lose their group.')}')">
+           onsubmit="return confirm('${escConfirm(t('Delete this group? The songs in it stay, but lose their group.'))}')">
            <button class="btn btn-sm btn-danger" type="submit">${t('Delete group')}</button></form>`
       : ''
   }`;
@@ -954,7 +954,7 @@ export function songPage(opts: {
             }
              <form method="post" action="/t/recordings/${esc(
                r.id,
-             )}/delete" onsubmit="return confirm('${t('Delete this recording permanently?')}')">
+             )}/delete" onsubmit="return confirm('${escConfirm(t('Delete this recording permanently?'))}')">
                <button class="btn btn-sm btn-danger" type="submit">${t('Delete')}</button></form>`
           : ''
       }
@@ -1168,7 +1168,7 @@ ${
   selfOpen.length
     ? disclosure({
         key: `practice:${student.id}:${section.id}`,
-        cls: 'disc-part',
+        cls: 'disc-part disc-self',
         open: false,
         title: esc(isTeacher ? t('Practice takes') : t('Your practice takes')),
         meta:

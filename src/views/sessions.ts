@@ -7,7 +7,7 @@
  * Students see all of it.
  * ================================================================== */
 
-import { esc, fmtDate, relativeDate } from '../util';
+import { esc, escConfirm, fmtDate, relativeDate } from '../util';
 import type { SessionRow, AssignedRow } from '../types';
 import { t, setLang } from '../i18n';
 
@@ -351,7 +351,7 @@ export function lessonLog(
       )}</button></div>
     </form>
     <form method="post" action="/t/sessions/${esc(s.id)}/delete" style="margin-top:10px"
-          onsubmit="return confirm('${t('Delete this lesson from the log?')}')">
+          onsubmit="return confirm('${escConfirm(t('Delete this lesson from the log?'))}')">
       <button class="btn btn-sm btn-danger" type="submit">${t('Delete lesson')}</button>
     </form>
   </details>`

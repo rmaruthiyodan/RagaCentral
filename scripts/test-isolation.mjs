@@ -1941,6 +1941,133 @@ async function main() {
   check("the admin adding by an address several people share is asked who they mean",
     admAsk.status === 200 && admAsk.text.includes('Who do you mean?'), `${admAsk.status} ${snippet(admAsk.text)}`);
   }
+
+  /* ================================================================
+   * Hardening: what an upload may be, where a form may send you, and
+   * the headers every response carries
+   * ================================================================ */
+  {
+    console.log('\n--- hardening ---');
+    const upload = async (jar, type, name, extra = {}) => {
+      const fd = new FormData();
+      fd.set('file', new File([audioBytes(name)], name, { type }));
+      fd.set('section_id', A.sectionId);
+      fd.set('title', `Probe ${name}`);
+      for (const [k, v] of Object.entries(extra)) fd.set(k, v);
+      return req(jar, 'POST', '/api/recordings', { multipart: fd });
+    };
+    const html = await upload(ta, 'text/html', 'x.html');
+    checkStatus('an upload that says it is text/html is refused', html, 415);
+    const svg = await upload(ta, 'image/svg+xml', 'x.svg');
+    checkStatus('an upload that says it is SVG is refused', svg, 415);
+    const bare = await upload(ta, '', 'page.html');
+    checkStatus('an upload with no type and an .html name is refused', bare, 415);
+    const m4a = await upload(ta, '', 'voice-memo.m4a');
+    checkStatus('an upload with no type but an .m4a name is taken as audio', m4a, 200);
+    check('  …and nothing for the refused ones reached the database',
+      d1one(`SELECT COUNT(*) AS n FROM recordings WHERE project_id='${A.id}' AND title IN ('Probe x.html','Probe x.svg','Probe page.html')`)[0].n === 0,
+      'a refused upload was recorded');
+
+    const stranger = await upload(ta, 'audio/mpeg', 'stranger.mp3', { student_id: B.studentId });
+    checkStatus("a recording can't be filed against someone outside the practice", stranger, 404);
+
+    const media = await GET(ta, `/media/${A.recordingId}`, { binary: true });
+    check('a recording is served with nosniff and a sandboxing policy',
+      media.headers.get('x-content-type-options') === 'nosniff' &&
+        /sandbox/.test(media.headers.get('content-security-policy') ?? ''),
+      `nosniff=${media.headers.get('x-content-type-options')} csp=${media.headers.get('content-security-policy')}`);
+    check('  …and as an audio type', /^audio\//.test(media.headers.get('content-type') ?? ''),
+      `content-type ${media.headers.get('content-type')}`);
+
+    /* A stored type from before the allowlist, as if it had slipped in. */
+    d1(`UPDATE recordings SET mime_type='text/html' WHERE id='${A.recordingId}'`);
+    const legacy = await GET(ta, `/media/${A.recordingId}`, { binary: true });
+    check('a recording stored as text/html is still never served as a page',
+      legacy.headers.get('content-type') === 'application/octet-stream' &&
+        /attachment/.test(legacy.headers.get('content-disposition') ?? ''),
+      `content-type ${legacy.headers.get('content-type')} disposition ${legacy.headers.get('content-disposition')}`);
+    d1(`UPDATE recordings SET mime_type='audio/wav' WHERE id='${A.recordingId}'`);
+
+    const nf = new FormData();
+    nf.set('section_id', A.sectionId);
+    nf.set('title', `SvgNote${RUN}`);
+    nf.set('image', new File(['<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'], 'x.svg', { type: 'image/svg+xml' }));
+    await req(ta, 'POST', '/t/notes', { multipart: nf });
+    check('a note image that is SVG is refused',
+      d1one(`SELECT COUNT(*) AS n FROM notes WHERE project_id='${A.id}' AND title='SvgNote${RUN}'`)[0].n === 0,
+      'the SVG note was saved');
+
+    /* back= may only point somewhere on this site */
+    for (const evil of ['//evil.example', 'https://evil.example', '/\\evil.example']) {
+      const r = await POST(ta, `/t/slots/${A.slotId}/restore`, { on_date: '2026-09-23', back: evil });
+      check(`a form's back=${evil} does not send anyone off the site`,
+        r.status === 302 && (r.location ?? '').startsWith('/') && !/^\/[\/\\]/.test(r.location ?? ''),
+        `Location was ${r.location}`);
+    }
+    const kept = await POST(ta, `/t/slots/${A.slotId}/restore`, { on_date: '2026-09-23', back: '/t/schedule/week?start=2026-09-13' });
+    check('  …while a real page with its own query survives, message and all',
+      kept.location?.startsWith('/t/schedule/week?start=2026-09-13&msg='), `Location was ${kept.location}`);
+
+    /* headers on pages */
+    const pageRes = await GET(ta, '/t');
+    check('pages refuse to be framed and pin their sources',
+      pageRes.headers.get('x-frame-options') === 'DENY' &&
+        /frame-ancestors 'none'/.test(pageRes.headers.get('content-security-policy') ?? '') &&
+        pageRes.headers.get('x-content-type-options') === 'nosniff',
+      `xfo=${pageRes.headers.get('x-frame-options')} csp=${pageRes.headers.get('content-security-policy')}`);
+    check('  …and allow the microphone for this site only',
+      /microphone=\(self\)/.test(pageRes.headers.get('permissions-policy') ?? ''), pageRes.headers.get('permissions-policy'));
+
+    /* A change posted from another site is refused before it runs */
+    const csrfTitle = `CrossSite${RUN}`;
+    const fromEvil = await req(ta, 'POST', '/t/sections', {
+      form: { title: csrfTitle, raga: '', taala: '', composer: '' },
+      headers: { origin: 'https://evil.example' },
+    });
+    checkStatus('a change posted from another site is refused', fromEvil, 403);
+    const fromFrame = await req(ta, 'POST', '/t/sections', {
+      form: { title: csrfTitle, raga: '', taala: '', composer: '' },
+      headers: { 'sec-fetch-site': 'cross-site' },
+    });
+    checkStatus('  …and so is one a browser marks cross-site', fromFrame, 403);
+    const fromNull = await req(ta, 'POST', '/t/sections', {
+      form: { title: csrfTitle, raga: '', taala: '', composer: '' },
+      headers: { origin: 'null' },
+    });
+    checkStatus('  …and one from a sandboxed frame (Origin: null)', fromNull, 403);
+    check('  …and none of them wrote anything',
+      d1one(`SELECT COUNT(*) AS n FROM sections WHERE title='${csrfTitle}'`)[0].n === 0, 'a song was created');
+    const fromHere = await req(ta, 'POST', '/t/sections', {
+      form: { title: csrfTitle, raga: '', taala: '', composer: '' },
+      headers: { origin: BASE, 'sec-fetch-site': 'same-origin' },
+    });
+    checkStatus('the same post from this site itself goes through', fromHere, 302);
+    const outEvil = await req(null, 'POST', '/auth/logout', { headers: { origin: 'https://evil.example' } });
+    checkStatus('another site cannot sign anyone out', outEvil, 403);
+
+    /* A song title cannot break out of its Delete confirmation */
+    const nasty = `Nasty${RUN}');alert(1);('`;
+    await POST(ta, '/t/sections', { title: nasty, raga: '', taala: '', composer: '' });
+    const cat = await GET(ta, '/t/catalogue');
+    check('a song title with a quote in it stays inside its Delete confirmation',
+      cat.text.includes(`Nasty${RUN}\\');alert(1);(\\'`),
+      snippet(cat.text.slice(Math.max(0, cat.text.indexOf('Nasty' + RUN) - 200), cat.text.indexOf('Nasty' + RUN) + 200)));
+
+    /* Global details: only for a student who is theirs alone */
+    const dualBefore = d1one(`SELECT name, phone FROM users WHERE id='${dualId}'`)[0];
+    const edit = await POST(ta, `/t/students/${dualId}/details`, { name: `Renamed${RUN}`, phone: '+000' });
+    checkStatus("teacher A's edit of a student who also learns with B is answered", edit, 302);
+    const dualAfter = d1one(`SELECT name, phone FROM users WHERE id='${dualId}'`)[0];
+    check('  …and changes nothing, since B knows them too',
+      dualAfter?.name === dualBefore?.name && dualAfter?.phone === dualBefore?.phone,
+      `was ${JSON.stringify(dualBefore)}, now ${JSON.stringify(dualAfter)}`);
+    const teacherB = d1one(`SELECT id, name FROM users WHERE lower(email)='${N.teacherA}'`)[0];
+    if (teacherB) {
+      await POST(ta, `/t/students/${teacherB.id}/details`, { name: `Hijacked${RUN}` });
+      check("a teacher can't rename a co-teacher (or themselves) through the student form",
+        d1one(`SELECT name FROM users WHERE id='${teacherB.id}'`)[0]?.name === teacherB.name, 'the teacher was renamed');
+    }
+  }
 }
 
 /* ================================================================== */

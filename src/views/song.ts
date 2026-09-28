@@ -11,7 +11,7 @@
 
 import { page, avatar, titleWithScript, disclosure, discloseAll } from './layout';
 import type { Visiting } from './layout';
-import { esc, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
+import { esc, escConfirm, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import { spoken } from './sessions';
 import type { User, Group, Section, Recording, Note } from '../types';
 import { t, setLang } from '../i18n';
@@ -190,7 +190,7 @@ function noteBlock(
           </div>
         </form>
         <form method="post" action="/notes/${esc(n.id)}/delete" style="margin-top:10px"
-              onsubmit="return confirm('${t('Delete this note?')}')">
+              onsubmit="return confirm('${escConfirm(t('Delete this note?'))}')">
           <button class="btn btn-sm btn-danger" type="submit">${t('Delete note')}</button>
         </form>
       </div>
@@ -419,7 +419,7 @@ function recordingBlock(
             </div>
           </form>
           <form method="post" action="/t/recordings/${esc(r.id)}/delete" style="margin-top:10px"
-                onsubmit="return confirm('${t('Delete this recording permanently?')}')">
+                onsubmit="return confirm('${escConfirm(t('Delete this recording permanently?'))}')">
             <input type="hidden" name="back" value="${esc(o.back)}">
             <button class="btn btn-sm btn-danger" type="submit">${t('Delete recording')}</button>
           </form>
@@ -570,7 +570,7 @@ ${partsDatalist()}
       <button class="btn btn-primary" type="submit">${t('Save details')}</button>
     </form>
     <form method="post" action="/t/sections/${esc(section.id)}/delete" style="margin-top:14px"
-          onsubmit="return confirm('${t('Delete this song and every recording and note filed under it?')}')">
+          onsubmit="return confirm('${escConfirm(t('Delete this song and every recording and note filed under it?'))}')">
       <button class="btn btn-sm btn-danger" type="submit">${t('Delete this song')}</button>
     </form>
   </div>

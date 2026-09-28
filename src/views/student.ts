@@ -11,7 +11,7 @@ import { page, avatar, inlineTitle } from './layout';
 import type { Visiting } from './layout';
 import { resumeCard, lessonLog, logForm } from './sessions';
 import { monthCalendar, zoneOptions } from './schedule';
-import { esc, fmtDate, relativeDate, waLink } from '../util';
+import { esc, escConfirm, fmtDate, relativeDate, waLink } from '../util';
 import { prettyIst, prettyIstZ, prettyIstDate, WEEKDAYS, inZone, monthLabel, type Occurrence } from '../tz';
 import type { User, Section, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
 import { t, setLang } from '../i18n';
@@ -285,7 +285,7 @@ export function songsTab(
       }</button>
     </form>
     <form method="post" action="/t/s/${esc(student.id)}/unassign"
-          onsubmit="return confirm('${t('Remove this song from their list? Recordings are kept.')}')">
+          onsubmit="return confirm('${escConfirm(t('Remove this song from their list? Recordings are kept.'))}')">
       <input type="hidden" name="section_id" value="${esc(a.id)}">
       <input type="hidden" name="back" value="/t/s/${esc(student.id)}/songs">
       <button class="btn btn-sm btn-quiet" type="submit">${t('Remove')}</button>

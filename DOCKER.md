@@ -65,6 +65,12 @@ this Mac can record, but opening `http://192.168.1.x:8787` from your phone on
 the same wifi cannot; the record button will fail while everything else works.
 Playback, uploads and notes are fine either way.
 
+**It only listens on this machine.** `docker-compose.yml` publishes the port as
+`127.0.0.1:8787`, not on every network interface. With `DEV_LOGIN` on, anyone
+who can reach the port can sign in as anyone (the localhost check reads a header
+they control), so opening it to the network needs `DEV_LOGIN=false` and a real
+`SESSION_SECRET` first.
+
 **Speaking a lesson note doesn't work in here by default.** Workers AI — the
 engine behind the microphone — has no local simulator. Every other binding runs
 on disk inside the container (D1 becomes a SQLite file, R2 a directory), but

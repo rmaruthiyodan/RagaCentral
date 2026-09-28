@@ -128,7 +128,7 @@
          the reason is optional and the keyboard would only get in the way. */
       var first = d.querySelector('select, input:not([type=hidden])');
       if (first && d.classList.contains('cal-add') && window.matchMedia &&
-          !window.matchMedia('(max-width: 820px)').matches) {
+          !window.matchMedia('(max-width: 720px)').matches) {
         try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); }
       }
     });

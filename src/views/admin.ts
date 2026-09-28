@@ -522,7 +522,7 @@ ${disclosure({
     </form>
 
     <form method="post" action="/admin/p/${esc(p.id)}/archive" style="margin-top:14px"
-          onsubmit="return confirm('${esc(
+          onsubmit="return confirm('${escConfirm(
             p.status === 'active'
               ? t('Archive this practice? Nothing is deleted and it can be brought back.')
               : t('Bring this practice back?'),

@@ -3,7 +3,13 @@ services:
     build: .
     container_name: sruti
     ports:
-      - "8787:8787"
+      # This machine only. The container signs anyone in without Google while
+      # DEV_LOGIN is on (below), and /dev/login's "is this localhost?" check
+      # reads the Host header, which any other machine on the network can
+      # fake. Published on every interface, that was a sign-in-as-admin for
+      # the whole Wi-Fi. To reach it from another device on purpose, turn
+      # DEV_LOGIN off and set a real SESSION_SECRET first.
+      - "127.0.0.1:8787:8787"
     volumes:
       # Recordings and the database. Delete this volume and you delete the library.
       - sruti-data:/app/.wrangler

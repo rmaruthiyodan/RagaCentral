@@ -211,6 +211,8 @@ export async function exchangeCode(c: Ctx, code: string): Promise<GoogleProfile>
   if (!['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss ?? ''))
     throw new Error('id_token has an unexpected issuer');
   if (!profile.email) throw new Error('Google account has no email address');
+  const exp = (profile as { exp?: number }).exp;
+  if (typeof exp === 'number' && exp * 1000 < Date.now() - 5 * 60_000) throw new Error('id_token has expired');
   return profile;
 }
 

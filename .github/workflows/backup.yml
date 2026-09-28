@@ -49,6 +49,27 @@ jobs:
       - name: Compress
         run: gzip -9 backup/*.sql
 
+      # The dump is every student's name, email and phone number. As a plain
+      # artifact it can be downloaded by anyone who can read this repository
+      # for 90 days, so with a BACKUP_PASSPHRASE secret set it is kept only
+      # encrypted. Decrypt with:
+      #   gpg --decrypt sruti-YYYY-MM-DD.sql.gz.gpg | gunzip > sruti.sql
+      # report.json holds table row counts only, and stays readable.
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::warning title=Backup is not encrypted::Add a BACKUP_PASSPHRASE repository secret so the database dump is stored encrypted."
+            exit 0
+          fi
+          for f in backup/*.sql.gz; do
+            printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+              --passphrase-fd 0 --symmetric --cipher-algo AES256 -o "$f.gpg" "$f"
+            rm -f "$f"
+          done
+          ls -l backup/
+
       - uses: actions/upload-artifact@v4
         with:
           name: sruti-db-${{ steps.stamp.outputs.date }}
@@ -117,7 +138,14 @@ jobs:
           path: backup
 
       - name: Every recording still has its file
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
+          for f in backup/*.sql.gz.gpg; do
+            [ -e "$f" ] || continue
+            printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+              --passphrase-fd 0 --decrypt -o "${f%.gpg}" "$f"
+          done
           gunzip -f backup/*.sql.gz
           rclone lsjson r2:sruti-media --recursive > /tmp/objects.json
           node scripts/media-audit.mjs backup/*.sql /tmp/objects.json

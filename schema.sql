@@ -301,3 +301,16 @@ CREATE TABLE IF NOT EXISTS backup_runs (
   detail      TEXT,                        -- why it failed, in words
   started_by  TEXT REFERENCES users(id)
 );
+
+-- A person's daily allowance of anything that costs money or lands on
+-- somebody else's desk: spoken notes (each one is billed by the
+-- transcription service) and profiles added (each one asks a teacher to
+-- let them in). One row per person, per UTC day, per kind. Old rows are
+-- harmless and tiny; nothing reads a day but today.
+CREATE TABLE IF NOT EXISTS usage_counters (
+  user_id  TEXT NOT NULL,
+  day      TEXT NOT NULL,
+  kind     TEXT NOT NULL,
+  n        INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, day, kind)
+);
