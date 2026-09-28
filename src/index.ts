@@ -16,7 +16,7 @@ import {
 import {
   currentUser, startSession, endSession, googleAuthUrl, setOAuthState,
   takeOAuthState, exchangeCode, upsertUser, requireUser, requireTeacher, requireTeacherJson,
-  requireUserJson, requireAdmin,
+  requireUserJson, requireAdmin, signInEmail, profilesFor, MAX_PROFILES_PER_EMAIL,
 } from './auth';
 import {
   pid, acting, addMember, removeMember, createProject, getProject,
@@ -224,6 +224,119 @@ app.post('/hats/choose', async (c) => {
   return c.redirect(hatLanding(hat.kind, hat.role));
 });
 
+/* ------------------------------------------------------------------ *
+ * Whose turn is it?
+ *
+ * One sign-in, several people: a parent who learns, and their children
+ * who learn too, all on the parent's Gmail. Each is a profile — their own
+ * songs, recordings, lessons and teacher's notes — and this is where the
+ * person at the keyboard says which of them they are.
+ *
+ * Like the hat chooser, outside requireUser: being signed in is all
+ * these need to know. The list is always rebuilt from the database and
+ * the address the sign-in was made with, so a profile id typed into the
+ * form buys nothing unless it really is on that address.
+ * ------------------------------------------------------------------ */
+
+async function profileCards(env: Env, profiles: User[]): Promise<V.ProfileCard[]> {
+  if (!profiles.length) return [];
+  /* unscoped: which practices each of this sign-in's own profiles is in, to label them on the chooser — every row read belongs to one of them */
+  const r = await env.DB.prepare(
+    `SELECT m.user_id, m.role, m.status, p.name AS project_name
+       FROM project_members m JOIN projects p ON p.id = m.project_id
+      WHERE m.user_id IN (${profiles.map((_, i) => `?${i + 1}`).join(',')})
+        AND p.status = 'active' AND m.status <> 'disabled'
+      ORDER BY p.name COLLATE NOCASE`,
+  )
+    .bind(...profiles.map((u) => u.id))
+    .all<{ user_id: string; role: string; status: string; project_name: string }>();
+  const rows = r.results ?? [];
+  return profiles.map((u) => ({
+    user: u,
+    places: rows.filter((x) => x.user_id === u.id),
+  }));
+}
+
+app.get('/profiles', async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect('/');
+  const em = await signInEmail(c, user);
+  const profiles = await profilesFor(c.env, em, user.id);
+  return c.html(
+    V.chooseProfile(user, em, await profileCards(c.env, profiles), site(c), c.req.query('msg'),
+      profiles.length < MAX_PROFILES_PER_EMAIL && em !== ''),
+  );
+});
+
+app.post('/profiles/switch', async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect('/');
+  const to = String((await c.req.formData()).get('to') ?? '');
+  const em = await signInEmail(c, user);
+  /* The permission: the profile must be on the address this browser signed
+     in with. Anything else — someone else's profile id, a stale one — is
+     refused without saying why. */
+  const target = (await profilesFor(c.env, em, user.id)).find((u) => u.id === to);
+  if (!target) return c.redirect('/profiles');
+
+  await startSession(c, target.id, em);
+  /* Which practice to open is a question for the new profile, not an
+     answer carried over from the last one. */
+  clearActiveProject(c);
+  return c.redirect('/');
+});
+
+app.post('/profiles/add', async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect('/');
+  const f = await c.req.formData();
+  const name = String(f.get('name') ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  const em = await signInEmail(c, user);
+  if (!name) return c.redirect('/profiles?msg=' + encodeURIComponent('A name is needed.'));
+  if (!em) return c.redirect('/profiles?msg=' + encodeURIComponent('This sign-in cannot hold more than one person.'));
+
+  const profiles = await profilesFor(c.env, em, user.id);
+  if (profiles.length >= MAX_PROFILES_PER_EMAIL)
+    return c.redirect('/profiles?msg=' + encodeURIComponent(`One sign-in can hold up to ${MAX_PROFILES_PER_EMAIL} people.`));
+  if (profiles.some((u) => u.name.trim().toLowerCase() === name.toLowerCase()))
+    return c.redirect('/profiles?msg=' + encodeURIComponent(`There is already a ${name} on this sign-in.`));
+
+  const id = newId('u');
+  /* A household shares a clock, a place and usually a phone, so those
+     start as the profile they were added from; each can change them. No
+     google_sub: the sign-in belongs to the address, not to any one of the
+     people on it. */
+  await c.env.DB.prepare(
+    /* unscoped: creating a person — identity is global and has no project_id; the memberships below are what put them anywhere */
+    `INSERT INTO users (id, google_sub, email, name, created_at, time_zone, location, phone, lang)
+     VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(id, em, name, now(), user.time_zone, user.location, user.phone, user.lang)
+    .run();
+
+  /* They ask to join wherever the person adding them is — as a student,
+     and waiting, because it is still the teacher's practice to let people
+     into. Nobody gets into a class by being somebody's sibling. */
+  const places = await c.env.DB.prepare(
+    /* unscoped: the practices of the signed-in profile itself, to ask to join the same ones */
+    `SELECT m.project_id FROM project_members m JOIN projects p ON p.id = m.project_id
+      WHERE m.user_id = ? AND m.status IN ('active','paused','pending') AND p.status = 'active'`,
+  )
+    .bind(user.id)
+    .all<{ project_id: string }>();
+  for (const pl of places.results ?? [])
+    await addMember(c.env, { projectId: pl.project_id, userId: id, role: 'student', status: 'pending' });
+
+  return c.redirect(
+    '/profiles?msg=' +
+      encodeURIComponent(
+        (places.results ?? []).length
+          ? `${name} is added. Your teacher needs to let ${name} in before their lessons appear.`
+          : `${name} is added. A teacher needs to add ${name} to their practice before anything appears.`,
+      ),
+  );
+});
+
 app.get('/', async (c) => {
   const user = await currentUser(c);
   if (user) {
@@ -270,7 +383,14 @@ app.get('/auth/callback', async (c) => {
   try {
     const profile = await exchangeCode(c, code);
     const user = await upsertUser(c, profile);
-    await startSession(c, user.id);
+    const em = profile.email_verified === false ? '' : profile.email.toLowerCase();
+    await startSession(c, user.id, em);
+    /* Several people on this address — a parent and their children — and
+       the sign-in cannot tell which of them is at the keyboard. Ask. */
+    if ((await profilesFor(c.env, em, user.id)).length > 1) {
+      clearActiveProject(c);
+      return c.redirect('/profiles');
+    }
     return c.redirect(await landingFor(c, user));
   } catch (e) {
     console.error('oauth', e);
@@ -305,8 +425,11 @@ app.get('/dev/login', async (c) => {
     c.req.query('admin') === '1' ||
     email === (c.env.BOOTSTRAP_ADMIN_EMAIL ?? '').toLowerCase().trim();
 
-  /* unscoped: local-only sign-in, which is identity and happens before any project is resolved — the same job auth.ts does in production */
-  let u = await c.env.DB.prepare('SELECT * FROM users WHERE lower(email) = ?').bind(email).first<User>();
+  /* unscoped: local-only sign-in, which is identity and happens before any project is resolved — the same job auth.ts does in production.
+     With several profiles on one address, start on the one that holds the sign-in, as a real Google sign-in would. */
+  let u = await c.env.DB.prepare(
+    'SELECT * FROM users WHERE lower(email) = ? ORDER BY google_sub IS NULL, created_at LIMIT 1',
+  ).bind(email).first<User>();
   if (!u) {
     const id = newId('u');
     await c.env.DB.prepare(
@@ -337,7 +460,8 @@ app.get('/dev/login', async (c) => {
     }
   }
 
-  await startSession(c, u.id);
+  await startSession(c, u.id, email);
+  if (!projectId && (await profilesFor(c.env, email, u.id)).length > 1) return c.redirect('/profiles');
   return c.redirect('/');
 });
 
@@ -575,12 +699,19 @@ app.post('/admin/p/:id/members', requireAdmin, async (c) => {
   if (!email.includes('@'))
     return c.redirect(`/admin/p/${id}?msg=` + encodeURIComponent('That does not look like an email address.'));
 
-  /* unscoped: finding the person behind an email address — identity is
-     global, and they may already be learning with another teacher.
-     addMember below is what puts them in this practice. */
-  let u = await c.env.DB.prepare('SELECT id, name FROM users WHERE lower(email) = ?')
-    .bind(email)
-    .first<{ id: string; name: string }>();
+  /* The address may already be on the site — for this person, or, since a
+     family can share one Gmail, for several people. With one of them it is
+     them; with several, ask which. */
+  const who = await personForAdd(c.env, email, '', String(f.get('profile') ?? ''));
+  if (who.kind === 'ask')
+    return c.html(
+      V.whoDoYouMean(c.get('user'), {
+        action: `/admin/p/${id}/members`,
+        fields: formFields(f, ['email', 'role']),
+        name: '', email, existing: who.existing, back: `/admin/p/${id}`,
+      }, site(c), null),
+    );
+  let u: { id: string; name: string } | null = who.kind === 'use' ? { id: who.id, name: who.name } : null;
 
   if (!u) {
     const uid = newId('u');
@@ -965,6 +1096,57 @@ app.get('/t', requireTeacher, async (c) => {
 
 /* ---------------- student status and adding ---------------- */
 
+/* ---------------- one email, possibly several people ---------------- */
+
+/**
+ * Who a "name + email" typed into an add form refers to.
+ *
+ * An address used to be taken as a person: add someone whose address was
+ * already on the site and you got whoever held it. But a parent learns
+ * alongside their children on one Gmail, so the address alone cannot say
+ * which of them is meant. The rule now:
+ *
+ *   - nobody on the address                → a new person;
+ *   - the form already answered ('new' or one of the ids) → that;
+ *   - exactly one person on it with the same name → them, obviously;
+ *   - one person on it and no name to compare (the admin's form) → them;
+ *   - anything else                        → ask, don't guess.
+ *
+ * The ids a form can answer with are re-checked against the address, so
+ * posting some other person's id picks nobody.
+ */
+type PersonPick =
+  | { kind: 'new' }
+  | { kind: 'use'; id: string; name: string }
+  | { kind: 'ask'; existing: { id: string; name: string; avatar_url: string | null }[] };
+
+async function personForAdd(env: Env, email: string, name: string, answer: string): Promise<PersonPick> {
+  /* unscoped: finding the people behind an email address, before any membership exists — addMember is what puts one of them in this project */
+  const r = await env.DB.prepare(
+    'SELECT id, name, avatar_url FROM users WHERE lower(email) = ? ORDER BY created_at',
+  )
+    .bind(email)
+    .all<{ id: string; name: string; avatar_url: string | null }>();
+  const existing = r.results ?? [];
+  if (!existing.length) return { kind: 'new' };
+  if (answer === 'new' && name) return { kind: 'new' };
+  const picked = existing.find((u) => u.id === answer);
+  if (picked) return { kind: 'use', id: picked.id, name: picked.name };
+  const same = name
+    ? existing.filter((u) => u.name.trim().toLowerCase() === name.trim().toLowerCase())
+    : [];
+  if (same.length === 1) return { kind: 'use', id: same[0].id, name: same[0].name };
+  if (!name && existing.length === 1) return { kind: 'use', id: existing[0].id, name: existing[0].name };
+  return { kind: 'ask', existing };
+}
+
+/** The fields of an add form, carried through the "who do you mean?" page unchanged. */
+function formFields(f: FormData, keys: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of keys) out[k] = String(f.get(k) ?? '');
+  return out;
+}
+
 const STUDENT_STATUSES = ['active', 'paused', 'graduated', 'ended'] as const;
 
 app.post('/t/students', requireTeacher, async (c) => {
@@ -973,23 +1155,26 @@ app.post('/t/students', requireTeacher, async (c) => {
   const email = String(f.get('email') ?? '').trim().toLowerCase();
   if (!name || !email) return c.redirect('/t?msg=' + encodeURIComponent('A name and email are both needed.'));
 
-  /* An email address names a person, not a member: the same Google account may
-     already be learning with another teacher, and there is no project to look
-     them up in until they are in one. Only the id and name are taken from the
-     row; addMember below is what admits them here. */
-  /* unscoped: finding the person behind an email address, before any membership exists — addMember below is what puts them in this project */
-  const existing = await c.env.DB.prepare('SELECT id, name FROM users WHERE lower(email) = ?')
-    .bind(email)
-    .first<{ id: string; name: string }>();
-  if (existing) {
+  /* An address may already be on the site — for this person, learning with
+     another teacher, or for somebody else in their family. See personForAdd. */
+  const who = await personForAdd(c.env, email, name, String(f.get('profile') ?? ''));
+  if (who.kind === 'ask')
+    return c.html(
+      V.whoDoYouMean(c.get('user'), {
+        action: '/t/students',
+        fields: formFields(f, ['name', 'email', 'location', 'phone', 'time_zone']),
+        name, email, existing: who.existing, back: '/t',
+      }, site(c), visiting(c)),
+    );
+  if (who.kind === 'use') {
     await addMember(c.env, {
       projectId: pid(c),
-      userId: existing.id,
+      userId: who.id,
       role: 'student',
       status: 'active',
       approvedBy: c.get('user').id,
     });
-    return c.redirect('/t?msg=' + encodeURIComponent(`${existing.name} is on the site already — now active here.`));
+    return c.redirect('/t?msg=' + encodeURIComponent(`${who.name} is on the site already — now active here.`));
   }
 
   const tz = String(f.get('time_zone') ?? '').trim();
@@ -1119,21 +1304,26 @@ app.post('/t/invite', requireTeacher, async (c) => {
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   if (!name || !email) return c.redirect('/t/approvals');
 
-  /* Same as adding a student by email on /t: an address names a person, and
-     there is no project to look them up in until they belong to one. */
-  /* unscoped: finding the person behind an email address, before any membership exists — addMember below is what puts them in this project */
-  const existing = await c.env.DB.prepare('SELECT id FROM users WHERE lower(email) = ?')
-    .bind(email)
-    .first<{ id: string }>();
-  if (existing) {
+  /* Same as adding a student on /t: the address may already be on the
+     site, for this person or for someone else in their family. */
+  const who = await personForAdd(c.env, email, name, String(form.get('profile') ?? ''));
+  if (who.kind === 'ask')
+    return c.html(
+      V.whoDoYouMean(c.get('user'), {
+        action: '/t/invite',
+        fields: formFields(form, ['name', 'email']),
+        name, email, existing: who.existing, back: '/t/approvals',
+      }, site(c), visiting(c)),
+    );
+  if (who.kind === 'use') {
     await addMember(c.env, {
       projectId: pid(c),
-      userId: existing.id,
+      userId: who.id,
       role: 'student',
       status: 'active',
       approvedBy: c.get('user').id,
     });
-    return c.redirect('/t/approvals?msg=' + encodeURIComponent(`${name} is on the site already — now approved here.`));
+    return c.redirect('/t/approvals?msg=' + encodeURIComponent(`${who.name} is on the site already — now approved here.`));
   }
 
   const invitedId = newId('u');

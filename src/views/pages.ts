@@ -65,10 +65,11 @@ export function waiting(user: User, siteName: string): string {
     `<div style="max-width:520px;margin:8vh auto 0;text-align:center">
   <h1>${t('Almost there')}</h1>
   <p class="lede" style="margin:14px auto 26px;max-width:44ch">
-    ${t("You're signed in as %s. Your teacher needs to approve this account before your lessons appear. You'll see them here as soon as that happens.", `<strong>${esc(user.email)}</strong>`)}
+    ${t("You're signed in as %s. Your teacher needs to approve this account before your lessons appear. You'll see them here as soon as that happens.", `<strong>${esc(user.name)}</strong> (${esc(user.email)})`)}
   </p>
   <div class="btn-row" style="justify-content:center">
     <a class="btn" href="/waiting">${t('Check again')}</a>
+    <a class="btn btn-quiet" href="/profiles">${t('Switch or add a profile')}</a>
     <form method="post" action="/auth/logout"><button class="btn btn-quiet" type="submit">${t('Sign out')}</button></form>
   </div>
 </div>`,
@@ -139,6 +140,160 @@ export function chooseHat(
   </p>
 </div>`,
     { title: t('Which hat today?'), siteName, user: null, bodyClass: 'narrow' },
+  );
+}
+
+/* ================================================================== *
+ * Whose turn is it? — the profiles behind one sign-in
+ * ================================================================== */
+
+/** A profile, and the practices it is in, for the chooser. */
+export interface ProfileCard {
+  user: User;
+  places: { role: string; status: string; project_name: string }[];
+}
+
+/**
+ * "Who's practising?" — shown after signing in with an address that
+ * several people share, and from the menu beside the name any time.
+ *
+ * Every card is a real profile on that address, re-checked on the way
+ * in. It is also where a parent adds a child: the new profile asks to
+ * join the same practice, and the teacher lets them in as usual.
+ */
+export function chooseProfile(
+  user: User,
+  signInEmail: string,
+  cards: ProfileCard[],
+  siteName: string,
+  msg?: string,
+  canAdd = true,
+): string {
+  setLang(user.lang);
+
+  const where = (c: ProfileCard) => {
+    if (!c.places.length) return t('Not in a practice yet');
+    return c.places
+      .map((p) =>
+        p.status === 'pending'
+          ? t('Waiting to be let into %s', esc(p.project_name))
+          : `${esc(p.role === 'teacher' ? t('Teacher') : t('Student'))} · ${esc(p.project_name)}`,
+      )
+      .join('<br>');
+  };
+
+  const card = (c: ProfileCard) => {
+    const isNow = c.user.id === user.id;
+    return `<form method="post" action="/profiles/switch" class="prof-form">
+  <input type="hidden" name="to" value="${esc(c.user.id)}">
+  <button class="prof${isNow ? ' is-now' : ''}" type="submit">
+    ${avatar(c.user)}
+    <span class="prof-name">${esc(c.user.name)}</span>
+    <span class="prof-where">${where(c)}</span>
+    ${isNow ? `<span class="prof-now">${esc(t('Using now'))}</span>` : ''}
+  </button>
+</form>`;
+  };
+
+  return page(
+    `<div class="prof-page">
+  ${msg ? flash(msg) : ''}
+  <h1>${esc(t('Who’s practising?'))}</h1>
+  <p class="lede">
+    ${cards.length > 1
+      ? t('Everyone below signs in with the same email. Each has their own songs, recordings and lessons — pick who is here now.')
+      : t('Share this sign-in with your children? Add each of them here and they get their own songs, recordings and lessons — no email of their own needed.')}
+  </p>
+  <div class="prof-list">
+    ${cards.map(card).join('')}
+  </div>
+  ${
+    canAdd
+      ? `<details class="prof-add"${cards.length === 1 ? ' open' : ''}>
+    <summary>+ ${esc(t('Add someone who uses this email'))}</summary>
+    <form method="post" action="/profiles/add" class="prof-add-form">
+      <label for="np-name">${t('Their name')}</label>
+      <div class="prof-add-row">
+        <input id="np-name" name="name" type="text" required maxlength="80" autocomplete="off" placeholder="${esc(t('Anu'))}">
+        <button class="btn btn-primary" type="submit">${t('Add')}</button>
+      </div>
+      <p class="hint">${t('They will ask to join the same practice as %s. Your teacher lets them in, the same way they let you in.', esc(user.name))}</p>
+    </form>
+  </details>`
+      : ''
+  }
+  <p class="prof-foot">
+    ${signInEmail ? t('Signed in as %s.', `<strong>${esc(signInEmail)}</strong>`) : ''}
+    <form method="post" action="/auth/logout" style="display:inline">
+      <button class="btn btn-sm btn-quiet" type="submit">${esc(t('Sign out'))}</button>
+    </form>
+  </p>
+</div>`,
+    { title: t('Who’s practising?'), siteName, user: null, bodyClass: 'narrow' },
+  );
+}
+
+/**
+ * "That email is already on the site — who do you mean?"
+ *
+ * Shown when an add form names an address that already belongs to
+ * someone and the name does not settle it: the same person joining this
+ * practice, or somebody else from the same family on the same Gmail.
+ * Every choice posts the original form back with one field added.
+ */
+export function whoDoYouMean(
+  user: User,
+  o: {
+    action: string;
+    fields: Record<string, string>;
+    name: string;
+    email: string;
+    existing: { id: string; name: string; avatar_url: string | null }[];
+    back: string;
+  },
+  siteName: string,
+  visiting?: Visiting | null,
+): string {
+  setLang(user.lang);
+  const hidden = Object.entries(o.fields)
+    .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
+    .join('');
+  const isAdmin = o.action.startsWith('/admin');
+  return page(
+    `<div class="who-page">
+  <a class="crumb" href="${esc(o.back)}">← ${t('Back')}</a>
+  <h1>${t('Who do you mean?')}</h1>
+  <p class="lede">${
+    o.existing.length === 1
+      ? t('%s is already used by someone on this site. One email can belong to a whole family — a parent and their children — so say which person this is.', `<strong>${esc(o.email)}</strong>`)
+      : t('%s is shared by several people on this site — a family on one Gmail. Say which person this is.', `<strong>${esc(o.email)}</strong>`)
+  }</p>
+  <form method="post" action="${esc(o.action)}" class="who-list">
+    ${hidden}
+    ${o.existing
+      .map(
+        (u) => `<button class="who-opt" type="submit" name="profile" value="${esc(u.id)}">
+      ${avatar(u)}
+      <span class="who-opt-text"><b>${esc(u.name)}</b>
+        <span>${t('The same person — add them here')}</span></span>
+    </button>`,
+      )
+      .join('')}
+    ${
+      o.name
+        ? `<button class="who-opt is-new" type="submit" name="profile" value="new">
+      <span class="avatar avatar-fallback">+</span>
+      <span class="who-opt-text"><b>${esc(t('%s is someone else', o.name))}</b>
+        <span>${t('A new profile on the same email — they sign in with it too, then choose their own name from the list.')}</span></span>
+    </button>`
+        : ''
+    }
+  </form>
+</div>`,
+    {
+      title: t('Who do you mean?'), user, siteName, visiting,
+      nav: isAdmin ? null : 'students', isTeacher: !isAdmin, bodyClass: 'narrow',
+    },
   );
 }
 

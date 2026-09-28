@@ -850,4 +850,43 @@ export const ML: Record<string, string> = {
   'Open approvals': 'അംഗീകാരങ്ങൾ തുറക്കുക',
   'asked %s': '%s ചോദിച്ചു',
   'Sent to a practice and not yet answered. Only that practice’s teacher sees them on their own Approvals page, so this is the only place they can all be seen at once.': 'ഒരു ക്ലാസ്സിലേക്ക് അയച്ചു, ഇതുവരെ മറുപടി ലഭിച്ചിട്ടില്ല. ആ ക്ലാസ്സിന്റെ ഗുരുവിനു മാത്രമേ അവരെ അംഗീകാര പേജിൽ കാണാനാകൂ, അതുകൊണ്ട് എല്ലാവരെയും ഒരുമിച്ച് കാണാൻ കഴിയുന്ന ഏക ഇടം ഇതാണ്.',
+
+  /* ---------------------------------------------------------------- *
+   * The calendar pop-ups
+   * ---------------------------------------------------------------- */
+  Cancel: 'വേണ്ട',
+  Close: 'അടയ്ക്കുക',
+  'Just this once — it doesn’t change their weekly slot.':
+    'ഈ ഒരു തവണ മാത്രം — അവരുടെ ആഴ്ചതോറുമുള്ള സമയം മാറുന്നില്ല.',
+  'Keep it': 'നിലനിർത്തുക',
+  Reason: 'കാരണം',
+
+  /* ---------------------------------------------------------------- *
+   * Profiles — one sign-in, several people
+   * ---------------------------------------------------------------- */
+  '%s is already used by someone on this site. One email can belong to a whole family — a parent and their children — so say which person this is.':
+    '%s ഈ സൈറ്റിൽ മറ്റൊരാൾ ഉപയോഗിക്കുന്നുണ്ട്. ഒരു ഇമെയിൽ ഒരു കുടുംബത്തിന് മുഴുവനായും ആകാം — ഒരു രക്ഷിതാവും മക്കളും — അതുകൊണ്ട് ഇത് ആരാണെന്ന് പറയുക.',
+  '%s is shared by several people on this site — a family on one Gmail. Say which person this is.':
+    '%s ഈ സൈറ്റിൽ പലർ പങ്കിടുന്നു — ഒരു ജിമെയിലിൽ ഒരു കുടുംബം. ഇത് ആരാണെന്ന് പറയുക.',
+  '%s is someone else': '%s മറ്റൊരാളാണ്',
+  'A new profile on the same email — they sign in with it too, then choose their own name from the list.':
+    'ഇതേ ഇമെയിലിൽ ഒരു പുതിയ പ്രൊഫൈൽ — അവരും ഇതുപയോഗിച്ച് പ്രവേശിക്കും, എന്നിട്ട് പട്ടികയിൽ നിന്ന് സ്വന്തം പേര് തിരഞ്ഞെടുക്കും.',
+  Add: 'ചേർക്കുക',
+  'Add someone who uses this email': 'ഈ ഇമെയിൽ ഉപയോഗിക്കുന്ന ഒരാളെ ചേർക്കുക',
+  Anu: 'അനു',
+  Back: 'തിരികെ',
+  'Everyone below signs in with the same email. Each has their own songs, recordings and lessons — pick who is here now.':
+    'താഴെയുള്ള എല്ലാവരും ഒരേ ഇമെയിൽ ഉപയോഗിച്ചാണ് പ്രവേശിക്കുന്നത്. ഓരോരുത്തർക്കും സ്വന്തം പാട്ടുകളും റെക്കോർഡിംഗുകളും ക്ലാസുകളുമുണ്ട് — ഇപ്പോൾ ആരാണെന്ന് തിരഞ്ഞെടുക്കുക.',
+  'Not in a practice yet': 'ഇതുവരെ ഒരു ക്ലാസ്സിലും ചേർന്നിട്ടില്ല',
+  'Share this sign-in with your children? Add each of them here and they get their own songs, recordings and lessons — no email of their own needed.':
+    'ഈ പ്രവേശനം മക്കളുമായി പങ്കിടുന്നുണ്ടോ? ഓരോരുത്തരെയും ഇവിടെ ചേർക്കുക — അവർക്ക് സ്വന്തം പാട്ടുകളും റെക്കോർഡിംഗുകളും ക്ലാസുകളും കിട്ടും, സ്വന്തമായി ഇമെയിൽ വേണ്ട.',
+  'Switch or add a profile': 'പ്രൊഫൈൽ മാറ്റുക അല്ലെങ്കിൽ ചേർക്കുക',
+  'The same person — add them here': 'ഇതേ ആൾ — ഇവിടെ ചേർക്കുക',
+  'Their name': 'അവരുടെ പേര്',
+  'They will ask to join the same practice as %s. Your teacher lets them in, the same way they let you in.':
+    '%s ചേർന്ന അതേ ക്ലാസ്സിൽ ചേരാൻ അവർ അപേക്ഷിക്കും. നിങ്ങളെ ചേർത്തതുപോലെ തന്നെ ഗുരു അവരെയും ചേർക്കും.',
+  'Using now': 'ഇപ്പോൾ ഉപയോഗിക്കുന്നത്',
+  'Waiting to be let into %s': '%s-ൽ ചേർക്കാനായി കാത്തിരിക്കുന്നു',
+  'Who do you mean?': 'ആരെയാണ് ഉദ്ദേശിക്കുന്നത്?',
+  'Who’s practising?': 'ആരാണ് ഇപ്പോൾ പഠിക്കുന്നത്?',
 };

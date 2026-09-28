@@ -86,6 +86,57 @@
     });
   });
 
+  /* Pop-ups that can be dismissed — the calendar's quick add and quick
+     cancel. They are plain <details>, so the summary opens and closes them
+     with no script at all; this adds the ways out people expect of a
+     pop-up: a Cancel or × inside it, Escape, a click anywhere else, and
+     only one open at a time. */
+  var dismissable = function () {
+    return Array.prototype.slice.call(document.querySelectorAll('details[data-dismiss][open]'));
+  };
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    var closer = t.closest && t.closest('[data-close-details]');
+    if (closer) {
+      var d = closer.closest('details');
+      if (d) {
+        d.open = false;
+        var s = d.querySelector('summary');
+        if (s && s.focus) s.focus();
+      }
+      return;
+    }
+    dismissable().forEach(function (d) {
+      if (!d.contains(t)) d.open = false;
+    });
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape') return;
+    dismissable().forEach(function (d) {
+      d.open = false;
+    });
+  });
+  Array.prototype.slice.call(document.querySelectorAll('details[data-dismiss]')).forEach(function (d) {
+    d.addEventListener('toggle', function () {
+      if (!d.open) return;
+      document.body.classList.add('has-pop');
+      dismissable().forEach(function (o) {
+        if (o !== d) o.open = false;
+      });
+      /* Straight to the first field, so a teacher on a phone can pick a
+         student the moment the sheet is up. Not on a chip's cancel, where
+         the reason is optional and the keyboard would only get in the way. */
+      var first = d.querySelector('select, input:not([type=hidden])');
+      if (first && d.classList.contains('cal-add') && window.matchMedia &&
+          !window.matchMedia('(max-width: 820px)').matches) {
+        try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); }
+      }
+    });
+    d.addEventListener('toggle', function () {
+      if (!dismissable().length) document.body.classList.remove('has-pop');
+    });
+  });
+
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest && ev.target.closest('[data-disc-all]');
     if (!btn) return;

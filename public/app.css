@@ -618,7 +618,7 @@ video{background:#000;max-height:420px}
   .topbar-in{padding:0 16px;height:auto;min-height:56px;flex-wrap:wrap;gap:10px;padding-top:10px;padding-bottom:10px}
   h1{font-size:1.6rem}
   .row{gap:12px;padding:13px 14px}
-  .whoami span.who-name{display:none}
+  .whoami .who-name{display:none}
 }
 
 /* ============================================================
@@ -1009,38 +1009,111 @@ a.cal-chip:hover{filter:brightness(.97);box-shadow:0 0 0 1px var(--line-strong)}
 }
 .cal-x-btn:hover{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
 .cal-x-form{position:absolute;top:0;right:0;margin:0}
-/* Anchored to the chip, or the day's own add-class summary, not spanning
-   the row — either is a fraction of the .change-body's usual row width, so
-   both get their own narrow single-column layout rather than the wide
-   multi-column one built for .sched-row. */
-.cal-x-body,
-.cal-add-body{
-  left:auto;right:0;top:calc(100% + 4px);max-width:calc(100vw - 32px);
-  display:block;
+/* ---- The calendar's pop-ups: quick add, quick cancel ----
+ *
+ * One look for both. On a wide screen they hang off the thing that opened
+ * them — opening rightwards from the first four days and leftwards from
+ * the last three, so none runs off the edge of the grid. On a phone they
+ * become a sheet from the bottom of the screen (see the media query
+ * below), because a pop-up anchored in a 340px column is a pop-up you
+ * have to pan around to fill in.
+ */
+.cal-pop{
+  left:auto;right:0;top:calc(100% + 6px);width:292px;max-width:calc(100vw - 32px);
+  display:block;padding:0;overflow:hidden;
+  border-radius:10px;border-color:var(--line);
+  box-shadow:0 2px 6px rgba(26,28,32,.06), 0 18px 40px -12px rgba(26,28,32,.32);
+  text-align:left;cursor:auto;
 }
-.cal-x-body{width:220px}
-.cal-add-body{width:230px}
-.cal-x-body form,
-.cal-add-body form{margin:0}
-.cal-x-body label,
-.cal-add-body label{font-size:12.5px;margin-bottom:4px;display:block}
-.cal-x-body input,
-.cal-add-body input,
-.cal-add-body select{margin-bottom:8px;width:100%}
+.cal-day:nth-child(-n+4) .cal-pop{left:0;right:auto}
+.cal-pop-head{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:12px 12px 10px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);
+}
+.cal-pop-titles{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cal-pop-kicker{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+}
+.cal-pop-title{font-family:var(--f-display);font-size:1.02rem;font-weight:600;line-height:1.3;color:var(--ink)}
+.cal-pop-sub{font-size:12.5px;color:var(--ink-2)}
+.cal-pop-close{
+  flex:none;width:30px;height:30px;border-radius:50%;border:1px solid transparent;
+  background:transparent;color:var(--ink-3);font-size:20px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;padding:0;margin:-2px -2px 0 0;
+}
+.cal-pop-close:hover{background:var(--surface);border-color:var(--line-strong);color:var(--ink)}
+.cal-pop form{margin:0;padding:14px 16px 16px}
+.cal-pop label{font-size:12px;margin-bottom:5px;display:block}
+.cal-pop input,.cal-pop select{margin-bottom:12px;width:100%}
+.cal-pop-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cal-pop-hint{font-size:12px;color:var(--ink-3);margin:-2px 0 14px;line-height:1.45}
+.cal-pop-actions{display:flex;gap:8px;justify-content:flex-end;padding-top:2px}
+.cal-pop-actions .btn{min-width:84px;justify-content:center}
+/* In a pop-up whose whole point is cancelling a class, that is the main
+   button, so it gets a filled one rather than the quiet red text used for
+   a Remove sitting among other controls. */
+.cal-pop .btn-danger{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.cal-pop .btn-danger:hover{filter:brightness(.93);background:var(--bad)}
 
-/* The "+ Add a class" control — a <details>, like the cancel one, so an
-   ad-hoc class never needs leaving the calendar. */
+/* The "+ Add a class" button that opens it — quiet until it's wanted. */
 .cal-add{margin-top:auto;position:relative}
 .cal-add > summary{
-  text-align:center;font-size:11px;color:var(--ink-3);
-  border:1px dashed var(--line-strong);border-radius:3px;padding:4px 6px;
-  list-style:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:4px;
+  font-size:11.5px;color:var(--ink-3);min-height:28px;
+  border:1px dashed var(--line-strong);border-radius:6px;padding:4px 6px;
+  list-style:none;cursor:pointer;transition:color .12s,border-color .12s,background .12s;
 }
 .cal-add > summary::-webkit-details-marker{display:none}
-.cal-add > summary:hover{color:var(--brass-ink);border-color:var(--brass);background:var(--surface-2)}
+.cal-add > summary:hover,
+.cal-add[open] > summary{color:var(--brass-ink);border-color:var(--brass);border-style:solid;background:var(--surface)}
+
 @media (max-width:820px){
   .cal-week{grid-template-columns:1fr}
   .cal-day{min-height:0}
+  /* Days stack on a phone, so a day's classes can sit side by side
+     instead of one per line, and the add button takes a proper tap. */
+  .cal-add > summary{min-height:38px;font-size:13px}
+  .cal-x-btn{width:28px;height:28px;font-size:15px;top:6px;right:6px}
+  .cal-chip{padding-right:40px}
+
+  /* The pop-ups become a sheet from the bottom of the screen. */
+  .cal-pop,
+  .cal-day:nth-child(-n+4) .cal-pop{
+    position:fixed;left:0;right:0;top:auto;bottom:0;width:auto;max-width:none;
+    max-height:88vh;overflow-y:auto;z-index:4;
+    border-radius:16px 16px 0 0;border-bottom:none;
+    padding-bottom:env(safe-area-inset-bottom);
+    animation:cal-sheet-up .18s ease-out;
+  }
+  .cal-pop-head{padding:16px 14px 12px 20px;position:sticky;top:0}
+  .cal-pop-head::before{
+    content:"";position:absolute;top:6px;left:50%;width:36px;height:4px;margin-left:-18px;
+    border-radius:2px;background:var(--line-strong);
+  }
+  .cal-pop-title{font-size:1.15rem}
+  .cal-pop form{padding:16px 20px 20px}
+  .cal-pop label{font-size:13px}
+  /* 16px or iOS zooms the page the moment a field is tapped. */
+  .cal-pop input,.cal-pop select{font-size:16px;min-height:46px}
+  .cal-pop-actions .btn{flex:1;min-height:46px;font-size:15px}
+  /* The dimmed page behind the sheet. It is the summary's own ::after, so
+     tapping it is tapping the summary — the details closes, no script. */
+  .cal-x[open] > summary::after,
+  .cal-add[open] > summary::after{
+    content:"";position:fixed;inset:0;z-index:3;cursor:default;
+    background:rgba(20,22,26,.42);animation:cal-fade .18s ease-out;
+  }
+  .cal-day:has(details.change[open]){z-index:45}
+  body.has-pop{overflow:hidden}
+  /* The sticky header would otherwise sit between the dimmed page and the
+     day the sheet belongs to, half-covered. While a sheet is up the page
+     cannot scroll anyway, so it simply stops being sticky. */
+  body.has-pop .topbar{position:relative}
+}
+@keyframes cal-sheet-up{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes cal-fade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .cal-pop,.cal-x[open] > summary::after,.cal-add[open] > summary::after{animation:none}
 }
 
 /* ---------- one day ---------- */
@@ -1459,3 +1532,70 @@ a.wa:hover{text-decoration:underline}
   position:absolute;width:1px;height:1px;padding:0;margin:-1px;
   overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;
 }
+
+/* ============================================================
+   Whose turn is it? — the profiles behind one sign-in
+   ============================================================ */
+a.who-name{color:inherit;text-decoration:none;border-bottom:1px dotted transparent}
+a.who-name:hover{border-bottom-color:var(--ink-3)}
+.prof-page{max-width:640px;margin:6vh auto 0;text-align:center}
+.prof-page .lede{margin:12px auto 28px;max-width:48ch}
+.prof-list{
+  display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+  text-align:left;
+}
+.prof-form{margin:0}
+.prof{
+  width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:22px 16px 18px;text-align:center;cursor:pointer;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  font:inherit;color:inherit;box-shadow:var(--shadow);
+  transition:border-color .13s,transform .13s,box-shadow .13s;
+}
+.prof:hover{border-color:var(--brass);transform:translateY(-1px)}
+.prof:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.prof.is-now{border-color:var(--brass);background:var(--brass-soft)}
+.prof .avatar{width:64px;height:64px;font-size:26px;margin-bottom:4px}
+.prof-name{font-family:var(--f-display);font-size:1.15rem;font-weight:600;line-height:1.25}
+.prof-where{font-size:12.5px;color:var(--ink-3);line-height:1.45}
+.prof-now{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--brass-ink);margin-top:2px;
+}
+.prof-add{
+  margin:22px auto 0;max-width:460px;text-align:left;
+  border:1px dashed var(--line-strong);border-radius:12px;background:var(--surface);
+}
+.prof-add[open]{border-style:solid}
+.prof-add > summary{
+  list-style:none;cursor:pointer;padding:14px 18px;font-weight:600;font-size:14px;color:var(--brass-ink);
+}
+.prof-add > summary::-webkit-details-marker{display:none}
+.prof-add-form{padding:0 18px 16px;margin:0}
+.prof-add-row{display:flex;gap:8px}
+.prof-add-row input{flex:1}
+.prof-add .hint{margin:10px 0 0}
+.prof-foot{margin-top:26px;font-size:13px;color:var(--ink-3)}
+@media (max-width:520px){
+  .prof-page{margin-top:3vh}
+  .prof-list{grid-template-columns:1fr 1fr;gap:10px}
+  .prof{padding:18px 10px 14px}
+  .prof .avatar{width:54px;height:54px;font-size:22px}
+  .prof-add-row input{font-size:16px}
+}
+
+/* "Who do you mean?" — one address, several people */
+.who-page{max-width:560px;margin:4vh auto 0}
+.who-page .lede{margin:10px 0 22px}
+.who-list{display:grid;gap:10px;margin:0}
+.who-opt{
+  display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;
+  padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  font:inherit;color:inherit;box-shadow:var(--shadow);transition:border-color .13s;
+}
+.who-opt:hover{border-color:var(--brass)}
+.who-opt .avatar{width:42px;height:42px;font-size:17px}
+.who-opt-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.who-opt-text b{font-size:15.5px}
+.who-opt-text span{font-size:13px;color:var(--ink-3)}
+.who-opt.is-new{border-style:dashed}

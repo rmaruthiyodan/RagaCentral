@@ -917,7 +917,7 @@ async function main() {
     check('  …and a class chip carries a quick-cancel control', weekPage.text.includes('cal-x'), 'no .cal-x control on the week calendar');
     check(
       '  …and every day offers an inline quick-add, right on the calendar',
-      weekPage.text.includes('/t/schedule/day/2026-09-16/add') && weekPage.text.includes('cal-add-body'),
+      weekPage.text.includes('/t/schedule/day/2026-09-16/add') && weekPage.text.includes('cal-pop') && weekPage.text.includes('data-close-details'),
       'no inline add-class panel for 2026-09-16',
     );
     check("  …naming their own student as an option, right there on the calendar", weekPage.text.includes(`>${N.studentAName}<`), `${N.studentAName} missing from the calendar's student picker`);
@@ -1842,6 +1842,105 @@ async function main() {
   await POST(admin, '/admin/allow-again', { user_id: spamId });
   const back = await GET(admin, '/admin');
   check('  …and put back', back.text.includes(spamEmail), 'not back on the list');
+
+  /* ================================================================
+   * One email, several people — a parent and their children
+   *
+   * An address is not a person. A teacher adding someone on an address
+   * already in use is asked who they mean; several profiles on one
+   * address are switched between; and switching never reaches a profile
+   * on any other address.
+   * ================================================================ */
+
+  {
+  console.log('\n--- one email, several people ---');
+  const siblingName = `SitaSibling${RUN}`;
+  const profilesOnA = () => d1one(`SELECT id, name FROM users WHERE lower(email)='${N.studentA}' ORDER BY created_at`);
+  const before = profilesOnA().length;
+
+  let fam = await POST(ta, '/t/students', { name: siblingName, email: N.studentA });
+  check("adding a different name on an address already in use asks who is meant, rather than guessing",
+    fam.status === 200 && fam.text.includes('Who do you mean?') && fam.text.includes(N.studentAName),
+    `${fam.status} ${snippet(fam.text)}`);
+  check('  …and has written nothing yet', profilesOnA().length === before, 'a profile was created before the teacher answered');
+
+  fam = await POST(ta, '/t/students', { name: siblingName, email: N.studentA, profile: 'new' });
+  checkStatus('  …answering "someone else" adds them', fam, 302);
+  const sibling = profilesOnA().find((u) => u.name === siblingName);
+  check('  …as a second profile on the same address', Boolean(sibling) && profilesOnA().length === before + 1,
+    `profiles on the address: ${JSON.stringify(profilesOnA())}`);
+  check('  …active in A',
+    d1one(`SELECT status FROM project_members WHERE user_id='${sibling?.id}' AND project_id='${A.id}'`)[0]?.status === 'active',
+    'no active membership in A');
+
+  fam = await POST(ta, '/t/students', { name: N.studentAName, email: N.studentA });
+  checkStatus('adding the same name on that address again is simply them', fam, 302);
+  check('  …no third profile appears', profilesOnA().length === before + 1, 'a duplicate of an existing person was made');
+
+  fam = await POST(ta, '/t/students', { name: `NotYetAnyone${RUN}`, email: N.studentA, profile: B.studentId });
+  check("naming a profile from some other address in the answer picks nobody",
+    fam.status === 200 && fam.text.includes('Who do you mean?') &&
+      d1one(`SELECT COUNT(*) AS n FROM project_members WHERE user_id='${B.studentId}' AND project_id='${A.id}'`)[0].n === 0,
+    `${fam.status} — B's student may have been put in A`);
+
+  /* Signing in on the shared address */
+  const family = new Jar('family');
+  const famIn = await GET(family, `/dev/login?email=${encodeURIComponent(N.studentA)}`);
+  check('signing in on a shared address goes to the chooser', famIn.location === '/profiles', `Location was ${famIn.location}`);
+  const chooser = await GET(family, '/profiles');
+  if (checkStatus('  …which opens', chooser, 200))
+    check('  …listing both people on it', chooser.text.includes(N.studentAName) && chooser.text.includes(siblingName),
+      snippet(chooser.text));
+  check("  …and nobody from any other address", !chooser.text.includes(N.studentBName), "B's student is on the chooser");
+
+  const sw = await POST(family, '/profiles/switch', { to: sibling?.id ?? '' });
+  checkStatus('switching to the sibling', sw, 302);
+  const asSibling = await GET(family, '/me');
+  check('  …and the pages are now theirs', asSibling.status === 200 && asSibling.text.includes(siblingName),
+    `${asSibling.status} ${snippet(asSibling.text)}`);
+
+  const hop = await POST(family, '/profiles/switch', { to: B.studentId });
+  check("switching to a profile on another address is refused", hop.location === '/profiles', `Location was ${hop.location}`);
+  const still = await GET(family, '/me');
+  check('  …and changes nothing', still.text.includes(siblingName) && !still.text.includes(N.studentBName),
+    snippet(still.text));
+
+  /* A parent adding a child themselves */
+  const kidName = `KiranKid${RUN}`;
+  const added = await POST(family, '/profiles/add', { name: kidName });
+  checkStatus('a parent can add a child on their own sign-in', added, 302);
+  const kid = profilesOnA().find((u) => u.name === kidName);
+  check('  …as a profile on the same address', Boolean(kid), 'no profile for the child');
+  check("  …asking to join the parent's practice, not let straight in",
+    d1one(`SELECT status, role FROM project_members WHERE user_id='${kid?.id}' AND project_id='${A.id}'`)[0]?.status === 'pending',
+    'the child is not pending in A');
+  check('  …and nowhere else',
+    d1one(`SELECT COUNT(*) AS n FROM project_members WHERE user_id='${kid?.id}' AND project_id <> '${A.id}'`)[0].n === 0,
+    'the child was put in another practice');
+  const apA = await GET(ta, '/t/approvals');
+  check("  …teacher A sees them waiting", apA.text.includes(kidName), 'not on A\'s approvals');
+  const apB = await GET(tb, '/t/approvals');
+  check("  …teacher B does not", !apB.text.includes(kidName), 'on B\'s approvals');
+  const dupe = await POST(family, '/profiles/add', { name: kidName });
+  check('  …and the same name twice is refused', dupe.status === 302 &&
+    d1one(`SELECT COUNT(*) AS n FROM users WHERE lower(email)='${N.studentA}' AND name='${kidName}'`)[0].n === 1,
+    'a second profile with the same name was made');
+
+  /* An outsider cannot add profiles to someone else's address */
+  const nosy = new Jar('nosy');
+  await GET(nosy, `/dev/login?email=${encodeURIComponent(N.studentB)}`);
+  await POST(nosy, '/profiles/add', { name: `Intruder${RUN}` });
+  check("a profile added from another sign-in lands on that sign-in's own address",
+    d1one(`SELECT COUNT(*) AS n FROM users WHERE lower(email)='${N.studentA}' AND name='Intruder${RUN}'`)[0].n === 0,
+    'a profile was added to the student-A address from the student-B sign-in');
+  const nosyHop = await POST(nosy, '/profiles/switch', { to: sibling?.id ?? '' });
+  check("  …and cannot switch into that family's profiles", nosyHop.location === '/profiles', `Location was ${nosyHop.location}`);
+
+  /* The admin's add form has only an address — several people on it, so ask. */
+  const admAsk = await POST(admin, `/admin/p/${A.id}/members`, { email: N.studentA, role: 'student' });
+  check("the admin adding by an address several people share is asked who they mean",
+    admAsk.status === 200 && admAsk.text.includes('Who do you mean?'), `${admAsk.status} ${snippet(admAsk.text)}`);
+  }
 }
 
 /* ================================================================== */

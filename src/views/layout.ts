@@ -110,6 +110,7 @@ function themePicker(palette: string, mode: string): string {
       ).join('')}
     </form>
     <div class="tp-h">${esc(t('You'))}</div>
+    <a class="tp-opt tp-link" href="/profiles">${esc(t('Switch or add a profile'))}</a>
     <a class="tp-opt tp-link" href="/hats">${esc(t('Switch role'))}</a>
   </div>
 </details>`;
@@ -144,7 +145,7 @@ export function page(body: string, o: LayoutOpts): string {
     ? `<div class="whoami">
          ${themePicker(palette, mode)}
          ${u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="" referrerpolicy="no-referrer">` : ''}
-         <span class="who-name">${esc(u.name)}</span>
+         <a class="who-name" href="/profiles" title="${esc(t('Switch or add a profile'))}">${esc(u.name)}</a>
          <form method="post" action="/auth/logout"><button class="btn btn-sm btn-quiet" type="submit">${esc(t('Sign out'))}</button></form>
        </div>`
     : '';

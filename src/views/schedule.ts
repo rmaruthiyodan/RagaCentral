@@ -460,15 +460,19 @@ function chip(occ: Occurrence, student: WithZone, back: string): string {
       <input type="hidden" name="back" value="${esc(back)}">
       <button class="cal-x-btn" type="submit" title="${t('Put it back')}" aria-label="${t('Put it back')}">&#8634;</button>
     </form>`
-      : `<details class="change cal-x" data-reveal>
+      : `<details class="change cal-x" data-reveal data-dismiss>
       <summary class="cal-x-btn" title="${t('Cancel this one class')}" aria-label="${t('Cancel this one class')}">&times;</summary>
-      <div class="change-body cal-x-body" data-reveal-body>
+      <div class="change-body cal-pop" data-reveal-body role="dialog" aria-label="${t('Cancel this one class')}">
+        ${popHead(t('Cancel this one class'), student.name, `${prettyIstDate(occ.date)} · ${prettyIst(occ.time)} ${istAbbr()}`)}
         <form method="post" action="/t/slots/${esc(occ.slot.id)}/skip">
           <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
           <input type="hidden" name="back" value="${esc(back)}">
-          <label for="cx-${esc(key)}">${t('Cancel this one class')}</label>
+          <label for="cx-${esc(key)}">${t('Reason')} <span class="opt">${t('— optional')}</span></label>
           <input id="cx-${esc(key)}" name="reason" type="text" placeholder="${t('Onam, travelling…')}">
-          <button class="btn btn-sm" type="submit">${t('No class this day')}</button>
+          <div class="cal-pop-actions">
+            <button class="btn btn-sm btn-quiet" type="button" data-close-details>${t('Keep it')}</button>
+            <button class="btn btn-sm btn-danger" type="submit">${t('No class this day')}</button>
+          </div>
         </form>
       </div>
     </details>`
@@ -476,27 +480,59 @@ function chip(occ: Occurrence, student: WithZone, back: string): string {
 </div>`;
 }
 
+/** The top of a calendar pop-up: what it is, what it's about, and a way out. */
+function popHead(kicker: string, title: string, sub?: string): string {
+  return `<div class="cal-pop-head">
+    <div class="cal-pop-titles">
+      <span class="cal-pop-kicker">${esc(kicker)}</span>
+      <b class="cal-pop-title">${esc(title)}</b>
+      ${sub ? `<span class="cal-pop-sub">${esc(sub)}</span>` : ''}
+    </div>
+    <button class="cal-pop-close" type="button" data-close-details
+            title="${esc(t('Close'))}" aria-label="${esc(t('Close'))}">&times;</button>
+  </div>`;
+}
+
+/** Class lengths offered in the quick-add. The day page still takes any
+ *  number of minutes; these are the ones a teacher actually uses. */
+const QUICK_LENGTHS = [30, 45, 60, 75, 90, 120];
+
 /** The "+ Add a class" control on a calendar day — a reveal panel, right
  *  next to the quick cancel on a chip, so an ad-hoc class for any student
- *  never needs leaving the calendar. */
+ *  never needs leaving the calendar. On a phone it opens as a sheet from
+ *  the bottom of the screen instead of a pop-up squeezed into the column. */
 function quickAddPanel(date: string, students: WithZone[], back: string): string {
   if (!students.length) return '';
-  return `<details class="change cal-add" data-reveal>
-    <summary>+ ${t('Add a class')}</summary>
-    <div class="change-body cal-add-body" data-reveal-body>
+  const id = (k: string) => `qa-${esc(date)}-${k}`;
+  return `<details class="change cal-add" data-reveal data-dismiss>
+    <summary class="cal-add-btn">+ ${t('Add a class')}</summary>
+    <div class="change-body cal-pop" data-reveal-body role="dialog" aria-label="${esc(t('Add a class'))}">
+      ${popHead(t('Add a class'), prettyIstDate(date))}
       <form method="post" action="/t/schedule/day/${esc(date)}/add">
         <input type="hidden" name="back" value="${esc(back)}">
-        <label for="qa-${esc(date)}-student">${t('Student')}</label>
-        <select id="qa-${esc(date)}-student" name="student_id" required>
+        <label for="${id('student')}">${t('Student')}</label>
+        <select id="${id('student')}" name="student_id" required>
           ${students.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
         </select>
-        <label for="qa-${esc(date)}-time">${t('Time')} <span class="opt">${t('— Indian time')}</span></label>
-        <input id="qa-${esc(date)}-time" name="time_ist" type="time" value="19:00" required>
-        <label for="qa-${esc(date)}-dur">${t('Length')}</label>
-        <input id="qa-${esc(date)}-dur" name="duration_min" type="number" min="15" max="240" value="60">
-        <label for="qa-${esc(date)}-label">${t('Label')} <span class="opt">${t('— optional')}</span></label>
-        <input id="qa-${esc(date)}-label" name="label" type="text" placeholder="${t('Theory')}">
-        <button class="btn btn-sm btn-primary" type="submit">${t('Add class')}</button>
+        <div class="cal-pop-row">
+          <div>
+            <label for="${id('time')}">${t('Time')} <span class="opt">${esc(istAbbr())}</span></label>
+            <input id="${id('time')}" name="time_ist" type="time" value="19:00" required>
+          </div>
+          <div>
+            <label for="${id('dur')}">${t('Length')}</label>
+            <select id="${id('dur')}" name="duration_min">
+              ${QUICK_LENGTHS.map((m) => `<option value="${m}"${m === 60 ? ' selected' : ''}>${t('%s min', m)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <label for="${id('label')}">${t('Label')} <span class="opt">${t('— optional')}</span></label>
+        <input id="${id('label')}" name="label" type="text" placeholder="${t('Theory')}">
+        <p class="cal-pop-hint">${t('Just this once — it doesn’t change their weekly slot.')}</p>
+        <div class="cal-pop-actions">
+          <button class="btn btn-sm btn-quiet" type="button" data-close-details>${t('Cancel')}</button>
+          <button class="btn btn-sm btn-primary" type="submit">${t('Add class')}</button>
+        </div>
       </form>
     </div>
   </details>`;
