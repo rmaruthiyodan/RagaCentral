@@ -947,13 +947,16 @@ details.rec > summary:hover .rec-order button,
   background:var(--line);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
 }
 /* overflow:hidden above keeps the grid's corners rounded, but it would also
-   slice off a chip's cancel panel the moment it opens — so it lifts, just
-   for as long as one is open. */
-.cal-week:has(.cal-chip-wrap details.change[open]){overflow:visible}
+   slice off a chip's cancel panel — or a day's add-class panel — the moment
+   one opens, so it lifts, just for as long as one is. */
+.cal-week:has(.cal-day details.change[open]){overflow:visible}
 .cal-day{
   background:var(--surface);min-height:132px;padding:0;text-decoration:none;color:inherit;
-  display:flex;flex-direction:column;
+  display:flex;flex-direction:column;position:relative;
 }
+/* A day with any panel open — a chip's cancel, or its own add-class — has to
+   paint above the days beside it, or their backgrounds show through. */
+.cal-day:has(details.change[open]){z-index:33}
 .cal-day:hover{background:var(--surface-2)}
 .cal-day.is-today{background:var(--brass-soft)}
 .cal-day.is-empty{background:var(--paper)}
@@ -1006,23 +1009,35 @@ a.cal-chip:hover{filter:brightness(.97);box-shadow:0 0 0 1px var(--line-strong)}
 }
 .cal-x-btn:hover{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
 .cal-x-form{position:absolute;top:0;right:0;margin:0}
-/* Anchored to the chip, not spanning it — a chip is a fraction of the
-   .change-body's usual row width, so it gets its own narrow layout rather
-   than the wide multi-column one built for .sched-row. */
-.cal-x-body{
-  left:auto;right:0;top:calc(100% + 4px);width:220px;max-width:calc(100vw - 32px);
+/* Anchored to the chip, or the day's own add-class summary, not spanning
+   the row — either is a fraction of the .change-body's usual row width, so
+   both get their own narrow single-column layout rather than the wide
+   multi-column one built for .sched-row. */
+.cal-x-body,
+.cal-add-body{
+  left:auto;right:0;top:calc(100% + 4px);max-width:calc(100vw - 32px);
   display:block;
 }
-.cal-x-body form{margin:0}
-.cal-x-body label{font-size:12.5px;margin-bottom:4px}
-.cal-x-body input{margin-bottom:8px;width:100%}
+.cal-x-body{width:220px}
+.cal-add-body{width:230px}
+.cal-x-body form,
+.cal-add-body form{margin:0}
+.cal-x-body label,
+.cal-add-body label{font-size:12.5px;margin-bottom:4px;display:block}
+.cal-x-body input,
+.cal-add-body input,
+.cal-add-body select{margin-bottom:8px;width:100%}
 
-.cal-add{
-  margin-top:auto;text-align:center;font-size:11px;color:var(--ink-3);
+/* The "+ Add a class" control — a <details>, like the cancel one, so an
+   ad-hoc class never needs leaving the calendar. */
+.cal-add{margin-top:auto;position:relative}
+.cal-add > summary{
+  text-align:center;font-size:11px;color:var(--ink-3);
   border:1px dashed var(--line-strong);border-radius:3px;padding:4px 6px;
-  text-decoration:none;
+  list-style:none;cursor:pointer;
 }
-.cal-add:hover{color:var(--brass-ink);border-color:var(--brass);background:var(--surface-2)}
+.cal-add > summary::-webkit-details-marker{display:none}
+.cal-add > summary:hover{color:var(--brass-ink);border-color:var(--brass);background:var(--surface-2)}
 @media (max-width:820px){
   .cal-week{grid-template-columns:1fr}
   .cal-day{min-height:0}

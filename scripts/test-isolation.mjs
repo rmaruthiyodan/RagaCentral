@@ -915,7 +915,12 @@ async function main() {
   const weekPage = await GET(ta, '/t/schedule/week?start=2026-09-13');
   if (checkStatus('teacher A opens the week calendar', weekPage, 200)) {
     check('  …and a class chip carries a quick-cancel control', weekPage.text.includes('cal-x'), 'no .cal-x control on the week calendar');
-    check('  …and every day offers a quick way to add a class', weekPage.text.includes('/t/schedule/day/2026-09-16#add-class'), 'no add-class link for 2026-09-16');
+    check(
+      '  …and every day offers an inline quick-add, right on the calendar',
+      weekPage.text.includes('/t/schedule/day/2026-09-16/add') && weekPage.text.includes('cal-add-body'),
+      'no inline add-class panel for 2026-09-16',
+    );
+    check("  …naming their own student as an option, right there on the calendar", weekPage.text.includes(`>${N.studentAName}<`), `${N.studentAName} missing from the calendar's student picker`);
   }
   const dayPage = await GET(ta, '/t/schedule/day/2026-09-16');
   if (checkStatus('teacher A opens a day from the calendar', dayPage, 200)) {

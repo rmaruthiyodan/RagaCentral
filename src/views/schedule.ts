@@ -476,11 +476,38 @@ function chip(occ: Occurrence, student: WithZone, back: string): string {
 </div>`;
 }
 
+/** The "+ Add a class" control on a calendar day — a reveal panel, right
+ *  next to the quick cancel on a chip, so an ad-hoc class for any student
+ *  never needs leaving the calendar. */
+function quickAddPanel(date: string, students: WithZone[], back: string): string {
+  if (!students.length) return '';
+  return `<details class="change cal-add" data-reveal>
+    <summary>+ ${t('Add a class')}</summary>
+    <div class="change-body cal-add-body" data-reveal-body>
+      <form method="post" action="/t/schedule/day/${esc(date)}/add">
+        <input type="hidden" name="back" value="${esc(back)}">
+        <label for="qa-${esc(date)}-student">${t('Student')}</label>
+        <select id="qa-${esc(date)}-student" name="student_id" required>
+          ${students.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
+        </select>
+        <label for="qa-${esc(date)}-time">${t('Time')} <span class="opt">${t('— Indian time')}</span></label>
+        <input id="qa-${esc(date)}-time" name="time_ist" type="time" value="19:00" required>
+        <label for="qa-${esc(date)}-dur">${t('Length')}</label>
+        <input id="qa-${esc(date)}-dur" name="duration_min" type="number" min="15" max="240" value="60">
+        <label for="qa-${esc(date)}-label">${t('Label')} <span class="opt">${t('— optional')}</span></label>
+        <input id="qa-${esc(date)}-label" name="label" type="text" placeholder="${t('Theory')}">
+        <button class="btn btn-sm btn-primary" type="submit">${t('Add class')}</button>
+      </form>
+    </div>
+  </details>`;
+}
+
 export function weekCalendar(
   user: User,
   weekStart: string,
   cells: DayGroup[],
   siteName: string,
+  students: WithZone[],
   msg?: string,
   visiting?: Visiting | null,
 ): string {
@@ -556,7 +583,7 @@ ${
     </a>
     <div class="cal-body">
       ${c.items.length ? c.items.map((i) => chip(i.occ, i.student, back)).join('') : '<span class="cal-none">—</span>'}
-      <a class="cal-add" href="/t/schedule/day/${esc(c.date)}#add-class">+ ${t('Add a class')}</a>
+      ${quickAddPanel(c.date, students, back)}
     </div>
   </div>`,
     )

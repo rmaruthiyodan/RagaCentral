@@ -3403,8 +3403,10 @@ app.get('/t/schedule/week', requireTeacher, async (c) => {
     if (st && cell) cell.items.push({ occ, student: st });
   }
 
+  const roster = await activeStudentRoster(c.env, pid(c));
+
   return c.html(
-    Sched.weekCalendar(c.get('user'), start, cells, site(c), c.req.query('msg'), visiting(c)),
+    Sched.weekCalendar(c.get('user'), start, cells, site(c), roster, c.req.query('msg'), visiting(c)),
   );
 });
 
