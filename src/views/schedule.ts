@@ -434,22 +434,46 @@ export function studentZoneForm(user: User): string {
  * ================================================================== */
 
 /** One class as it appears in a compact calendar cell. */
-function chip(occ: Occurrence, student: WithZone): string {
+function chip(occ: Occurrence, student: WithZone, back: string): string {
   const cls = occ.skipped ? 'is-skipped' : occ.missed ? 'is-missed' : occ.moved ? 'is-moved' : '';
   const local = student.time_zone ? inZone(occ.instant, student.time_zone) : null;
   // A class in a past week belonging to someone who has since paused or
   // finished is still shown — with a word saying so, or it reads as a class
   // that is still running.
   const inactive = student.status && student.status !== 'active' ? student.status : null;
+  const off = occ.skipped || occ.missed;
+  const key = `${occ.slot.id}-${occ.originalDate}`;
   // The chip is a link into the class itself, so the calendar is a way in
-  // rather than only a way to look.
-  return `<a class="cal-chip ${cls}${inactive ? ' is-former' : ''}"
+  // rather than only a way to look. A quick cancel/undo sits beside it —
+  // a sibling, not a child, since a form can't nest inside the anchor.
+  return `<div class="cal-chip-wrap">
+  <a class="cal-chip ${cls}${inactive ? ' is-former' : ''}"
   href="/t/class/${esc(occ.slot.id)}/${esc(occ.originalDate)}">
   <span class="cal-time">${esc(prettyIst(occ.time))} <span class="zone">${esc(istAbbr())}</span></span>
   <span class="cal-name">${esc(student.name)}</span>
   ${inactive ? `<span class="cal-former">${esc(t(inactive))}</span>` : ''}
   ${local ? `<span class="cal-local">${esc(local.time)} ${esc(t(local.weekday))} <span class="zone">${esc(local.abbr)}</span></span>` : ''}
-</a>`;
+</a>${
+    off
+      ? `<form method="post" action="/t/slots/${esc(occ.slot.id)}/restore" class="cal-x-form">
+      <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
+      <input type="hidden" name="back" value="${esc(back)}">
+      <button class="cal-x-btn" type="submit" title="${t('Put it back')}" aria-label="${t('Put it back')}">&#8634;</button>
+    </form>`
+      : `<details class="change cal-x" data-reveal>
+      <summary class="cal-x-btn" title="${t('Cancel this one class')}" aria-label="${t('Cancel this one class')}">&times;</summary>
+      <div class="change-body cal-x-body" data-reveal-body>
+        <form method="post" action="/t/slots/${esc(occ.slot.id)}/skip">
+          <input type="hidden" name="on_date" value="${esc(occ.originalDate)}">
+          <input type="hidden" name="back" value="${esc(back)}">
+          <label for="cx-${esc(key)}">${t('Cancel this one class')}</label>
+          <input id="cx-${esc(key)}" name="reason" type="text" placeholder="${t('Onam, travelling…')}">
+          <button class="btn btn-sm" type="submit">${t('No class this day')}</button>
+        </form>
+      </div>
+    </details>`
+  }
+</div>`;
 }
 
 export function weekCalendar(
@@ -466,6 +490,9 @@ export function weekCalendar(
   const prev = addDays(weekStart, -7);
   const next = addDays(weekStart, 7);
   const total = cells.reduce((n, c) => n + c.items.length, 0);
+  // Where a quick cancel/undo on a chip sends you back to — this same week,
+  // not wherever the default landing page would be.
+  const back = `/t/schedule/week?start=${weekStart}`;
 
   return page(
     `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
@@ -528,7 +555,8 @@ ${
       <span class="cal-num">${esc(c.date.slice(8))}</span>
     </a>
     <div class="cal-body">
-      ${c.items.length ? c.items.map((i) => chip(i.occ, i.student)).join('') : '<span class="cal-none">—</span>'}
+      ${c.items.length ? c.items.map((i) => chip(i.occ, i.student, back)).join('') : '<span class="cal-none">—</span>'}
+      <a class="cal-add" href="/t/schedule/day/${esc(c.date)}#add-class">+ ${t('Add a class')}</a>
     </div>
   </div>`,
     )
@@ -548,6 +576,7 @@ export function dayView(
   date: string,
   items: { occ: Occurrence; student: WithZone }[],
   siteName: string,
+  students: WithZone[],
   msg?: string,
   visiting?: Visiting | null,
 ): string {
@@ -629,7 +658,42 @@ export function dayView(
   <a class="btn btn-sm" href="/t/schedule/day/${esc(addDays(date, 1))}">${esc(prettyIstDate(addDays(date, 1)))} →</a>
 </div>
 
-${items.length ? items.map(row).join('') : `<div class="empty">${t('No classes on this day.')}</div>`}`,
+${items.length ? items.map(row).join('') : `<div class="empty">${t('No classes on this day.')}</div>`}
+
+${
+  students.length
+    ? `<details id="add-class" class="panel" style="margin-top:14px">
+  <summary>+ ${t('Add a class')}</summary>
+  <div class="panel-body">
+    <form method="post" action="/t/schedule/day/${esc(date)}/add">
+      <input type="hidden" name="back" value="/t/schedule/day/${esc(date)}">
+      <div class="field-row">
+        <div class="field">
+          <label for="qa-student">${t('Student')}</label>
+          <select id="qa-student" name="student_id" required>
+            ${students.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label for="qa-time">${t('Time')} <span class="opt">${t('— Indian time')}</span></label>
+          <input id="qa-time" name="time_ist" type="time" value="19:00" required>
+        </div>
+        <div class="field">
+          <label for="qa-dur">${t('Length')}</label>
+          <input id="qa-dur" name="duration_min" type="number" min="15" max="240" value="60">
+        </div>
+        <div class="field">
+          <label for="qa-label">${t('Label')} <span class="opt">${t('— optional')}</span></label>
+          <input id="qa-label" name="label" type="text" placeholder="${t('Theory')}">
+        </div>
+      </div>
+      <p class="hint">${t('A one-off class just for this day — for a recurring one, use Weekly slots.')}</p>
+      <button class="btn btn-sm btn-primary" type="submit">${t('Add class')}</button>
+    </form>
+  </div>
+</details>`
+    : ''
+}`,
     { title: prettyIstDate(date), user, siteName, nav: 'schedule', visiting },
   );
 }

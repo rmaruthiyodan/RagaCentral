@@ -95,7 +95,10 @@ export const ML: Record<string, string> = {
   /* ---------------------------------------------------------------- *
    * Adding things
    * ---------------------------------------------------------------- */
+  'A one-off class just for this day — for a recurring one, use Weekly slots.':
+    'ഈ ഒരു ദിവസത്തേക്ക് മാത്രമുള്ള ക്ലാസ് — എല്ലാ ആഴ്ചയും ആവർത്തിക്കുന്ന ഒന്നാണെങ്കിൽ, ആഴ്ചയിലെ സമയങ്ങൾ ഉപയോഗിക്കുക.',
   Account: 'അക്കൗണ്ട്',
+  'Add a class': 'ഒരു ക്ലാസ് ചേർക്കുക',
   'Add a class slot': 'ഒരു ക്ലാസ് സമയം ചേർക്കുക',
   'Add a group': 'ഒരു ഗ്രൂപ്പ് ചേർക്കുക',
   'Add a new one': 'പുതിയത് ചേർക്കുക',
@@ -106,6 +109,7 @@ export const ML: Record<string, string> = {
   'Add a recording': 'ഒരു റെക്കോർഡിംഗ് ചേർക്കുക',
   'Add a song': 'ഒരു പാട്ട് ചേർക്കുക',
   'Add a student': 'ഒരു വിദ്യാർത്ഥിയെ ചേർക്കുക',
+  'Add class': 'ക്ലാസ് ചേർക്കുക',
   'Add group': 'ഗ്രൂപ്പ് ചേർക്കുക',
   'Add one below and everyone learning this song will have it.':
     'താഴെ ഒന്ന് ചേർത്താൽ ഈ പാട്ട് പഠിക്കുന്ന എല്ലാവർക്കും അത് ലഭിക്കും.',

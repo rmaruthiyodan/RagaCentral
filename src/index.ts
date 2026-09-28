@@ -3344,6 +3344,20 @@ app.get('/t/schedule', requireTeacher, async (c) => {
   );
 });
 
+/** Every active student in the project, for a "pick a student" control. */
+async function activeStudentRoster(env: Env, projectId: string): Promise<Sched.WithZone[]> {
+  const rows = await env.DB.prepare(
+    `SELECT u.id, u.name, u.avatar_url, u.time_zone, u.location
+       FROM users u
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?1
+      WHERE m.status = 'active' AND m.role = 'student'
+      ORDER BY u.name COLLATE NOCASE`,
+  )
+    .bind(projectId)
+    .all<Sched.WithZone>();
+  return rows.results ?? [];
+}
+
 /** Load the students behind a set of occurrences, keyed by id. */
 async function studentsFor(
   env: Env,
@@ -3408,7 +3422,48 @@ app.get('/t/schedule/day/:date', requireTeacher, async (c) => {
     .map((occ) => ({ occ, student: students.get(occ.slot.student_id)! }))
     .filter((x) => x.student && stillScheduled(x.student.status, x.occ.date, istToday()));
 
-  return c.html(Sched.dayView(c.get('user'), date, items, site(c), c.req.query('msg'), visiting(c)));
+  const roster = await activeStudentRoster(c.env, pid(c));
+
+  return c.html(
+    Sched.dayView(c.get('user'), date, items, site(c), roster, c.req.query('msg'), visiting(c)),
+  );
+});
+
+/** Add a one-off class for a student, straight from the calendar. */
+app.post('/t/schedule/day/:date/add', requireTeacher, async (c) => {
+  const date = c.req.param('date');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.redirect('/t/schedule/week');
+
+  const f = await c.req.formData();
+  const studentId = String(f.get('student_id') ?? '').trim();
+  const time = String(f.get('time_ist') ?? '').trim();
+  const back = String(f.get('back') ?? '') || `/t/schedule/day/${date}`;
+  if (!studentId) return c.redirect(`${back}?msg=` + encodeURIComponent('Pick a student.'));
+  if (!/^\d{2}:\d{2}$/.test(time))
+    return c.redirect(`${back}?msg=` + encodeURIComponent('That time did not look right.'));
+
+  const dur = Number(f.get('duration_min'));
+  await c.env.DB.prepare(
+    /* student_id comes from a <select> built from this project's own
+       active roster, but the WHERE EXISTS re-checks it server-side anyway
+       — exactly like /t/students/:id/slots, just with the student named
+       in the form instead of the URL. */
+    `INSERT INTO class_slots
+       (project_id, id, student_id, kind, weekday, on_date, time_ist, duration_min, label, created_by, created_at)
+     SELECT ?1,?2,?3,'once',NULL,?4,?5,?6,?7,?8,?9
+      WHERE EXISTS (
+        SELECT 1 FROM project_members m
+         WHERE m.user_id = ?3 AND m.project_id = ?1 AND m.status = 'active' AND m.role = 'student'
+      )`,
+  )
+    .bind(
+      pid(c), newId('cs'), studentId, date, time,
+      Number.isFinite(dur) && dur > 0 ? Math.round(dur) : 60,
+      String(f.get('label') ?? '').trim() || null,
+      c.get('user').id, now(),
+    )
+    .run();
+  return c.redirect(`${back}?msg=` + encodeURIComponent('Class added.'));
 });
 
 /** A class that should have happened and didn't. Distinct from a cancellation. */

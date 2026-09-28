@@ -634,6 +634,7 @@ async function main() {
     ["mark an occurrence of B's slot missed", 'POST', `/t/slots/${B.slotId}/missed`, { on_date: '2026-09-17', reason: 'hijacked' }],
     ["move an occurrence of B's class slot", 'POST', `/t/slots/${B.slotId}/move`, { on_date: '2026-09-23', new_date: '2026-09-24', new_time_ist: '09:00' }],
     ["give B's student a new class slot", 'POST', `/t/students/${B.studentId}/slots`, { kind: 'weekly', weekday: '1', time_ist: '07:00', duration_min: '30' }],
+    ["give B's student a one-off class via the calendar's quick-add", 'POST', '/t/schedule/day/2026-09-16/add', { student_id: B.studentId, time_ist: '07:30', duration_min: '30' }],
   ];
 
   for (const [label, method, url, form] of writes) {
@@ -892,11 +893,34 @@ async function main() {
       () => d1one(`SELECT COUNT(*) AS n FROM slot_exceptions WHERE slot_id='${A.slotId}' AND action='skip'`)[0].n === 1],
     ["move an occurrence of their own class slot", `/t/slots/${A.slotId}/move`, { on_date: '2026-09-30', new_date: '2026-10-01', new_time_ist: '19:00' },
       () => d1one(`SELECT COUNT(*) AS n FROM slot_exceptions WHERE slot_id='${A.slotId}' AND action='move'`)[0].n === 1],
+    ["add a one-off class for their own student from the calendar's quick-add", '/t/schedule/day/2026-09-16/add',
+      { student_id: A.studentId, time_ist: '11:00', duration_min: '45', label: `Quick${RUN}` },
+      () => d1one(
+        `SELECT COUNT(*) AS n FROM class_slots
+          WHERE project_id='${A.id}' AND student_id='${A.studentId}' AND kind='once'
+            AND on_date='2026-09-16' AND time_ist='11:00' AND duration_min=45 AND label='Quick${RUN}'`,
+      )[0].n === 1],
   ];
   for (const [label, url, form, verify] of good) {
     const got = await POST(ta, url, form);
     if (checkStatus(`teacher A can ${label}`, got, [302, 303]))
       check(`  …and the change is in the database`, verify(), 'the row did not change');
+  }
+
+  /* The week calendar and the day it opens into both carry the quick
+     cancel/undo and quick-add controls added alongside the tests above —
+     this only checks the markup is actually there, the behaviour itself
+     is the plain /t/slots/:id/skip|restore and /t/schedule/day/:date/add
+     routes already exercised above. */
+  const weekPage = await GET(ta, '/t/schedule/week?start=2026-09-13');
+  if (checkStatus('teacher A opens the week calendar', weekPage, 200)) {
+    check('  …and a class chip carries a quick-cancel control', weekPage.text.includes('cal-x'), 'no .cal-x control on the week calendar');
+    check('  …and every day offers a quick way to add a class', weekPage.text.includes('/t/schedule/day/2026-09-16#add-class'), 'no add-class link for 2026-09-16');
+  }
+  const dayPage = await GET(ta, '/t/schedule/day/2026-09-16');
+  if (checkStatus('teacher A opens a day from the calendar', dayPage, 200)) {
+    check('  …and it offers an add-a-class form', dayPage.text.includes('id="add-class"') && dayPage.text.includes('/t/schedule/day/2026-09-16/add'), 'no add-class form on the day view');
+    check("  …naming their own student as an option", dayPage.text.includes(`>${N.studentAName}<`), `${N.studentAName} missing from the student picker`);
   }
 
   /* assigning, unassigning and deleting inside A */
