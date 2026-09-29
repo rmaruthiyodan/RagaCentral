@@ -889,4 +889,17 @@ export const ML: Record<string, string> = {
   'Waiting to be let into %s': '%s-ൽ ചേർക്കാനായി കാത്തിരിക്കുന്നു',
   'Who do you mean?': 'ആരെയാണ് ഉദ്ദേശിക്കുന്നത്?',
   'Who’s practising?': 'ആരാണ് ഇപ്പോൾ പഠിക്കുന്നത്?',
+
+  /* ---------------------------------------------------------------- *
+   * Not active in a practice any more
+   * ---------------------------------------------------------------- */
+  'Course completed': 'കോഴ്സ് പൂർത്തിയായി',
+  'Lessons ended': 'ക്ലാസുകൾ അവസാനിച്ചു',
+  'Lessons paused': 'ക്ലാസുകൾ തൽക്കാലം നിർത്തിയിരിക്കുന്നു',
+  'Your course at %s is marked as completed. Nothing has been deleted — ask your teacher if you would like to carry on.':
+    '%s-ലെ നിങ്ങളുടെ കോഴ്സ് പൂർത്തിയായതായി രേഖപ്പെടുത്തിയിരിക്കുന്നു. ഒന്നും മായ്ച്ചിട്ടില്ല — തുടരണമെങ്കിൽ ഗുരുവിനോട് ചോദിക്കുക.',
+  'Your lessons at %s are paused for now. Nothing has been deleted — your songs and recordings come back the moment your teacher starts your classes again.':
+    '%s-ലെ നിങ്ങളുടെ ക്ലാസുകൾ തൽക്കാലം നിർത്തിയിരിക്കുന്നു. ഒന്നും മായ്ച്ചിട്ടില്ല — ഗുരു ക്ലാസുകൾ വീണ്ടും തുടങ്ങുന്ന നിമിഷം പാട്ടുകളും റെക്കോർഡിംഗുകളും തിരികെ വരും.',
+  'Your lessons at %s have ended. Nothing has been deleted — your teacher can open them again any time.':
+    '%s-ലെ നിങ്ങളുടെ ക്ലാസുകൾ അവസാനിച്ചു. ഒന്നും മായ്ച്ചിട്ടില്ല — ഗുരുവിന് എപ്പോൾ വേണമെങ്കിലും അവ വീണ്ടും തുറക്കാം.',
 };

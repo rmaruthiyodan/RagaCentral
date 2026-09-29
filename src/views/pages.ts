@@ -59,21 +59,36 @@ export function landing(siteName: string, error?: string): string {
   );
 }
 
-export function waiting(user: User, siteName: string): string {
+export function waiting(
+  user: User,
+  siteName: string,
+  o: { status?: string | null; practice?: string | null; canSwitch?: boolean } = {},
+): string {
   setLang(user.lang);
+  const who = `<strong>${esc(user.name)}</strong> (${esc(user.email)})`;
+  const place = `<strong>${esc(o.practice ?? '')}</strong>`;
+  const [heading, body] =
+    o.status === 'paused'
+      ? [t('Lessons paused'), t('Your lessons at %s are paused for now. Nothing has been deleted — your songs and recordings come back the moment your teacher starts your classes again.', place)]
+      : o.status === 'graduated'
+        ? [t('Course completed'), t('Your course at %s is marked as completed. Nothing has been deleted — ask your teacher if you would like to carry on.', place)]
+        : o.status === 'ended'
+          ? [t('Lessons ended'), t('Your lessons at %s have ended. Nothing has been deleted — your teacher can open them again any time.', place)]
+          : [t('Almost there'), t("You're signed in as %s. Your teacher needs to approve this account before your lessons appear. You'll see them here as soon as that happens.", who)];
   return page(
     `<div style="max-width:520px;margin:8vh auto 0;text-align:center">
-  <h1>${t('Almost there')}</h1>
+  <h1>${heading}</h1>
   <p class="lede" style="margin:14px auto 26px;max-width:44ch">
-    ${t("You're signed in as %s. Your teacher needs to approve this account before your lessons appear. You'll see them here as soon as that happens.", `<strong>${esc(user.name)}</strong> (${esc(user.email)})`)}
+    ${body}
   </p>
   <div class="btn-row" style="justify-content:center">
     <a class="btn" href="/waiting">${t('Check again')}</a>
+    ${o.canSwitch ? `<a class="btn btn-quiet" href="/hats">${t('Switch role')}</a>` : ''}
     <a class="btn btn-quiet" href="/profiles">${t('Switch or add a profile')}</a>
     <form method="post" action="/auth/logout"><button class="btn btn-quiet" type="submit">${t('Sign out')}</button></form>
   </div>
 </div>`,
-    { title: t('Waiting for approval'), siteName, user: null },
+    { title: heading, siteName, user: null },
   );
 }
 

@@ -2045,6 +2045,31 @@ async function main() {
     const outEvil = await req(null, 'POST', '/auth/logout', { headers: { origin: 'https://evil.example' } });
     checkStatus('another site cannot sign anyone out', outEvil, 403);
 
+    /* A student who is paused, graduated or ended must land somewhere —
+       /me used to send them to /waiting and /waiting straight back to /me,
+       which Safari reports as "too many redirects". */
+    for (const st of ['paused', 'graduated', 'ended']) {
+      const em = `iso-${st}-${RUN}@iso.test`;
+      await POST(ta, '/t/students', { name: `Standing${st}${RUN}`, email: em });
+      const uid = d1one(`SELECT id FROM users WHERE lower(email)='${em}'`)[0]?.id;
+      await POST(ta, `/t/students/${uid}/status`, { status: st });
+      const j = new Jar(`standing-${st}`);
+      let url = new URL((await GET(j, `/dev/login?email=${encodeURIComponent(em)}`)).location ?? '/', BASE).pathname;
+      const hops = [];
+      let last;
+      for (let i = 0; i < 6; i++) {
+        last = await GET(j, url);
+        hops.push(`${url} ${last.status}`);
+        if (last.status !== 302) break;
+        url = new URL(last.location, BASE).pathname;
+      }
+      check(`a ${st} student signing in lands on a page instead of a redirect loop`,
+        last.status === 200 && url === '/waiting', hops.join(' → '));
+      const direct = await GET(j, '/me');
+      const after = direct.status === 302 ? await GET(j, new URL(direct.location, BASE).pathname) : direct;
+      check(`  …and opening /me directly settles on one page too`, after.status === 200, `${direct.status} → ${after.status}`);
+    }
+
     /* A song title cannot break out of its Delete confirmation */
     const nasty = `Nasty${RUN}');alert(1);('`;
     await POST(ta, '/t/sections', { title: nasty, raga: '', taala: '', composer: '' });

@@ -262,6 +262,14 @@ async function landingFor(c: Context<AppEnv, any, any>, user: User): Promise<str
     if (hats.length > 1) return '/hats';
   }
   const acting = await resolveProject(c, user);
+  /* A standing that is not active — paused, graduated, ended — is still a
+     project to act in (the teacher's pages keep showing that person), but
+     the guards on /me and /t turn it away. Sending them there anyway made
+     /me bounce to /waiting and /waiting bounce back to /me until Safari
+     gave up with "too many redirects". They belong on /waiting, which
+     says what their standing is. */
+  if (acting && acting.membership && acting.membership.status !== 'active' && !acting.asAdmin)
+    return '/waiting';
   if (acting) return acting.isTeacher ? '/t/schedule/week' : '/me';
   if (user.is_admin) return '/admin';
   return '/waiting';
@@ -445,7 +453,17 @@ app.get('/waiting', async (c) => {
   if (!user) return c.redirect('/');
   const to = await landingFor(c, user);
   if (to !== '/waiting') return c.redirect(to);
-  return c.html(V.waiting(user, site(c)));
+  /* Waiting for what? A first approval, or a teacher who has paused or
+     closed their lessons — the page says which, and never redirects. */
+  const acting = await resolveProject(c, user);
+  const m = acting?.membership;
+  return c.html(
+    V.waiting(user, site(c), {
+      status: m && m.status !== 'active' ? m.status : null,
+      practice: m ? acting!.project.name : null,
+      canSwitch: (await hatsFor(c.env, user)).length > 1,
+    }),
+  );
 });
 
 app.get('/auth/google', (c) => {
