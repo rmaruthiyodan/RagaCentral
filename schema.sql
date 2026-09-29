@@ -314,3 +314,17 @@ CREATE TABLE IF NOT EXISTS usage_counters (
   n        INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, day, kind)
 );
+
+-- Every "Something went wrong" the app answered with, under the short
+-- reference shown to whoever saw it, so it can be looked up afterwards
+-- (/admin/errors). Paths and error text only; nothing reads it but the
+-- admin page.
+CREATE TABLE IF NOT EXISTS error_log (
+  id       TEXT PRIMARY KEY,
+  at       TEXT NOT NULL,
+  method   TEXT,
+  path     TEXT,
+  user_id  TEXT,
+  message  TEXT,
+  stack    TEXT
+);

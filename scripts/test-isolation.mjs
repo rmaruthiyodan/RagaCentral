@@ -1940,6 +1940,39 @@ async function main() {
   const admAsk = await POST(admin, `/admin/p/${A.id}/members`, { email: N.studentA, role: 'student' });
   check("the admin adding by an address several people share is asked who they mean",
     admAsk.status === 200 && admAsk.text.includes('Who do you mean?'), `${admAsk.status} ${snippet(admAsk.text)}`);
+
+    /* A database that has not had schema.sql's newest table applied must
+       not turn "add a profile" into "Something went wrong" — the daily
+       allowance table is created on the spot instead. */
+    d1('DROP TABLE IF EXISTS usage_counters');
+    const healName = `HealedKid${RUN}`;
+    const healed = await POST(family, '/profiles/add', { name: healName });
+    check('adding a profile works even before the allowance table exists',
+      healed.status === 302 &&
+        d1one(`SELECT COUNT(*) AS n FROM users WHERE lower(email)='${N.studentA}' AND name='${healName}'`)[0].n === 1,
+      `${healed.status} ${healed.location}`);
+    check('  …and the table is there afterwards',
+      d1one("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='usage_counters'")[0].n === 1,
+      'usage_counters was not created');
+
+    /* Anything that does fail gives the person a reference, and the admin
+       can look it up. Break one table for one request to see it happen. */
+    d1('ALTER TABLE project_members RENAME TO project_members_broken');
+    let broke;
+    try {
+      broke = await POST(family, '/profiles/add', { name: `Breaks${RUN}` });
+    } finally {
+      d1('ALTER TABLE project_members_broken RENAME TO project_members');
+    }
+    const ref = (broke.text.match(/reference: ([A-Z0-9]{6})/) ?? [])[1];
+    check('a failure answers with a reference the person can pass on', broke.status === 500 && Boolean(ref), snippet(broke.text));
+    seen5xx.splice(seen5xx.findIndex((l) => l.includes('/profiles/add')), 1);
+    const errs = await GET(admin, '/admin/errors');
+    check('  …which the admin finds, with what actually failed',
+      errs.status === 200 && Boolean(ref) && errs.text.includes(ref) && errs.text.includes('project_members'),
+      `${errs.status} ${snippet(errs.text)}`);
+    const errsT = await GET(ta, '/admin/errors');
+    checkStatus('  …and a teacher cannot read that page', errsT, [302, 403, 404]);
   }
 
   /* ================================================================

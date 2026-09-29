@@ -313,7 +313,10 @@ ${waitingBlock(waiting, projects, showTurnedAway)}
       t('One project is one teacher and the students they teach. Nothing crosses between them.'),
     )}</p>
   </div>
-  <a class="btn btn-sm" href="/admin/backup">${esc(t('Backup'))}</a>
+  <div class="btn-row">
+    <a class="btn btn-sm" href="/admin/errors">${esc(t('Errors'))}</a>
+    <a class="btn btn-sm" href="/admin/backup">${esc(t('Backup'))}</a>
+  </div>
 </div>
 
 ${
@@ -653,3 +656,46 @@ ${
     { title: t('Backup'), user, siteName, nav: null, hideNav: true, bodyClass: 'narrow' },
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * What went wrong, and where
+ * ------------------------------------------------------------------ */
+
+export interface ErrorRow {
+  id: string;
+  at: string;
+  method: string | null;
+  path: string | null;
+  message: string | null;
+  stack: string | null;
+  user_name: string | null;
+  user_email: string | null;
+}
+
+/**
+ * Every "Something went wrong" since this page existed, newest first,
+ * under the reference the person who saw it was given.
+ */
+export function adminErrors(user: User, rows: ErrorRow[], siteName: string): string {
+  setLang(user.lang);
+  const row = (r: ErrorRow) => `<div class="row" style="display:block">
+    <div class="row-title"><span class="err-ref">${esc(r.id)}</span>
+      <span class="err-path">${esc(r.method ?? '')} ${esc(r.path ?? '')}</span></div>
+    <div class="row-meta">
+      <span>${esc(relativeDate(r.at))}</span>
+      ${r.user_name ? `<span>${esc(r.user_name)} · ${esc(r.user_email ?? '')}</span>` : ''}
+    </div>
+    <div class="err-msg">${esc(r.message ?? '')}</div>
+    ${r.stack ? `<details class="err-stack"><summary>${esc(t('Details'))}</summary><pre>${esc(r.stack)}</pre></details>` : ''}
+  </div>`;
+  return page(
+    `<a class="crumb" href="/admin">← ${esc(t('Practices'))}</a>
+<div class="page-head">
+  <h1>${esc(t('Errors'))}</h1>
+  <p class="lede">${esc(t('When the site answers someone with “Something went wrong”, it gives them a short reference. Find it here to see what actually failed.'))}</p>
+</div>
+${rows.length ? `<div class="rows">${rows.map(row).join('')}</div>` : `<div class="empty">${esc(t('Nothing has gone wrong.'))}</div>`}`,
+    { title: t('Errors'), user, siteName, nav: null, hideNav: true, bodyClass: 'narrow' },
+  );
+}
+

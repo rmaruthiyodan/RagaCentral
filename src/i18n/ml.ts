@@ -902,4 +902,12 @@ export const ML: Record<string, string> = {
     '%s-ലെ നിങ്ങളുടെ ക്ലാസുകൾ തൽക്കാലം നിർത്തിയിരിക്കുന്നു. ഒന്നും മായ്ച്ചിട്ടില്ല — ഗുരു ക്ലാസുകൾ വീണ്ടും തുടങ്ങുന്ന നിമിഷം പാട്ടുകളും റെക്കോർഡിംഗുകളും തിരികെ വരും.',
   'Your lessons at %s have ended. Nothing has been deleted — your teacher can open them again any time.':
     '%s-ലെ നിങ്ങളുടെ ക്ലാസുകൾ അവസാനിച്ചു. ഒന്നും മായ്ച്ചിട്ടില്ല — ഗുരുവിന് എപ്പോൾ വേണമെങ്കിലും അവ വീണ്ടും തുറക്കാം.',
+
+  /* ---------------------------------------------------------------- *
+   * The admin's error list
+   * ---------------------------------------------------------------- */
+  Errors: 'പിഴവുകൾ',
+  'Nothing has gone wrong.': 'ഒന്നും തെറ്റിയിട്ടില്ല.',
+  'When the site answers someone with “Something went wrong”, it gives them a short reference. Find it here to see what actually failed.':
+    'സൈറ്റ് ആർക്കെങ്കിലും “Something went wrong” എന്ന് മറുപടി നൽകുമ്പോൾ ഒരു ചെറിയ റഫറൻസും നൽകുന്നു. എന്താണ് പരാജയപ്പെട്ടതെന്ന് കാണാൻ അത് ഇവിടെ തിരയുക.',
 };

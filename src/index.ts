@@ -413,7 +413,7 @@ app.post('/profiles/add', async (c) => {
     `INSERT INTO users (id, google_sub, email, name, created_at, time_zone, location, phone, lang)
      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, em, name, now(), user.time_zone, user.location, user.phone, user.lang)
+    .bind(id, em, name, now(), user.time_zone ?? null, user.location ?? null, user.phone ?? null, user.lang ?? null)
     .run();
 
   /* They ask to join wherever the person adding them is — as a student,
@@ -1042,6 +1042,23 @@ app.post('/admin/allow-again', requireAdmin, async (c) => {
 
 const driveRedirect = (c: Context<AppEnv, any, any>) =>
   new URL('/admin/drive/callback', c.req.url).toString();
+
+/** The last things that went wrong, newest first — see app.onError. */
+app.get('/admin/errors', requireAdmin, async (c) => {
+  let rows: Adm.ErrorRow[] = [];
+  try {
+    const r = await c.env.DB.prepare(
+      /* unscoped: the app's own error record, for the admin */
+      `SELECT e.id, e.at, e.method, e.path, e.message, e.stack, u.name AS user_name, u.email AS user_email
+         FROM error_log e LEFT JOIN users u ON u.id = e.user_id
+        ORDER BY e.at DESC LIMIT 50`,
+    ).all<Adm.ErrorRow>();
+    rows = r.results ?? [];
+  } catch {
+    /* No table yet: nothing has gone wrong since this version went live. */
+  }
+  return c.html(Adm.adminErrors(c.get('user'), rows, site(c)));
+});
 
 app.get('/admin/backup', requireAdmin, async (c) => {
   return c.html(
@@ -3068,16 +3085,40 @@ const PROFILE_ADDS_PER_DAY = 10;
  */
 async function spend(env: Env, userId: string, kind: string, limit: number): Promise<boolean> {
   const day = new Date().toISOString().slice(0, 10);
-  const r = await env.DB.prepare(
-    /* unscoped: a per-person allowance (spoken notes, profiles added) — a fact about the person, not about any one practice */
-    `INSERT INTO usage_counters (user_id, day, kind, n) VALUES (?1, ?2, ?3, 1)
-     ON CONFLICT(user_id, day, kind) DO UPDATE SET n = n + 1 WHERE n < ?4
-     RETURNING n`,
-  )
-    .bind(userId, day, kind, limit)
-    .first<{ n: number }>();
-  return Boolean(r);
+  const take = () =>
+    env.DB.prepare(
+      /* unscoped: a per-person allowance (spoken notes, profiles added) — a fact about the person, not about any one practice */
+      `INSERT INTO usage_counters (user_id, day, kind, n) VALUES (?1, ?2, ?3, 1)
+       ON CONFLICT(user_id, day, kind) DO UPDATE SET n = n + 1 WHERE n < ?4
+       RETURNING n`,
+    )
+      .bind(userId, day, kind, limit)
+      .first<{ n: number }>();
+  try {
+    return Boolean(await take());
+  } catch (e) {
+    /* An allowance is a brake on abuse, not a reason for an ordinary
+       request to fail. A database that has not had schema.sql applied yet
+       gets the table here; anything else is logged and let through. */
+    if (/no such table/i.test(String(e))) {
+      try {
+        await env.DB.prepare(USAGE_COUNTERS_DDL).run();
+        return Boolean(await take());
+      } catch (e2) {
+        console.error('usage_counters unavailable', e2);
+        return true;
+      }
+    }
+    console.error('usage counter failed', e);
+    return true;
+  }
 }
+
+/* The same statement as in schema.sql, for the rare database that is
+   running this code before the schema step reached it. */
+const USAGE_COUNTERS_DDL = `CREATE TABLE IF NOT EXISTS usage_counters (
+  user_id TEXT NOT NULL, day TEXT NOT NULL, kind TEXT NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, day, kind))`;
 
 app.post('/t/api/dictate', requireTeacherJson, async (c) => {
   if (!dictateEnabled(c.env))
@@ -4091,9 +4132,48 @@ app.post('/api/tz', requireUser, async (c) => {
 
 app.notFound(async (c) => c.html(V.notFound(await currentUser(c), site(c)), 404));
 
-app.onError((err, c) => {
-  console.error(err);
-  return c.text('Something went wrong. Please try again.', 500);
+/* ==================================================================
+ * When something breaks
+ *
+ * "Something went wrong" on its own tells nobody anything: the person who
+ * saw it cannot say which thing, and without a live log stream nobody can
+ * find out afterwards. So every failure gets a short reference, shown on
+ * the page and written — with the path and the error itself — to
+ * error_log, which the admin can read at /admin/errors.
+ * ================================================================== */
+const ERROR_LOG_DDL = `CREATE TABLE IF NOT EXISTS error_log (
+  id TEXT PRIMARY KEY, at TEXT NOT NULL, method TEXT, path TEXT,
+  user_id TEXT, message TEXT, stack TEXT)`;
+
+app.onError(async (err, c) => {
+  const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const path = new URL(c.req.url).pathname;
+  const e = err as Error;
+  console.error(`[error ${ref}] ${c.req.method} ${path}`, e);
+  try {
+    const who = (c.get('user') as User | undefined)?.id ?? (await currentUser(c).catch(() => null))?.id ?? null;
+    const write = () =>
+      c.env.DB.prepare(
+        /* unscoped: the app's own error record, read only by an admin */
+        'INSERT INTO error_log (id, at, method, path, user_id, message, stack) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+        .bind(ref, now(), c.req.method, path, who,
+          String(e?.message ?? e).slice(0, 600), String(e?.stack ?? '').slice(0, 3000))
+        .run();
+    try {
+      await write();
+    } catch (w) {
+      if (!/no such table/i.test(String(w))) throw w;
+      await c.env.DB.prepare(ERROR_LOG_DDL).run();
+      await write();
+    }
+  } catch (w) {
+    console.error('could not record the error', w);
+  }
+  return c.text(
+    `Something went wrong. Please try again.\n\nIf it keeps happening, tell the site admin this reference: ${ref}`,
+    500,
+  );
 });
 
 export default app;
