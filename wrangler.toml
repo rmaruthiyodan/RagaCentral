@@ -69,3 +69,14 @@ D1_DATABASE_ID = "31fe8aa6-9900-4844-ad5e-4035c57a4dc7"
 #   GOOGLE_CLIENT_SECRET
 #   SESSION_SECRET      (any long random string)
 #   SARVAM_API_KEY      only if DICTATE_PROVIDER = "sarvam"
+#
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+#
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
