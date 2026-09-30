@@ -1364,8 +1364,8 @@ app.post('/t/students/:id/curator', requireTeacher, async (c) => {
   return c.redirect(
     withMsg(`/t/s/${c.req.param('id')}/settings`,
       !r.meta?.changes ? 'Not changed.'
-        : on ? 'Now a catalogue helper: they can see every song, and add and edit songs and groups. Deletions come to you on Approvals.'
-          : 'No longer a catalogue helper.'),
+        : on ? 'Now a Song Catalog helper: they can see every song, and add and edit songs and groups. Deletions come to you on Approvals.'
+          : 'No longer a Song Catalog helper.'),
   );
 });
 

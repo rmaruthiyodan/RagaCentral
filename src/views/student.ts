@@ -55,7 +55,7 @@ function shell(student: ProjectPerson, tab: StudentTab, counts: TabCounts, body:
     }</p>
   </div>
   <span class="sh-pills">
-    ${student.can_curate ? `<span class="pill p-info">${esc(t('Catalogue helper'))}</span>` : ''}
+    ${student.can_curate ? `<span class="pill p-info">${esc(t('Song Catalog helper'))}</span>` : ''}
     <span class="pill ${STATUS_CLASS[student.status] ?? 'p-warn'}">${esc(
       t(STATUS_LABEL[student.status] ?? student.status),
     )}</span>
@@ -598,14 +598,14 @@ export function settingsTab(
   </div>
 
   <div class="card">
-    <h3>${t('Catalogue helper')} ${student.can_curate ? `<span class="pill p-info">${t('on')}</span>` : ''}</h3>
+    <h3>${t('Song Catalog helper')} ${student.can_curate ? `<span class="pill p-info">${t('on')}</span>` : ''}</h3>
     <p class="hint" style="margin:10px 0 14px">${t(
       'For a senior student who helps you keep the song list. They see every song and group, can add new ones and correct their details. They never see other students’ recordings or notes, and anything they ask to delete waits for you on Approvals.',
     )}</p>
     <form method="post" action="/t/students/${esc(student.id)}/curator">
       <input type="hidden" name="on" value="${student.can_curate ? '0' : '1'}">
       <button class="btn${student.can_curate ? '' : ' btn-primary'}" type="submit">${
-        student.can_curate ? t('Stop being a catalogue helper') : t('Make them a catalogue helper')
+        student.can_curate ? t('Stop being a Song Catalog helper') : t('Make them a Song Catalog helper')
       }</button>
     </form>
   </div>

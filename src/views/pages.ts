@@ -498,7 +498,7 @@ function deletionBlock(list: DeletionRequestRow[]): string {
     </div>`;
   };
   return `<div class="section-head"><div><h2>${t('Asked to be deleted')}</h2>
-    <p class="lede">${t('Catalogue helpers can add and edit songs, but nothing they ask to delete goes until you say so.')}</p></div></div>
+    <p class="lede">${t('Song Catalog helpers can add and edit songs, but nothing they ask to delete goes until you say so.')}</p></div></div>
   <div class="rows" style="margin-bottom:26px">${list.map(row).join('')}</div>`;
 }
 
@@ -688,8 +688,8 @@ ${
   deletionsWaiting
     ? `<div class="flash" style="border-left-color:var(--brass);background:var(--brass-soft);color:var(--brass-ink)">${
         deletionsWaiting === 1
-          ? t('A catalogue helper has asked for something to be deleted.')
-          : t('Catalogue helpers have asked for %s things to be deleted.', deletionsWaiting)
+          ? t('A Song Catalog helper has asked for something to be deleted.')
+          : t('Song Catalog helpers have asked for %s things to be deleted.', deletionsWaiting)
       } · <a href="/t/approvals" style="color:inherit;font-weight:600">${t('Review')}</a></div>`
     : ''
 }

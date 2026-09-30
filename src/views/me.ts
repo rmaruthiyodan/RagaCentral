@@ -118,7 +118,7 @@ function shell(
   ${mtab('songs', '/me/songs', t('My songs'), counts.songs)}
   ${mtab('lessons', '/me/lessons', t('Past classes'), counts.lessons)}
   ${mtab('schedule', '/me/schedule', t('Schedule'))}
-  ${counts.curator ? mtab('catalogue', '/me/catalogue', t('Catalogue')) : ''}
+  ${counts.curator ? mtab('catalogue', '/me/catalogue', t('Song Catalog')) : ''}
   ${mtab('settings', '/me/settings', t('Settings'))}
 </nav>
 
@@ -564,7 +564,7 @@ export function catalogueTab(
       siteName,
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 <div class="page-head">
-  <h2>${t('Song catalogue')}</h2>
+  <h2>${t('Song Catalog')}</h2>
   <p class="lede">${t('Your teacher has asked you to help keep the song list. You can add groups and songs and correct their details. Deleting anything goes to your teacher to approve first.')}</p>
 </div>
 
@@ -610,7 +610,7 @@ ${
       : `<div class="empty"><strong>${t('No songs yet')}</strong> ${t('Add the first one above.')}</div>`
 }`,
     ),
-    { title: t('Song catalogue'), user, siteName, nav: 'mine', hideNav: true },
+    { title: t('Song Catalog'), user, siteName, nav: 'mine', hideNav: true },
   );
 }
 

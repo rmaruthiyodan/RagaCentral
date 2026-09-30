@@ -2007,7 +2007,7 @@ async function main() {
       d1one(`SELECT can_curate FROM project_members WHERE user_id='${A.studentId}' AND project_id='${A.id}'`)[0]?.can_curate === 1,
       'can_curate is not 1');
     const settingsPage = await GET(ta, `/t/s/${A.studentId}/settings`);
-    check('  …and the student page says so', settingsPage.text.includes('Stop being a catalogue helper'), snippet(settingsPage.text));
+    check('  …and the student page says so', settingsPage.text.includes('Stop being a Song Catalog helper'), snippet(settingsPage.text));
 
     r = await GET(helper, '/me/catalogue');
     if (checkStatus('the helper opens the whole catalogue', r, 200)) {
