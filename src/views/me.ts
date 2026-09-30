@@ -436,6 +436,17 @@ export function settingsTab(
 export interface CatalogueSong extends Section {
   /** 1 when this song is on the helper's own list — then it opens. */
   mine: number;
+  /** Active students learning it now (finished ones not counted). */
+  learners: number;
+}
+
+/** A student as a helper sees them on a song: a name, and where they are with it. */
+export interface HelperStudent {
+  id: string;
+  name: string;
+  completed_at: string | null;
+  /** Who put it on their list, when that was someone else. */
+  added_by: string | null;
 }
 
 export interface PendingDeletion {
@@ -531,6 +542,9 @@ export function catalogueTab(
             <button class="btn btn-sm btn-primary" type="submit">${t('Save details')}</button>
           </form>
         </details>
+        <a class="cat-who" href="/me/catalogue/song/${esc(s.id)}">${
+          s.learners ? t('Students · %s learning', s.learners) : t('Assign to students')
+        }</a>
         ${deleteControl('section', s.id, t('Ask to delete this song'))}
       </div>
     </div>
@@ -565,7 +579,7 @@ export function catalogueTab(
       `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
 <div class="page-head">
   <h2>${t('Song Catalog')}</h2>
-  <p class="lede">${t('Your teacher has asked you to help keep the song list. You can add groups and songs and correct their details. Deleting anything goes to your teacher to approve first.')}</p>
+  <p class="lede">${t('Your teacher has asked you to help keep the song list. You can add groups and songs, correct their details, and put songs on students\' lists. Deleting anything goes to your teacher to approve first.')}</p>
 </div>
 
 <form class="searchbox" method="get" action="/me/catalogue" role="search">
@@ -614,3 +628,109 @@ ${
   );
 }
 
+
+/**
+ * One song, and who is learning it — the only place a helper sees the
+ * other students, and only their names. Put the song on someone's list,
+ * or take it off while they are still learning it. Finished songs are
+ * shown but left alone: that is the teacher's record.
+ */
+export function catalogueSong(
+  user: User,
+  counts: MeCounts,
+  siteName: string,
+  next: Occurrence | undefined,
+  song: Section & { group_name: string | null },
+  who: { learning: HelperStudent[]; finished: HelperStudent[]; others: HelperStudent[] },
+  msg?: string,
+): string {
+  setLang(user.lang);
+  const action = (verb: 'assign' | 'unassign') => `/me/catalogue/song/${esc(song.id)}/${verb}`;
+  const name = (s: HelperStudent) =>
+    `${esc(s.name)}${s.id === user.id ? ` <span class="pill p-info">${t('you')}</span>` : ''}`;
+  const mineNow = who.learning.some((s) => s.id === user.id) || who.finished.some((s) => s.id === user.id);
+  const meToAdd = who.others.find((s) => s.id === user.id);
+  const othersToAdd = who.others.filter((s) => s.id !== user.id);
+
+  const learningRow = (s: HelperStudent) => `<div class="row sa-row">
+    <div class="row-main">
+      <div class="row-title">${name(s)}</div>
+      ${s.added_by ? `<div class="row-meta"><span>${t('added by %s', esc(s.added_by))}</span></div>` : ''}
+    </div>
+    <div class="row-actions">
+      <form method="post" action="${action('unassign')}">
+        <input type="hidden" name="student_id" value="${esc(s.id)}">
+        <button class="btn btn-sm btn-quiet" type="submit">${s.id === user.id ? t('Take off my list') : t('Take off their list')}</button>
+      </form>
+    </div>
+  </div>`;
+  const finishedRow = (s: HelperStudent) => `<div class="row sa-row">
+    <div class="row-main">
+      <div class="row-title">${name(s)}</div>
+      <div class="row-meta"><span>${t('finished %s', esc(relativeDate(s.completed_at!)))}</span></div>
+    </div>
+  </div>`;
+
+  const meta = [
+    song.group_name ? esc(song.group_name) : '',
+    song.raga ? t('Raga %s', esc(song.raga)) : '',
+    song.taala ? t('Taala %s', esc(song.taala)) : '',
+    song.composer ? esc(song.composer) : '',
+  ].filter(Boolean).join(' · ');
+
+  return page(
+    shell(
+      user,
+      'catalogue',
+      counts,
+      next,
+      siteName,
+      `${msg ? `<div class="flash">${esc(msg)}</div>` : ''}
+<a class="crumb" href="/me/catalogue">← ${t('Song Catalog')}</a>
+<div class="page-head">
+  <h2>${inlineTitle(song.title, song.title_ml)}</h2>
+  ${meta ? `<p class="lede">${meta}</p>` : ''}
+  ${mineNow ? `<p><a class="btn btn-sm" href="/me/${esc(song.id)}">${t('Open it in My songs')}</a></p>` : ''}
+</div>
+
+<section class="card sa-card">
+  <h3>${t('Put it on a list')}</h3>
+  ${
+    meToAdd
+      ? `<form method="post" action="${action('assign')}" class="sa-me">
+           <input type="hidden" name="student_id" value="${esc(user.id)}">
+           <button class="btn btn-primary" type="submit">${t('Add to my list')}</button>
+         </form>`
+      : ''
+  }
+  ${
+    othersToAdd.length
+      ? `<form method="post" action="${action('assign')}" class="sa-pick">
+           <label for="sa-s">${t('Another student')}</label>
+           <div class="sa-pick-row">
+             <select id="sa-s" name="student_id" required>
+               <option value="">${t('Choose a student…')}</option>
+               ${othersToAdd.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
+             </select>
+             <button class="btn" type="submit">${t('Assign')}</button>
+           </div>
+         </form>`
+      : meToAdd
+        ? ''
+        : `<p class="hint">${t('Everyone already has this song.')}</p>`
+  }
+  <p class="hint">${t('They see it in My songs straight away. Only names are shown here — recordings and notes stay private.')}</p>
+</section>
+
+<div class="section-head"><h2>${t('Learning it')} <span class="sa-n num">${who.learning.length}</span></h2></div>
+${who.learning.length ? `<div class="rows">${who.learning.map(learningRow).join('')}</div>`
+  : `<div class="empty">${t('Nobody is learning this song yet.')}</div>`}
+<p class="hint">${t('Taking a song off a list keeps its recordings; putting it back brings them back.')}</p>
+
+${who.finished.length ? `<div class="section-head"><h2>${t('Finished')} <span class="sa-n num">${who.finished.length}</span></h2></div>
+<div class="rows">${who.finished.map(finishedRow).join('')}</div>
+<p class="hint">${t('Only your teacher changes a finished song.')}</p>` : ''}`,
+    ),
+    { title: song.title, user, siteName, nav: 'mine', hideNav: true },
+  );
+}

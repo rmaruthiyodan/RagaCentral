@@ -29,6 +29,8 @@ export interface SongStudent {
   status: string;
   started_at: string | null;
   completed_at: string | null;
+  /** A catalogue helper who put the song on this student's list. */
+  added_by?: string | null;
   rec_count: number;
 }
 
@@ -494,6 +496,7 @@ export function songPage(user: User, d: SongPageData, siteName: string, msg?: st
     <div class="row-meta">
       ${s.started_at ? `<span>${t('started %s', esc(fmtDate(s.started_at)))}</span>` : ''}
       ${s.completed_at ? `<span>${t('finished %s', esc(relativeDate(s.completed_at)))}</span>` : ''}
+      ${s.added_by ? `<span>${t('added by %s', esc(s.added_by))}</span>` : ''}
       ${
         s.rec_count
           ? `<span class="num">${

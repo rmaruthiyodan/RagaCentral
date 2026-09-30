@@ -1843,6 +1843,10 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
   const roster = await db
     .prepare(
       `SELECT u.id, u.name, u.avatar_url, m.status AS status, a.completed_at, a.assigned_at AS started_at,
+        /* A catalogue helper's name when they put it on the list, so the
+           teacher can tell their own assignments from a helper's. */
+        (SELECT hu.name FROM users hu JOIN project_members hm ON hm.user_id = hu.id AND hm.project_id = ?2
+          WHERE hu.id = a.assigned_by AND hm.role = 'student') AS added_by,
         (SELECT COUNT(*) FROM recording_shares rs
            JOIN recordings r ON r.id = rs.recording_id AND r.project_id = ?2
           WHERE r.section_id = ?1 AND rs.student_id = u.id) AS rec_count
@@ -1859,7 +1863,7 @@ app.get('/t/song/:id', requireTeacher, async (c) => {
   const assignable = await db
     .prepare(
       `SELECT u.id, u.name, u.avatar_url, m.status AS status, NULL AS completed_at,
-              NULL AS started_at, 0 AS rec_count
+              NULL AS started_at, NULL AS added_by, 0 AS rec_count
        FROM users u
        JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2
        WHERE m.role = 'student' AND m.status = 'active'
@@ -1904,7 +1908,7 @@ app.post('/t/song/:id/assign', requireTeacher, async (c) => {
      SELECT ?1, ?2, ?3, ?4, ?5, ?6
       WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)
         AND EXISTS (SELECT 1 FROM sections sec WHERE sec.id = ?4 AND sec.project_id = ?1)
-     ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL, completed_at = NULL`,
+     ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL, completed_at = NULL, assigned_by = excluded.assigned_by`,
   )
     .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
     .run();
@@ -2673,7 +2677,8 @@ app.post('/t/s/:id/assign', requireTeacher, async (c) => {
      SELECT ?1, ?2, ?3, ?4, ?5, ?6
       WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.user_id = ?3 AND m.project_id = ?1)
         AND EXISTS (SELECT 1 FROM sections sec WHERE sec.id = ?4 AND sec.project_id = ?1)
-     ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL`,
+     ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL,
+       assigned_by = CASE WHEN assignments.archived_at IS NULL THEN assignments.assigned_by ELSE excluded.assigned_by END`,
   )
     .bind(pid(c), newId('a'), studentId, sectionId, c.get('user').id, now())
     .run();
@@ -2997,7 +3002,12 @@ app.get('/me/catalogue', requireUser, requireCurator, async (c) => {
     .all<Group>();
   const base = `SELECT s.*,
        EXISTS (SELECT 1 FROM assignments a WHERE a.project_id = ?1 AND a.section_id = s.id
-                 AND a.student_id = ?2 AND a.archived_at IS NULL) AS mine
+                 AND a.student_id = ?2 AND a.archived_at IS NULL) AS mine,
+       (SELECT COUNT(*) FROM assignments a
+          JOIN project_members m ON m.user_id = a.student_id AND m.project_id = ?1
+                                AND m.role = 'student' AND m.status = 'active'
+         WHERE a.project_id = ?1 AND a.section_id = s.id
+           AND a.archived_at IS NULL AND a.completed_at IS NULL) AS learners
      FROM sections s WHERE s.project_id = ?1`;
   const order = ' ORDER BY s.sort_order, s.title COLLATE NOCASE';
   const sections = q
@@ -3107,6 +3117,111 @@ app.post('/me/catalogue/delete-request', requireUser, requireCurator, async (c) 
       String(f.get('reason') ?? '').trim().slice(0, 300) || null, c.get('user').id, now())
     .run();
   return c.redirect(withMsg('/me/catalogue', `Asked your teacher to delete "${target.title}". It stays until they approve.`));
+});
+
+/* Who is learning a song — the only place a helper sees other students.
+ *
+ * A helper can put a song on their own list or another student's, and
+ * take it off again while it is still being learned. What they see of
+ * the others is a name and nothing more: no recordings, no notes, no
+ * progress beyond "learning" or "finished". Finished songs stay put —
+ * that is the teacher's record of someone's progress, not the helper's
+ * to tidy away. Only active students of this practice are named, and
+ * only they can be given a song. */
+
+type HelperStudent = Me.HelperStudent;
+
+async function helperSong(env: Env, projectId: string, id: string) {
+  return env.DB.prepare(
+    `SELECT s.*, g.name AS group_name FROM sections s LEFT JOIN groups g ON g.id = s.group_id AND g.project_id = s.project_id
+      WHERE s.id = ? AND s.project_id = ?`,
+  )
+    .bind(id, projectId)
+    .first<Section & { group_name: string | null }>();
+}
+
+/** An id off a form, if it is an active student of this practice. */
+async function activeStudentHere(env: Env, projectId: string, raw: unknown): Promise<{ id: string; name: string } | null> {
+  const id = String(raw ?? '');
+  if (!id) return null;
+  return env.DB.prepare(
+    `SELECT u.id, u.name FROM users u
+       JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2 AND m.role = 'student' AND m.status = 'active'
+      WHERE u.id = ?1`,
+  )
+    .bind(id, projectId)
+    .first<{ id: string; name: string }>();
+}
+
+app.get('/me/catalogue/song/:id', requireUser, requireCurator, async (c) => {
+  const db = c.env.DB;
+  const me = c.get('user');
+  const song = await helperSong(c.env, pid(c), c.req.param('id'));
+  if (!song) return c.redirect(withMsg('/me/catalogue', 'That song is not in this catalogue.'));
+  const rows = await db
+    .prepare(
+      `SELECT u.id, u.name, a.completed_at, a.assigned_at AS started_at,
+              CASE WHEN a.assigned_by IS NULL OR a.assigned_by = u.id THEN NULL ELSE ab.name END AS added_by
+         FROM users u
+         JOIN project_members m ON m.user_id = u.id AND m.project_id = ?2
+                               AND m.role = 'student' AND m.status = 'active'
+         LEFT JOIN assignments a ON a.student_id = u.id AND a.section_id = ?1
+                                AND a.project_id = ?2 AND a.archived_at IS NULL
+         LEFT JOIN users ab ON ab.id = a.assigned_by
+        ORDER BY (u.id = ?3) DESC, u.name COLLATE NOCASE`,
+    )
+    .bind(song.id, pid(c), me.id)
+    .all<HelperStudent & { started_at: string | null }>();
+  const all = rows.results ?? [];
+  const { upcoming } = await meContext(c);
+  return c.html(
+    Me.catalogueSong(me, await meCounts(c.env, pid(c), me.id), site(c), upcoming[0], song, {
+      learning: all.filter((r) => r.started_at && !r.completed_at),
+      finished: all.filter((r) => r.started_at && r.completed_at),
+      others: all.filter((r) => !r.started_at),
+    }, c.req.query('msg')),
+  );
+});
+
+app.post('/me/catalogue/song/:id/assign', requireUser, requireCurator, async (c) => {
+  const song = await helperSong(c.env, pid(c), c.req.param('id'));
+  if (!song) return c.redirect(withMsg('/me/catalogue', 'That song is not in this catalogue.'));
+  const back = `/me/catalogue/song/${song.id}`;
+  const f = await c.req.formData();
+  const me = c.get('user');
+  const student = await activeStudentHere(c.env, pid(c), f.get('student_id'));
+  if (!student) return c.redirect(withMsg(back, 'Pick a student from the list.'));
+  /* A song they once had comes back as it was — learning, or finished —
+     the same as the teacher's assign from a student's page. */
+  await c.env.DB.prepare(
+    `INSERT INTO assignments (project_id, id, student_id, section_id, assigned_by, assigned_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+     ON CONFLICT(student_id, section_id) DO UPDATE SET archived_at = NULL, assigned_by = excluded.assigned_by
+      WHERE assignments.project_id = ?1 AND assignments.archived_at IS NOT NULL`,
+  )
+    .bind(pid(c), newId('a'), student.id, song.id, me.id, now())
+    .run();
+  return c.redirect(withMsg(back, student.id === me.id ? 'Added to your list.' : `Added to ${student.name}'s list.`));
+});
+
+app.post('/me/catalogue/song/:id/unassign', requireUser, requireCurator, async (c) => {
+  const song = await helperSong(c.env, pid(c), c.req.param('id'));
+  if (!song) return c.redirect(withMsg('/me/catalogue', 'That song is not in this catalogue.'));
+  const back = `/me/catalogue/song/${song.id}`;
+  const f = await c.req.formData();
+  const me = c.get('user');
+  const student = await activeStudentHere(c.env, pid(c), f.get('student_id'));
+  if (!student) return c.redirect(back);
+  const r = await c.env.DB.prepare(
+    `UPDATE assignments SET archived_at = ?1
+      WHERE student_id = ?2 AND section_id = ?3 AND project_id = ?4
+        AND archived_at IS NULL AND completed_at IS NULL`,
+  )
+    .bind(now(), student.id, song.id, pid(c))
+    .run();
+  if (!r.meta?.changes) return c.redirect(withMsg(back, 'Only your teacher can change a finished song.'));
+  return c.redirect(withMsg(back,
+    student.id === me.id ? 'Taken off your list. Recordings kept.' : `Taken off ${student.name}'s list. Recordings kept.`));
 });
 
 /** Take back a request you made, while it is still waiting. */

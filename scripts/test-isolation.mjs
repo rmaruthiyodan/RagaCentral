@@ -2075,7 +2075,56 @@ async function main() {
     await POST(ta, `/t/deletions/${sreq}`, { action: 'approve' });
     check('teacher A approves deleting a song, and it goes', d1one(`SELECT COUNT(*) AS n FROM sections WHERE id='${hs?.id}'`)[0].n === 0, 'song still there');
 
+    /* Putting songs on lists — the one place a helper sees other students. */
+    const asgn = (sid) => d1one(`SELECT archived_at, completed_at, assigned_by FROM assignments
+                                  WHERE student_id='${sid}' AND section_id='${unlistedId}' AND project_id='${A.id}'`)[0];
+    const teacherAId = d1one(`SELECT user_id FROM project_members WHERE project_id='${A.id}' AND role='teacher' LIMIT 1`)[0]?.user_id;
+    r = await GET(helper, `/me/catalogue/song/${unlistedId}`);
+    if (checkStatus("the helper opens a song's students page", r, 200)) {
+      check('  …which names the other students of this practice', r.text.includes(N.studentA2Name), 'classmate missing');
+      check('  …and nobody from another practice', !r.text.includes(N.studentBName) && !r.text.includes(B.studentId), 'B student leaked');
+      check('  …and no teacher among the students', !teacherAId || !r.text.includes(`value="${teacherAId}"`), 'teacher offered as a student');
+    }
+    const cat2 = await GET(helper, '/me/catalogue');
+    check('  …reached from each song in the catalogue', cat2.text.includes(`href="/me/catalogue/song/${unlistedId}"`), 'no link');
+    r = await GET(helper, `/me/catalogue/song/${B.sectionId}`);
+    check("  …but not for another practice's song", r.status === 302 && !String(r.location).includes(B.sectionId), `${r.status} ${r.location}`);
+    const other = await GET(sa2, `/me/catalogue/song/${unlistedId}`);
+    check('  …and an ordinary student has no such page', other.status === 302 && other.location === '/me', `${other.status} ${other.location}`);
+
+    await POST(helper, `/me/catalogue/song/${unlistedId}/assign`, { student_id: A.studentId });
+    check('the helper puts a song on their own list', asgn(A.studentId) && !asgn(A.studentId).archived_at, JSON.stringify(asgn(A.studentId)));
+    checkStatus('  …and it then opens for them', await GET(helper, `/me/${unlistedId}`), 200);
+    await POST(helper, `/me/catalogue/song/${unlistedId}/assign`, { student_id: studentA2Id });
+    check("  …and on a classmate's, credited to the helper", asgn(studentA2Id)?.assigned_by === A.studentId && !asgn(studentA2Id).archived_at, JSON.stringify(asgn(studentA2Id)));
+    checkStatus('  …where the classmate can open it', await GET(sa2, `/me/${unlistedId}`), 200);
+    const tsong = await GET(ta, `/t/song/${unlistedId}`);
+    check("  …and the teacher's song page says the helper added it", tsong.text.includes(`added by ${N.studentAName}`), 'no "added by"');
+
+    await POST(helper, `/me/catalogue/song/${unlistedId}/assign`, { student_id: B.studentId });
+    check("the helper cannot give a song to another practice's student",
+      d1one(`SELECT COUNT(*) AS n FROM assignments WHERE student_id='${B.studentId}' AND section_id='${unlistedId}'`)[0].n === 0, 'assigned across practices');
+    if (teacherAId) {
+      await POST(helper, `/me/catalogue/song/${unlistedId}/assign`, { student_id: teacherAId });
+      check('  …nor to the teacher', !asgn(teacherAId), 'assigned to the teacher');
+    }
+    await POST(helper, `/me/catalogue/song/${B.sectionId}/assign`, { student_id: A.studentId });
+    check("  …nor put another practice's song on anyone's list",
+      d1one(`SELECT COUNT(*) AS n FROM assignments WHERE section_id='${B.sectionId}' AND student_id='${A.studentId}'`)[0].n === 0, 'cross-practice song assigned');
+
+    await POST(helper, `/me/catalogue/song/${unlistedId}/unassign`, { student_id: studentA2Id });
+    check("the helper takes it off the classmate's list (kept, archived)", !!asgn(studentA2Id)?.archived_at, JSON.stringify(asgn(studentA2Id)));
+    checkStatus('  …and it no longer opens for the classmate', await GET(sa2, `/me/${unlistedId}`), 404);
+    await POST(ta, `/t/s/${A.studentId}/complete-song`, { section_id: unlistedId });
+    r = await POST(helper, `/me/catalogue/song/${unlistedId}/unassign`, { student_id: A.studentId });
+    check('a finished song stays on the list — only the teacher changes that',
+      !asgn(A.studentId)?.archived_at && String(r.location).includes('Only%20your%20teacher'), `${JSON.stringify(asgn(A.studentId))} ${r.location}`);
+    await POST(tb, `/t/s/${A.studentId}/unassign`, { section_id: unlistedId });
+    check("  …and teacher B can't take it off either", !asgn(A.studentId)?.archived_at, 'archived from project B');
+
     await POST(ta, `/t/students/${A.studentId}/curator`, { on: '0' });
+    await POST(helper, `/me/catalogue/song/${unlistedId}/assign`, { student_id: studentA2Id });
+    check('once helper is turned off, assigning does nothing', !!asgn(studentA2Id)?.archived_at, 'assigned after the flag went off');
     r = await GET(helper, '/me/catalogue');
     check('once the teacher turns it off, the catalogue page is gone again', r.status === 302 && r.location === '/me', `${r.status} ${r.location}`);
   }

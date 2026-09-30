@@ -948,8 +948,26 @@ export const ML: Record<string, string> = {
     'ഗുരുവാണ് തീരുമാനിക്കുന്നത്. ഒരു പാട്ട് മായ്ച്ചാൽ അതിനു കീഴിലുള്ള എല്ലാ റെക്കോർഡിംഗുകളും കുറിപ്പുകളും മായും.',
   'Your teacher decides. The songs in it stay; they just lose their group.':
     'ഗുരുവാണ് തീരുമാനിക്കുന്നത്. അതിലെ പാട്ടുകൾ നിലനിൽക്കും; അവയ്ക്ക് ഗ്രൂപ്പ് ഇല്ലാതാകും എന്നു മാത്രം.',
-  'Your teacher has asked you to help keep the song list. You can add groups and songs and correct their details. Deleting anything goes to your teacher to approve first.':
-    'പാട്ടുപട്ടിക പരിപാലിക്കാൻ സഹായിക്കാൻ ഗുരു നിങ്ങളോട് ആവശ്യപ്പെട്ടിരിക്കുന്നു. നിങ്ങൾക്ക് ഗ്രൂപ്പുകളും പാട്ടുകളും ചേർക്കാം, വിശദാംശങ്ങൾ തിരുത്താം. എന്തെങ്കിലും മായ്ക്കണമെങ്കിൽ ആദ്യം ഗുരുവിന്റെ അംഗീകാരം വേണം.',
+  'Your teacher has asked you to help keep the song list. You can add groups and songs, correct their details, and put songs on students\' lists. Deleting anything goes to your teacher to approve first.':
+    'പാട്ടുപട്ടിക പരിപാലിക്കാൻ സഹായിക്കാൻ ഗുരു നിങ്ങളോട് ആവശ്യപ്പെട്ടിരിക്കുന്നു. നിങ്ങൾക്ക് ഗ്രൂപ്പുകളും പാട്ടുകളും ചേർക്കാം, അവയുടെ വിവരങ്ങൾ തിരുത്താം, വിദ്യാർത്ഥികളുടെ പട്ടികയിൽ പാട്ടുകൾ ചേർക്കാം. എന്തെങ്കിലും നീക്കം ചെയ്യുന്നത് ആദ്യം ഗുരു അംഗീകരിക്കണം.',
+  'Add to my list': 'എന്റെ പട്ടികയിൽ ചേർക്കുക',
+  'Another student': 'മറ്റൊരു വിദ്യാർത്ഥി',
+  'Assign to students': 'വിദ്യാർത്ഥികൾക്ക് നൽകുക',
+  'Choose a student…': 'ഒരു വിദ്യാർത്ഥിയെ തിരഞ്ഞെടുക്കുക…',
+  'Everyone already has this song.': 'എല്ലാവർക്കും ഈ പാട്ട് ഇതിനകം ഉണ്ട്.',
+  'Learning it': 'പഠിക്കുന്നവർ',
+  'Nobody is learning this song yet.': 'ഈ പാട്ട് ഇതുവരെ ആരും പഠിക്കുന്നില്ല.',
+  'Only your teacher changes a finished song.': 'പഠിച്ചുതീർന്ന പാട്ട് ഗുരുവിന് മാത്രമേ മാറ്റാനാകൂ.',
+  'Open it in My songs': 'എന്റെ പാട്ടുകളിൽ തുറക്കുക',
+  'Put it on a list': 'ഒരു പട്ടികയിൽ ചേർക്കുക',
+  'Students · %s learning': 'വിദ്യാർത്ഥികൾ · %s പേർ പഠിക്കുന്നു',
+  'Take off my list': 'എന്റെ പട്ടികയിൽ നിന്ന് മാറ്റുക',
+  'Take off their list': 'അവരുടെ പട്ടികയിൽ നിന്ന് മാറ്റുക',
+  'Taking a song off a list keeps its recordings; putting it back brings them back.':
+    'പട്ടികയിൽ നിന്ന് പാട്ട് മാറ്റിയാലും റെക്കോർഡിങ്ങുകൾ നഷ്ടപ്പെടില്ല; തിരികെ ചേർത്താൽ അവ തിരികെ വരും.',
+  'They see it in My songs straight away. Only names are shown here — recordings and notes stay private.':
+    'അവർക്ക് ഉടൻ തന്നെ "എന്റെ പാട്ടുകളിൽ" ഇത് കാണാം. ഇവിടെ പേരുകൾ മാത്രമേ കാണിക്കൂ — റെക്കോർഡിങ്ങുകളും കുറിപ്പുകളും സ്വകാര്യമായി തുടരും.',
+  'you': 'നിങ്ങൾ',
   'added by %s': '%s ചേർത്തത്',
   'asked by %s': '%s അപേക്ഷിച്ചത്',
   'deletion asked for': 'മായ്ക്കാൻ അപേക്ഷിച്ചു',

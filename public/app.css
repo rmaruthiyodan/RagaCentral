@@ -1699,3 +1699,27 @@ a.who-name:hover{border-bottom-color:var(--ink-3)}
 .del-reason{font-size:13.5px;color:var(--ink-2);font-style:italic;margin-top:4px}
 .p-bad-text{color:var(--bad)}
 .sh-pills{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+
+/* A helper's view of who is learning one song (/me/catalogue/song/:id). */
+/* Sits among the summaries beside it ("+ Edit details") and matches them. */
+.cat-tools a.cat-who{margin-top:8px;font-size:13px;color:var(--ink-3);text-decoration:none;
+  display:flex;align-items:center;gap:7px}
+.cat-tools a.cat-who::before{content:"→";font-family:var(--f-mono);color:var(--brass)}
+.cat-tools a.cat-who:hover{color:var(--ink)}
+@media (pointer:coarse){.cat-tools a.cat-who{min-height:36px}}
+.sa-card{margin:6px 0 26px}
+.sa-card h3{margin:0 0 12px}
+.sa-me{margin:0 0 14px}
+.sa-pick label{display:block;margin-bottom:6px}
+.sa-pick-row{display:flex;gap:10px;align-items:center}
+.sa-pick-row select{flex:1;min-width:0}
+.sa-card .hint{margin:12px 0 0}
+.sa-n{font-weight:400;color:var(--ink-3);font-size:.8em;margin-left:4px}
+.sa-row .row-actions form{margin:0}
+@media (max-width:520px){
+  .sa-pick-row{flex-direction:column;align-items:stretch}
+  .sa-row{gap:10px;padding:12px 14px;flex-wrap:nowrap}
+  .sa-row .row-main{min-width:0}
+  .sa-row .row-actions{flex:none}
+  .sa-row .row-actions .btn{padding-left:8px;padding-right:8px}
+}
