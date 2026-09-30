@@ -13,7 +13,7 @@ import { page, avatar, titleWithScript, disclosure, discloseAll } from './layout
 import type { Visiting } from './layout';
 import { esc, escConfirm, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import { spoken } from './sessions';
-import { recorderPanel, audioEditorTemplate, editAudioButton, mediaSrc } from './recorder';
+import { recorderPanel, audioEditorTemplate, editAudioButton, mediaSrc, twoCopiesNotice, twoCopiesPill } from './recorder';
 import type { User, Group, Section, Recording, Note } from '../types';
 import { t, setLang } from '../i18n';
 
@@ -317,6 +317,7 @@ function recordingBlock(
           ${esc(r.title || (r.kind === 'video' ? t('Video clip') : t('Recording')))}
           ${r.part ? `<span class="part-tag">${esc(r.part)}</span>` : ''}
           ${audiencePill(r.visibility, o.shared, o.students)}
+          ${twoCopiesPill(r)}
           ${noteCount ? `<span class="note-count">${noteCount === 1 ? t('%s note', noteCount) : t('%s notes', noteCount)}</span>` : ''}
         </span>
         <span class="rec-meta">
@@ -362,6 +363,7 @@ function recordingBlock(
       </div>
     </div>
     ${r.kind === 'audio' ? `<div class="rx-edit-host" data-edit-host="${esc(r.id)}" hidden></div>` : ''}
+    ${twoCopiesNotice(r, o.back)}
 
     <div class="rec-notes">
       <div class="rec-notes-head">${t('Notes on this recording')}${
@@ -771,8 +773,8 @@ ${
       nav: 'catalogue',
       visiting: d.visiting ?? null,
       scripts: d.dictate
-        ? ['/player.js', '/audio-edit.js', '/recorder.js', '/dictate.js']
-        : ['/player.js', '/audio-edit.js', '/recorder.js'],
+        ? ['/player.js', '/audio-fx.js', '/audio-edit.js', '/recorder.js', '/dictate.js']
+        : ['/player.js', '/audio-fx.js', '/audio-edit.js', '/recorder.js'],
     },
   );
 }

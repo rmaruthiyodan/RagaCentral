@@ -160,7 +160,15 @@ CREATE TABLE IF NOT EXISTS recordings (
   part          TEXT,                              -- pallavi, anupallavi, charanam…
   description   TEXT,                              -- a few lines on what this take shows
   visibility    TEXT NOT NULL DEFAULT 'shared',    -- shared | chosen (recording_shares) | self (student_id + any teacher only) — see Visibility in types.ts
-  created_at    TEXT NOT NULL
+  created_at    TEXT NOT NULL,
+  -- The file as it was before the first "Edit audio", kept so the edit can
+  -- be undone. A second copy, not an archive: the page asks for one of the
+  -- two to be kept and the other deleted. NULL when never edited, or once
+  -- that choice has been made.
+  original_r2_key   TEXT,
+  original_mime     TEXT,
+  original_size     INTEGER,
+  original_duration REAL
 );
 
 -- Typed notes or a pasted screenshot. Either loose under the song, or pinned to one recording.

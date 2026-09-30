@@ -28,6 +28,11 @@
   var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
   var UNDO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>';
 
+  function esc(v) {
+    return String(v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
   function fmt(t) {
     var m = Math.floor(t / 60), s = Math.floor(t % 60);
     return m + ':' + String(s).padStart(2, '0');
@@ -182,13 +187,19 @@
     var peaks = null, peaksN = 0;
     var ac = null, voices = [], plan = null, playMode = null, playSeg = -1, raf = 0;
     var drag = null;
+    // The Advanced panel: its settings, which version plays, and the last result made.
+    var Fx = window.SrutiFx;
+    var fxEl = $('[data-fx-panel]');
+    var S = Fx ? Fx.defaults() : null;
+    var ab = 'after', processed = null, rendering = null, gainEditing = false;
 
     function active() { return !!buffer; }
 
     function open(b) {
       buffer = b; dur = b.duration;
-      segs = [{ s: 0, e: dur, cut: false }];
+      segs = [{ s: 0, e: dur, cut: false, g: 0 }];
       sel = 0; head = 0; past = []; future = []; peaks = null;
+      if (Fx) { S = Fx.defaults(); processed = null; rendering = null; ab = 'after'; }
       // Whole seconds repeat themselves on a short take, so those get tenths.
       scaleEl.innerHTML = [0, 0.25, 0.5, 0.75, 1].map(function (f) {
         return '<span>' + (dur < 30 ? fmtTenths(dur * f) : fmt(dur * f)) + '</span>';
@@ -198,10 +209,22 @@
 
     function close() {
       stopPlay();
-      buffer = null; peaks = null; segs = [];
+      buffer = null; peaks = null; segs = []; processed = null; rendering = null;
     }
 
     function kept() { return segs.filter(function (x) { return !x.cut; }); }
+    /* Kept parts that sit side by side play straight through — only a cut
+       makes a join. */
+    function keptRuns() {
+      var out = [], last = null;
+      segs.forEach(function (x) {
+        if (x.cut) { last = null; return; }
+        if (last) last[1] = x.e; else { last = [x.s, x.e]; out.push(last); }
+      });
+      return out;
+    }
+    function fxActive() { return !!(Fx && buffer && Fx.isActive(S, segs)); }
+    function gainText(g) { return (g > 0 ? '+' : g < 0 ? '−' : '') + Math.abs(g) + ' dB'; }
     function keptLen() { return kept().reduce(function (a, x) { return a + (x.e - x.s); }, 0); }
     function at(t) {
       for (var i = 0; i < segs.length; i++) if (t < segs[i].e) return i;
@@ -214,6 +237,7 @@
       past.push(JSON.stringify(segs));
       if (past.length > 100) past.shift();
       future = [];
+      processed = null; rendering = null;
     }
     function restore(json) {
       segs = JSON.parse(json);
@@ -244,12 +268,13 @@
       var n = Math.max(1, Math.floor((W + gap) / step));
       if (!peaks || peaksN !== n) { peaks = computePeaks(n); peaksN = n; }
       g.clearRect(0, 0, W, H);
-      var on = css('--peacock', '#3B5566'), off = css('--line-strong', '#C3C8D1');
+      var on = css('--peacock', '#3B5566'), off = css('--line-strong', '#C3C8D1'), loud = css('--brass', '#9A6A28');
       for (var i = 0; i < n; i++) {
         var t = ((i + 0.5) / n) * dur;
         var seg = segs[at(t)];
-        var h = Math.max(2 * dpr, peaks[i] * H * 0.96);
-        g.fillStyle = seg && seg.cut ? off : on;
+        var lin = seg && seg.g ? Math.pow(10, seg.g / 20) : 1;
+        var h = Math.max(2 * dpr, Math.min(1, peaks[i] * lin) * H * 0.96);
+        g.fillStyle = seg && seg.cut ? off : seg && seg.g ? loud : on;
         roundBar(g, i * step, (H - h) / 2, bw, h);
       }
     }
@@ -283,19 +308,137 @@
         var playing = playMode === 'row' && playSeg === i;
         return '<div class="rx-li' + (s.cut ? ' cut' : '') + (i === sel ? ' sel' : '') + '" data-i="' + i + '">' +
           '<span class="rx-sw"></span>' +
-          '<span class="txt" data-pick="' + i + '" aria-label="' + L('partOf', name(i)) + '"><b>' + name(i) + '</b>' + fmtTenths(s.s) + '–' + fmtTenths(s.e) + '</span>' +
+          '<span class="txt" data-pick="' + i + '" aria-label="' + L('partOf', name(i)) + '"><b>' + name(i) + '</b>' + fmtTenths(s.s) + '–' + fmtTenths(s.e) +
+            (s.g && !s.cut ? ' <span class="rx-gain">' + gainText(s.g) + '</span>' : '') + '</span>' +
           '<button type="button" class="rx-lplay' + (playing ? ' on' : '') + '" data-rowplay="' + i + '" aria-label="' + L('play') + ' ' + name(i) + '">' + (playing ? STOP_SVG : PLAY_SVG) + '</button>' +
           '<span class="rx-tog"><button type="button" data-keep="' + i + '" class="' + (s.cut ? '' : 'on') + '">' + L('keep') + '</button>' +
           '<button type="button" data-cut="' + i + '" class="' + (s.cut ? 'on x' : '') + '">' + (s.cut ? L('removed') : L('remove')) + '</button></span>' +
           '</div>';
       }).join('');
-      playAllText.textContent = playMode === 'all' ? L('stopPlaying') : L('playResult', fmt(keptLen()));
+      playAllText.textContent = playMode === 'all' ? L('stopPlaying') :
+        L(fxActive() && ab === 'after' ? 'playChanged' : 'playResult', fmt(keptLen()));
       playAll.firstElementChild && (playAll.querySelector('svg').outerHTML = playMode === 'all' ? STOP_SVG : PLAY_SVG);
       undoBtn.disabled = !past.length;
       redoBtn.disabled = !future.length;
       drawWave();
       placeHead();
       placePop();
+      renderFx();
+    }
+
+    /* ---------- the Advanced panel ---------- */
+
+    function renderFx() {
+      if (!fxEl || !S) return;
+      var s = segs[sel], on = fxActive();
+      var partLabel = fxEl.querySelector('[data-fx-part]');
+      var gain = fxEl.querySelector('[data-fx-gain]');
+      if (partLabel) partLabel.textContent = L('partVolume', name(sel));
+      if (gain && s && !gainEditing) gain.value = String(s.g || 0);
+      if (gain) gain.disabled = !s || s.cut;
+      var gv = fxEl.querySelector('[data-fx-gain-val]');
+      if (gv && s) gv.textContent = s.cut ? L('removed') : gainText(s.g || 0);
+      Array.prototype.forEach.call(fxEl.querySelectorAll('[data-fx]'), function (c) {
+        var k = c.getAttribute('data-fx');
+        if (k === 'noiseFrom') return;
+        if (c.type === 'checkbox') c.checked = !!S[k]; else if (document.activeElement !== c) c.value = String(S[k]);
+      });
+      Array.prototype.forEach.call(fxEl.querySelectorAll('[data-fx-val]'), function (v) {
+        var k = v.getAttribute('data-fx-val'), n = S[k];
+        v.textContent = n ? n + '%' : L('off');
+      });
+      var amt = fxEl.querySelector('[data-fx="reverbAmt"]');
+      if (amt) amt.disabled = S.reverb === 'none';
+      var nf = fxEl.querySelector('[data-fx="noiseFrom"]');
+      if (nf && document.activeElement !== nf) {
+        var picked = -1;
+        if (S.noiseFrom !== 'auto') segs.forEach(function (x, i) { if (x.s === S.noiseFrom.s && x.e === S.noiseFrom.e) picked = i; });
+        nf.innerHTML = '<option value="auto">' + esc(L('noiseAuto')) + '</option>' +
+          segs.map(function (x, i) {
+            return '<option value="' + i + '"' + (i === picked ? ' selected' : '') + '>' + esc(L('partOf', name(i))) + ' · ' + fmtTenths(x.s) + '–' + fmtTenths(x.e) + '</option>';
+          }).join('') +
+          (S.noiseFrom !== 'auto' && picked < 0 ? '<option value="kept" selected>' + esc(L('noisePicked')) + '</option>' : '');
+      }
+      if (nf) nf.disabled = !S.noise;
+      var wrap = el.querySelector('[data-ab-wrap]');
+      if (wrap) wrap.hidden = !on;
+      Array.prototype.forEach.call(el.querySelectorAll('[data-ab]'), function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-ab') === ab));
+      });
+      var badge = el.querySelector('[data-fx-on]');
+      if (badge) badge.hidden = !on;
+    }
+
+    function fxChanged() {
+      processed = null; rendering = null;
+      if (playMode) stopPlay();
+      render();
+    }
+
+    if (fxEl) {
+      fxEl.addEventListener('input', function (e) {
+        var c = e.target;
+        if (c.hasAttribute('data-fx-gain')) {
+          var s = segs[sel];
+          if (!s || s.cut) return;
+          if (!gainEditing) { remember(); gainEditing = true; }
+          s.g = Number(c.value) || 0;
+          fxChanged();
+          return;
+        }
+        var k = c.getAttribute('data-fx');
+        if (!k) return;
+        if (k === 'noiseFrom') {
+          if (c.value === 'auto') S.noiseFrom = 'auto';
+          else if (c.value !== 'kept') { var x = segs[Number(c.value)]; S.noiseFrom = { s: x.s, e: x.e }; }
+        } else if (c.type === 'checkbox') S[k] = c.checked;
+        else if (k === 'reverb') S[k] = c.value;
+        else S[k] = Number(c.value) || 0;
+        fxChanged();
+      });
+      fxEl.addEventListener('change', function (e) {
+        if (e.target.hasAttribute('data-fx-gain')) { gainEditing = false; render(); }
+      });
+      fxEl.addEventListener('click', function (e) {
+        if (e.target.closest('[data-fx-gain-reset]')) {
+          var s = segs[sel];
+          if (s && s.g) { remember(); s.g = 0; fxChanged(); }
+        } else if (e.target.closest('[data-fx-reset]')) {
+          var anyGain = segs.some(function (x) { return x.g; });
+          if (anyGain) { remember(); segs.forEach(function (x) { x.g = 0; }); }
+          S = Fx.defaults();
+          fxChanged();
+        }
+      });
+    }
+    el.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-ab]');
+      if (!b || !el.contains(b)) return;
+      ab = b.getAttribute('data-ab');
+      if (playMode) stopPlay();
+      render();
+    });
+
+    /* The result with every change applied, made when first asked for and
+       kept until something changes. */
+    function ensureProcessed() {
+      if (processed) return Promise.resolve(processed);
+      if (rendering) return rendering;
+      var mine = rendering = Fx.render(buffer, segs, S, function (p) { if (rendering === mine) say(L('applying', p)); })
+        .then(function (r) {
+          if (rendering !== mine) return ensureProcessed(); // changed while working: start again
+          processed = r; rendering = null; say('');
+          return r;
+        });
+      return mine;
+    }
+    function srcToOut(t) {
+      if (!processed) return null;
+      for (var i = 0; i < processed.map.length; i++) {
+        var m = processed.map[i];
+        if (t >= m.src - 1e-6 && t < m.src + m.len) return m.out + (t - m.src);
+      }
+      return null;
     }
 
     /* ---------- editing ---------- */
@@ -306,7 +449,7 @@
       var i = at(head), s = segs[i];
       if (head - s.s < MIN_PART || s.e - head < MIN_PART) { say(L('tooShort')); return; }
       remember();
-      segs.splice(i, 1, { s: s.s, e: head, cut: s.cut }, { s: head, e: s.e, cut: s.cut });
+      segs.splice(i, 1, { s: s.s, e: head, cut: s.cut, g: s.g || 0 }, { s: head, e: s.e, cut: s.cut, g: s.g || 0 });
       select(i + 1);
       say('');
       render();
@@ -392,6 +535,7 @@
       stopPlay();
       future.push(JSON.stringify(segs));
       restore(past.pop());
+      processed = null; rendering = null;
       render();
     });
     redoBtn.addEventListener('click', function () {
@@ -399,6 +543,7 @@
       stopPlay();
       past.push(JSON.stringify(segs));
       restore(future.pop());
+      processed = null; rendering = null;
       render();
     });
     listEl.addEventListener('click', function (e) {
@@ -422,48 +567,72 @@
       var same = playMode === mode && (mode === 'all' || playSeg === i);
       stopPlay();
       if (same) { render(); return; }
-      var ranges;
+      var withFx = fxActive() && ab === 'after';
       if (mode === 'all') {
-        ranges = kept().map(function (x) { return [x.s, x.e]; });
-        if (!ranges.length) { say(L('keepAll')); render(); return; }
-      } else {
-        var s = segs[i];
-        // From the playhead if it sits inside this part, otherwise from its start.
-        var from = mode === 'seg' && head > s.s && head < s.e - 0.05 ? head : s.s;
-        ranges = [[from, s.e]];
+        var runs = keptRuns();
+        if (!runs.length) { say(L('keepAll')); render(); return; }
+        if (!withFx) { play(runs.map(function (r) { return { buf: buffer, off: r[0], len: r[1] - r[0], src: r[0] }; }), mode, i); return; }
+        ensureProcessed().then(function (p) {
+          if (!buffer) return;
+          play([{ buf: p.buffer, off: 0, len: p.buffer.duration, map: p.map }], mode, i);
+        }).catch(function (err) { console.error(err); say(L('fxFailed')); });
+        return;
       }
-      play(ranges, mode, i);
+      var s = segs[i];
+      // From the playhead if it sits inside this part, otherwise from its start.
+      var from = mode === 'seg' && head > s.s && head < s.e - 0.05 ? head : s.s;
+      if (!withFx || s.cut) {
+        play([{ buf: buffer, off: from, len: s.e - from, src: from }], mode, i);
+        return;
+      }
+      ensureProcessed().then(function (p) {
+        var o = srcToOut(from);
+        if (o === null || !buffer) return;
+        play([{ buf: p.buffer, off: o, len: s.e - from, src: from }], mode, i);
+      }).catch(function (err) { console.error(err); say(L('fxFailed')); });
     }
 
-    function play(ranges, mode, i) {
+    /* Each voice: { buf, off, len } to play, and where it is in the original —
+       `src` for a straight stretch, or the result's `map` — so the playhead
+       can follow along. */
+    function play(list, mode, i) {
       try {
         ac = ac || new (window.AudioContext || window.webkitAudioContext)();
         if (ac.state === 'suspended') ac.resume();
       } catch (e) { return; }
       var when = ac.currentTime + 0.05;
       plan = [];
-      voices = ranges.map(function (r) {
-        var len = r[1] - r[0];
+      voices = list.map(function (v) {
         var src = ac.createBufferSource(), gain = ac.createGain();
-        src.buffer = buffer;
+        src.buffer = v.buf;
         src.connect(gain); gain.connect(ac.destination);
         gain.gain.setValueAtTime(0, when);
         gain.gain.linearRampToValueAtTime(1, when + FADE);
-        gain.gain.setValueAtTime(1, when + Math.max(FADE, len - FADE));
-        gain.gain.linearRampToValueAtTime(0, when + len);
-        src.start(when, r[0], len);
-        plan.push({ at: when, s: r[0], e: r[1] });
-        when += len;
+        gain.gain.setValueAtTime(1, when + Math.max(FADE, v.len - FADE));
+        gain.gain.linearRampToValueAtTime(0, when + v.len);
+        src.start(when, v.off, v.len);
+        plan.push({ at: when, len: v.len, off: v.off, src: v.src, map: v.map });
+        when += v.len;
         return src;
       });
+      var endAt = when;
       playMode = mode; playSeg = i;
       render();
       (function tick() {
-        var now = ac.currentTime, last = plan[plan.length - 1];
-        if (now >= last.at + (last.e - last.s)) { head = last.e; stopPlay(); render(); return; }
+        var now = ac.currentTime;
+        if (now >= endAt) { stopPlay(); render(); return; }
         for (var k = 0; k < plan.length; k++) {
           var p = plan[k];
-          if (now < p.at + (p.e - p.s)) { head = Math.max(p.s, p.s + (now - p.at)); break; }
+          if (now < p.at + p.len) {
+            var pos = p.off + Math.max(0, now - p.at);
+            if (p.map) {
+              for (var m = p.map.length - 1; m >= 0; m--) {
+                var r = p.map[m];
+                if (pos >= r.out) { head = Math.min(r.src + r.len, r.src + (pos - r.out)); break; }
+              }
+            } else head = p.src + (pos - p.off);
+            break;
+          }
         }
         placeHead();
         raf = requestAnimationFrame(tick);
@@ -486,10 +655,13 @@
       active: active,
       stopPlay: stopPlay,
       buffer: function () { return buffer; },
-      ranges: function () { return kept().map(function (x) { return [x.s, x.e]; }); },
+      ranges: keptRuns,
       keptLen: keptLen,
-      /** True once anything has been removed — otherwise there is nothing to save. */
-      changed: function () { return segs.some(function (x) { return x.cut; }); },
+      /** True once anything has been removed, or a sound setting turned on — otherwise there is nothing to save. */
+      changed: function () { return segs.some(function (x) { return x.cut; }) || fxActive(); },
+      fxActive: fxActive,
+      /** The finished result when sound settings are on (see audio-fx.js). */
+      processed: ensureProcessed,
       redraw: function () { if (buffer) render(); },
     };
   }
@@ -579,7 +751,13 @@
       cancelBtn.disabled = true;
       bar.classList.add('on');
       say(L('encoding'));
-      encodeKept(ed.buffer(), ranges, function (p) { fill.style.width = Math.round(p / 2) + '%'; })
+      var job = ed.fxActive()
+        ? ed.processed().then(function (p) {
+            say(L('encoding'));
+            return encodeKept(p.buffer, [[0, p.buffer.duration]], function (q) { fill.style.width = Math.round(q / 2) + '%'; });
+          })
+        : encodeKept(ed.buffer(), ranges, function (p) { fill.style.width = Math.round(p / 2) + '%'; });
+      job
         .then(function (r) {
           var fd = new FormData();
           fd.append('file', r.blob, 'edited.mp3');

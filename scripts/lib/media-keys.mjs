@@ -3,8 +3,10 @@
  *
  * Read out of a D1 dump rather than by connecting to anything, so the
  * same answer can be got from last week's backup as from today's
- * database. Two tables hold an R2 key: recordings.r2_key ('rec/…') and
- * notes.image_key ('note/…').
+ * database. Two tables hold R2 keys: recordings.r2_key and, for an edited
+ * recording whose pre-edit copy is still kept, recordings.original_r2_key
+ * (both 'rec/…'); and notes.image_key ('note/…'). Every 'rec/…' string on
+ * a recordings row is taken, so both recording keys are counted.
  *
  * This lives on its own because two programs ask the question — the
  * backup and the audit — and a dump the audit understands but the

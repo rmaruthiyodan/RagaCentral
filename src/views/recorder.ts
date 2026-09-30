@@ -12,7 +12,7 @@
  * before the first tap, and the editor is hidden until a take exists.
  * ================================================================== */
 
-import { esc } from '../util';
+import { esc, escConfirm, fmtBytes } from '../util';
 import { t } from '../i18n';
 
 export interface RecorderOpts {
@@ -135,13 +135,23 @@ export function audioEditorTemplate(): string {
     partOf: t('Part %s'),
     loading: t('Opening the recording…'),
     cantOpen: t('This recording could not be opened for editing in this browser.'),
-    nothingCut: t('Nothing is removed yet. Split the recording, then mark a part Remove.'),
-    replaceConfirm: t('Replace this recording with the shortened version? The removed parts cannot be brought back.'),
+    nothingCut: t('Nothing has changed yet. Remove a part, or use the Advanced settings.'),
+    replaceConfirm: t('Save these changes? The recording before this edit is kept as a second copy until you choose which one to keep.'),
     encoding: t('Preparing the MP3…'),
     saving: t('Saving…'),
-    savedMsg: t('Recording shortened.'),
+    savedMsg: t('Changes saved. The original is kept as a second copy — choose which one to keep, on the recording.'),
+    playChanged: t('Play with changes · %s'),
+    applying: t('Applying the changes… %s%'),
+    fxFailed: t('The sound changes could not be applied in this browser.'),
+    partVolume: t('Volume of part %s'),
+    off: t('Off'),
+    noiseAuto: t('Automatic — the quietest moments'),
+    noisePicked: t('The stretch you picked'),
     saveFailed: t('Could not save the edited recording. Please try again.'),
   };
+  const fade = (k: string) => `<select data-fx="${k}">
+            <option value="0">${t('None')}</option><option value="0.5">0.5 s</option>
+            <option value="1">1 s</option><option value="2">2 s</option><option value="3">3 s</option></select>`;
   return `<template id="rx-edit-tpl" data-strings="${esc(JSON.stringify(strings))}">
   <div class="rx-edit" data-editor hidden>
     <div class="rx-edit-head">
@@ -164,7 +174,72 @@ export function audioEditorTemplate(): string {
       <button class="btn rx-ib" type="button" data-play-all>${ICON.play}<span data-play-all-text></span></button>
       <button class="btn btn-quiet rx-ib" type="button" data-undo disabled>${ICON.undo}<span>${t('Undo')}</span></button>
       <button class="btn btn-quiet rx-ib" type="button" data-redo disabled>${ICON.redo}<span>${t('Redo')}</span></button>
+      <span class="rx-ab" data-ab-wrap hidden role="group" aria-label="${esc(t('Which version plays'))}">
+        <button type="button" data-ab="before" aria-pressed="false">${t('Original')}</button>
+        <button type="button" data-ab="after" aria-pressed="true">${t('With changes')}</button>
+      </span>
     </div>
+
+    <details class="rx-adv">
+      <summary>${t('Advanced — volume, clean-up, reverb')} <span class="pill p-info" data-fx-on hidden>${t('on')}</span></summary>
+      <div class="rx-adv-body" data-fx-panel>
+        <section class="rx-fx">
+          <h4>${t('Volume')}</h4>
+          <div class="rx-fx-row">
+            <label for="fx-gain" data-fx-part>${t('Volume of part %s', 'A')}</label>
+            <span class="rx-fx-val" data-fx-gain-val>0 dB</span>
+          </div>
+          <input id="fx-gain" type="range" min="-12" max="12" step="1" value="0" data-fx-gain>
+          <p class="hint">${t('Select a part on the waveform first — then make just that part louder or softer.')}
+            <button type="button" class="linkish" data-fx-gain-reset>${t('Reset this part')}</button></p>
+          <label class="rx-check"><input type="checkbox" data-fx="normalize">
+            <span>${t('Even out the volume')}<small>${t('Brings the whole take to a steady, standard level.')}</small></span></label>
+          <div class="rx-fx-pair">
+            <label>${t('Fade in')} ${fade('fadeIn')}</label>
+            <label>${t('Fade out')} ${fade('fadeOut')}</label>
+          </div>
+        </section>
+
+        <section class="rx-fx">
+          <h4>${t('Clean up')}</h4>
+          <div class="rx-fx-row"><label for="fx-noise">${t('Reduce background noise')}</label><span class="rx-fx-val" data-fx-val="noise"></span></div>
+          <input id="fx-noise" type="range" min="0" max="100" step="5" value="0" data-fx="noise">
+          <label class="rx-sub">${t('Learn the noise from')}
+            <select data-fx="noiseFrom"><option value="auto">${t('Automatic — the quietest moments')}</option></select></label>
+          <p class="hint">${t('Best on steady noise — a fan, fridge or pressure cooker. For the most accurate result, pick a part where nobody is singing.')}</p>
+          <div class="rx-fx-row"><label for="fx-echo">${t('Reduce room echo')}</label><span class="rx-fx-val" data-fx-val="echo"></span></div>
+          <input id="fx-echo" type="range" min="0" max="100" step="5" value="0" data-fx="echo">
+          <p class="hint">${t('Lowers the echo — and kitchen or children’s noise — in the pauses between phrases. Sound during a phrase can’t be separated from the singing.')}</p>
+          <label class="rx-check"><input type="checkbox" data-fx="rumble">
+            <span>${t('Remove rumble')}<small>${t('Traffic, fans, a bumped table — the deep sounds with no music in them.')}</small></span></label>
+          <label class="rx-sub">${t('Reduce electrical hum')}
+            <select data-fx="hum">
+              <option value="0">${t('Off')}</option>
+              <option value="50">${t('50 Hz — India, UK, Gulf, Australia')}</option>
+              <option value="60">${t('60 Hz — USA, Canada')}</option>
+            </select></label>
+        </section>
+
+        <section class="rx-fx">
+          <h4>${t('Reverb')}</h4>
+          <label class="rx-sub">${t('Room')}
+            <select data-fx="reverb">
+              <option value="none">${t('None')}</option>
+              <option value="room">${t('Small room')}</option>
+              <option value="hall">${t('Concert hall')}</option>
+              <option value="temple">${t('Temple — long and stony')}</option>
+            </select></label>
+          <div class="rx-fx-row"><label for="fx-rv">${t('Amount')}</label><span class="rx-fx-val" data-fx-val="reverbAmt"></span></div>
+          <input id="fx-rv" type="range" min="0" max="100" step="5" value="30" data-fx="reverbAmt">
+          <p class="hint">${t('Adds a sense of space. A little goes a long way on a reference take.')}</p>
+        </section>
+
+        <p class="rx-adv-foot">
+          <span class="muted">${t('Use Original / With changes above to compare. Nothing is changed until you save.')}</span>
+          <button type="button" class="btn btn-sm btn-quiet" data-fx-reset>${t('Reset all sound changes')}</button>
+        </p>
+      </div>
+    </details>
   </div>
   <div class="btn-row rx-edit-actions">
     <button class="btn btn-primary" type="button" data-edit-save>${t('Save changes')}</button>
@@ -188,7 +263,50 @@ export function editAudioButton(r: { id: string; r2_key: string }): string {
  * gets a new one.
  */
 export function mediaSrc(r: { id: string; r2_key: string }): string {
+  return `/media/${r.id}?v=${fingerprint(r.r2_key)}`;
+}
+
+function fingerprint(key: string): string {
   let h = 5381;
-  for (let i = 0; i < r.r2_key.length; i++) h = ((h * 33) ^ r.r2_key.charCodeAt(i)) >>> 0;
-  return `/media/${r.id}?v=${h.toString(36)}`;
+  for (let i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/**
+ * An edited recording that still has its pre-edit copy: say so plainly,
+ * let them hear the original, and ask them to keep one of the two.
+ */
+export function twoCopiesNotice(
+  r: { id: string; r2_key: string; original_r2_key?: string | null; original_size?: number | null },
+  back: string,
+): string {
+  if (!r.original_r2_key) return '';
+  const size = r.original_size ? fmtBytes(r.original_size) : '';
+  return `<div class="rx-copies" role="note">
+  <div class="rx-copies-head"><strong>${t('Edited — two copies for now')}</strong>
+    <span class="muted">${
+      size
+        ? t('The original (%s) is kept as a separate copy so the edit can be undone. Keep just one of them.', esc(size))
+        : t('The original is kept as a separate copy so the edit can be undone. Keep just one of them.')
+    }</span></div>
+  <div class="rx-copies-orig">
+    <span class="ctrl-label">${t('Original')}</span>
+    <audio controls preload="none" src="/media/${esc(r.id)}?original=1&amp;v=${esc(fingerprint(r.original_r2_key))}"></audio>
+  </div>
+  <div class="btn-row">
+    <form method="post" action="/recordings/${esc(r.id)}/original"
+      onsubmit="return confirm('${escConfirm(t('Keep the edited version and delete the original copy? This cannot be undone.'))}')">
+      <input type="hidden" name="action" value="keep"><input type="hidden" name="back" value="${esc(back)}">
+      <button class="btn btn-sm btn-primary" type="submit">${t('Keep the edited version')}</button></form>
+    <form method="post" action="/recordings/${esc(r.id)}/original"
+      onsubmit="return confirm('${escConfirm(t('Go back to the original and delete the edited copy? This cannot be undone.'))}')">
+      <input type="hidden" name="action" value="restore"><input type="hidden" name="back" value="${esc(back)}">
+      <button class="btn btn-sm" type="submit">${t('Restore the original')}</button></form>
+  </div>
+</div>`;
+}
+
+/** The little tag in a recording's heading while it has two copies. */
+export function twoCopiesPill(r: { original_r2_key?: string | null }): string {
+  return r.original_r2_key ? `<span class="pill p-warn">${t('Edited · 2 copies')}</span>` : '';
 }

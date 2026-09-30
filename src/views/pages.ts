@@ -4,7 +4,7 @@ import {
 import type { Visiting } from './layout';
 import { resumeCard, lessonLog, spoken } from './sessions';
 import { zoneOptions } from './schedule';
-import { recorderPanel, audioEditorTemplate, editAudioButton, mediaSrc } from './recorder';
+import { recorderPanel, audioEditorTemplate, editAudioButton, mediaSrc, twoCopiesNotice, twoCopiesPill } from './recorder';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
 import { esc, escConfirm, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
@@ -984,6 +984,7 @@ export function songPage(opts: {
         <span class="rec-title">
           ${esc(r.title || (r.kind === 'video' ? t('Video clip') : t('Recording')))}
           ${r.part ? `<span class="part-tag">${esc(r.part)}</span>` : ''}
+          ${mayEdit ? twoCopiesPill(r) : ''}
           ${
             r.visibility === 'self'
               ? `<span class="pill p-brass">${isTeacher ? t('their practice take') : t('just you and your teacher')}</span>`
@@ -1054,6 +1055,7 @@ export function songPage(opts: {
     </div>
   </div>
   ${mayEdit ? `<div class="rx-edit-host" data-edit-host="${esc(r.id)}" hidden></div>` : ''}
+  ${mayEdit ? twoCopiesNotice(r, isTeacher ? `/t/s/${student.id}/${section.id}` : `/me/${section.id}`) : ''}
   ${attached.length ? `<div style="margin-top:13px">${attached.map(renderNote).join('')}</div>` : ''}
   ${
     isTeacher
@@ -1299,8 +1301,8 @@ ${
       // which only a teacher ever sees on this page.
       scripts:
         isTeacher && dictate
-          ? ['/player.js', '/audio-edit.js', '/recorder.js', '/dictate.js']
-          : ['/player.js', '/audio-edit.js', '/recorder.js'],
+          ? ['/player.js', '/audio-fx.js', '/audio-edit.js', '/recorder.js', '/dictate.js']
+          : ['/player.js', '/audio-fx.js', '/audio-edit.js', '/recorder.js'],
     },
   );
 }

@@ -134,6 +134,11 @@ export interface Recording {
   description: string | null;
   visibility: Visibility;
   created_at: string;
+  /** Set while an edited recording still has its pre-edit copy — see schema.sql. */
+  original_r2_key?: string | null;
+  original_mime?: string | null;
+  original_size?: number | null;
+  original_duration?: number | null;
 }
 
 export interface Note {

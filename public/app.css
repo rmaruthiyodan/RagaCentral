@@ -1831,3 +1831,53 @@ a.who-name:hover{border-bottom-color:var(--ink-3)}
   .rx-tools .btn-quiet{padding-left:10px;padding-right:10px}
   .rx-tools .btn-quiet span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 }
+
+/* ---------- Edit audio: Advanced (volume, clean-up, reverb) ---------- */
+.rx-gain{font-family:var(--f-mono);font-size:11.5px;font-weight:600;color:var(--brass-ink);background:var(--brass-soft);
+  border-radius:4px;padding:1px 5px;margin-left:6px;text-decoration:none;display:inline-block}
+.rx-ab{display:inline-flex;border:1px solid var(--line-strong);border-radius:999px;padding:2px;background:var(--surface-2);margin-left:auto}
+.rx-ab[hidden]{display:none}
+.rx-ab button{font:inherit;font-size:12.5px;font-weight:600;border:0;background:none;color:var(--ink-3);border-radius:999px;padding:6px 12px;cursor:pointer}
+.rx-ab button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.rx-adv{margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.rx-adv > summary{cursor:pointer;list-style:none;padding:12px 14px;font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
+.rx-adv > summary::-webkit-details-marker{display:none}
+.rx-adv > summary::before{content:"+";font-family:var(--f-mono);color:var(--brass);width:12px}
+.rx-adv[open] > summary::before{content:"−"}
+.rx-adv[open] > summary{border-bottom:1px solid var(--line)}
+.rx-adv-body{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.rx-fx{padding:14px 16px;border-right:1px solid var(--line);min-width:0}
+.rx-fx:nth-child(3){border-right:0}
+.rx-fx h4{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-family:var(--f-mono);color:var(--ink-3);font-weight:600}
+.rx-fx-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:10px}
+.rx-fx-row label{margin:0;font-size:13.5px;font-weight:600}
+.rx-fx-val{font-family:var(--f-mono);font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.rx-fx input[type=range]{width:100%;margin:6px 0 2px;accent-color:var(--brass);padding:0;border:0;background:none;height:auto}
+.rx-fx .hint{font-size:12.5px;margin:4px 0 8px;color:var(--ink-3)}
+.rx-fx select{font-size:13px;padding:6px 8px;margin-top:4px;width:100%}
+.rx-sub{display:block;margin:10px 0 0;font-size:13.5px;font-weight:600}
+.rx-check{display:flex;gap:9px;align-items:flex-start;margin:10px 0 0;font-size:13.5px;font-weight:600;cursor:pointer}
+.rx-check input{width:18px;height:18px;margin:1px 0 0;flex:none}
+.rx-check small{display:block;font-weight:400;font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.rx-fx-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.rx-fx-pair label{margin:0;font-size:13.5px;font-weight:600}
+.rx-adv-foot{grid-column:1 / -1;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:0;padding:10px 16px;border-top:1px solid var(--line);font-size:12.5px}
+button.linkish{font:inherit;background:none;border:0;padding:0;color:var(--brass-ink);text-decoration:underline;cursor:pointer}
+@media (max-width:860px){
+  .rx-adv-body{grid-template-columns:1fr}
+  .rx-fx{border-right:0;border-bottom:1px solid var(--line)}
+}
+@media (max-width:560px){
+  .rx-tools{flex-wrap:wrap}
+  .rx-ab{margin-left:0}
+}
+
+/* ---------- an edited recording's two copies ---------- */
+.rx-copies{margin-top:14px;padding:12px 14px;border-radius:8px;background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent)}
+.rx-copies-head strong{display:block;font-size:14px;color:var(--warn)}
+.rx-copies-head .muted{font-size:13px;color:var(--ink-2)}
+.rx-copies-orig{display:flex;align-items:center;gap:10px;margin:10px 0}
+.rx-copies-orig audio{flex:1;min-width:0;height:36px}
+.rx-copies .btn-row{gap:8px}
+.rx-copies form{margin:0}

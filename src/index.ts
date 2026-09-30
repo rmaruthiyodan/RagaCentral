@@ -648,6 +648,7 @@ app.use('/t/*', auditAdmin);
 app.use('/notes/*', auditAdmin);
 app.use('/api/recordings', auditAdmin);
 app.use('/api/recordings/*', auditAdmin);
+app.use('/recordings/*', auditAdmin);
 
 /** A short readable line for the log, from the path alone. */
 function describeChange(c: Context<AppEnv, any, any>): string {
@@ -2055,14 +2056,17 @@ async function deleteSection(env: Env, projectId: string, id: string): Promise<v
   const db = env.DB;
   // Remove the media from R2 first — an orphaned object costs storage forever.
   const recs = await db
-    .prepare('SELECT r2_key FROM recordings WHERE section_id = ? AND project_id = ?')
+    .prepare('SELECT r2_key, original_r2_key FROM recordings WHERE section_id = ? AND project_id = ?')
     .bind(id, projectId)
-    .all<{ r2_key: string }>();
+    .all<{ r2_key: string; original_r2_key: string | null }>();
   const imgs = await db
     .prepare('SELECT image_key FROM notes WHERE section_id = ? AND project_id = ? AND image_key IS NOT NULL')
     .bind(id, projectId)
     .all<{ image_key: string }>();
-  const keys = [...(recs.results ?? []).map((r) => r.r2_key), ...(imgs.results ?? []).map((i) => i.image_key)];
+  const keys = [
+    ...(recs.results ?? []).flatMap((r) => (r.original_r2_key ? [r.r2_key, r.original_r2_key] : [r.r2_key])),
+    ...(imgs.results ?? []).map((i) => i.image_key),
+  ];
   if (keys.length) await env.MEDIA.delete(keys);
   await db.prepare('DELETE FROM sections WHERE id = ? AND project_id = ?').bind(id, projectId).run();
   await settleRequestsFor(env, projectId, 'section', id);
@@ -3270,6 +3274,8 @@ const MAX_UPLOAD = 90 * 1024 * 1024; // Workers caps request bodies at 100 MB.
  * or simply lying. This is the check that actually decides.
  */
 const MAX_RECORDING_SEC = 6 * 60;
+/** How much longer an edited recording may be than its original: room for a reverb's tail. */
+const REVERB_TAIL_SEC = 3;
 
 /**
  * A teacher chooses to add a recording; a student's own practice takes are
@@ -3777,14 +3783,17 @@ app.post('/api/recordings', requireUserJson, async (c) => {
  * playable either way. The player's URL carries a fingerprint of the key
  * (views/recorder.ts mediaSrc), so nobody keeps hearing the cached original.
  */
+/** A teacher may edit any recording in their practice; a student only their own practice takes. */
+function mayEditRecording(c: Context<AppEnv, any, any>, rec: Recording): boolean {
+  return acting(c).isTeacher || (rec.visibility === 'self' && rec.student_id === c.get('user').id);
+}
+
 app.post('/api/recordings/:id/audio', requireUserJson, async (c) => {
-  const user = c.get('user');
   const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
     .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec) return c.json({ error: 'That recording is not in this practice.' }, 404);
-  const mine = rec.visibility === 'self' && rec.student_id === user.id;
-  if (!acting(c).isTeacher && !mine) return c.json({ error: 'Only your own practice takes can be edited.' }, 403);
+  if (!mayEditRecording(c, rec)) return c.json({ error: 'Only your own practice takes can be edited.' }, 403);
   if (rec.kind !== 'audio') return c.json({ error: 'Only audio recordings can be edited.' }, 400);
 
   let form: FormData;
@@ -3802,26 +3811,72 @@ app.post('/api/recordings/:id/audio', requireUserJson, async (c) => {
   const durationRaw = Number(form.get('duration_sec'));
   const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
   if (duration === null) return c.json({ error: 'The edited recording has no length.' }, 400);
-  if (duration > MAX_RECORDING_SEC || (rec.duration_sec && duration > rec.duration_sec + 1))
+  /* Never longer than the recording it came from — measured against the
+     untouched original when there is one, so a string of edits can't creep
+     past it — except for a few seconds of reverb tail at the end. */
+  const base = rec.original_duration ?? rec.duration_sec;
+  if (duration > MAX_RECORDING_SEC + REVERB_TAIL_SEC || (base && duration > base + REVERB_TAIL_SEC))
     return c.json({ error: 'An edit can only make a recording shorter.' }, 400);
 
   const key = `rec/${rec.student_id}/${rec.section_id}/${rec.id}-${slugify(rec.title ?? 'recording')}-e${Date.now().toString(36)}.${extFor(mime)}`;
   await c.env.MEDIA.put(key, file.stream(), {
     httpMetadata: { contentType: mime, cacheControl: 'private, max-age=31536000' },
   });
+  /* The first edit keeps what it replaces as the original; a later edit
+     replaces only the previous edit, so there are never more than two. */
+  const first = !rec.original_r2_key;
   const r = await c.env.DB.prepare(
-    `UPDATE recordings SET r2_key = ?1, mime_type = ?2, size_bytes = ?3, duration_sec = ?4
+    `UPDATE recordings SET r2_key = ?1, mime_type = ?2, size_bytes = ?3, duration_sec = ?4,
+            original_mime = CASE WHEN original_r2_key IS NULL THEN ?8 ELSE original_mime END,
+            original_size = CASE WHEN original_r2_key IS NULL THEN ?9 ELSE original_size END,
+            original_duration = CASE WHEN original_r2_key IS NULL THEN ?10 ELSE original_duration END,
+            original_r2_key = COALESCE(original_r2_key, ?7)
       WHERE id = ?5 AND project_id = ?6 AND r2_key = ?7`,
   )
-    .bind(key, mime, file.size, duration, rec.id, pid(c), rec.r2_key)
+    .bind(key, mime, file.size, duration, rec.id, pid(c), rec.r2_key, rec.mime_type, rec.size_bytes, rec.duration_sec)
     .run();
   if (!r.meta?.changes) {
     // Deleted, or edited by someone else, while this one was uploading.
     await c.env.MEDIA.delete(key);
     return c.json({ error: 'This recording changed while you were editing it. Reload and try again.' }, 409);
   }
-  await c.env.MEDIA.delete(rec.r2_key);
-  return c.json({ ok: true });
+  if (!first) await c.env.MEDIA.delete(rec.r2_key);
+  return c.json({ ok: true, kept_original: true });
+});
+
+/**
+ * An edited recording carries two files until someone chooses: keep the
+ * edit (the original is deleted) or go back to the original (the edit is
+ * deleted). Either way one copy remains.
+ */
+app.post('/recordings/:id/original', requireUser, async (c) => {
+  const f = await c.req.formData();
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
+    .first<Recording>();
+  const back = safeBack(f.get('back'), acting(c).isTeacher ? '/t' : '/me');
+  if (!rec || !mayEditRecording(c, rec)) return c.redirect(withMsg(back, 'That recording is not yours to change.'));
+  if (!rec.original_r2_key) return c.redirect(withMsg(back, 'There is only one copy of that recording.'));
+  if (String(f.get('action')) === 'restore') {
+    const r = await c.env.DB.prepare(
+      `UPDATE recordings SET r2_key = original_r2_key, mime_type = original_mime, size_bytes = original_size,
+              duration_sec = original_duration,
+              original_r2_key = NULL, original_mime = NULL, original_size = NULL, original_duration = NULL
+        WHERE id = ?1 AND project_id = ?2 AND r2_key = ?3`,
+    )
+      .bind(rec.id, pid(c), rec.r2_key)
+      .run();
+    if (r.meta?.changes) await c.env.MEDIA.delete(rec.r2_key);
+    return c.redirect(withMsg(back, 'Back to the original. The edited copy is deleted.'));
+  }
+  const r = await c.env.DB.prepare(
+    `UPDATE recordings SET original_r2_key = NULL, original_mime = NULL, original_size = NULL, original_duration = NULL
+      WHERE id = ?1 AND project_id = ?2 AND original_r2_key = ?3`,
+  )
+    .bind(rec.id, pid(c), rec.original_r2_key)
+    .run();
+  if (r.meta?.changes) await c.env.MEDIA.delete(rec.original_r2_key);
+  return c.redirect(withMsg(back, 'Edited version kept. The original copy is deleted.'));
 });
 
 /**
@@ -3869,7 +3924,7 @@ app.post('/t/recordings/:id/delete', requireTeacher, async (c) => {
     .bind(c.req.param('id'), pid(c))
     .first<Recording>();
   if (!rec) return c.redirect('/t');
-  await c.env.MEDIA.delete(rec.r2_key);
+  await c.env.MEDIA.delete(rec.original_r2_key ? [rec.r2_key, rec.original_r2_key] : rec.r2_key);
   await c.env.DB.prepare('DELETE FROM recordings WHERE id = ? AND project_id = ?').bind(rec.id, pid(c)).run();
   return c.redirect(`/t/song/${rec.section_id}?msg=` + encodeURIComponent('Recording deleted.'));
 });
@@ -3884,6 +3939,14 @@ app.get('/media/:id', requireUser, async (c) => {
   if (!acting(c).isTeacher && !(await studentMaySee(c.env, pid(c), user.id, rec, 'recording')))
     return c.text('Not yours to play.', 403);
 
+  /* ?original=1 plays the pre-edit copy, while there is one. The size and
+     type used below are then that copy's, not the edit's. */
+  if (c.req.query('original')) {
+    if (!rec.original_r2_key) return c.notFound();
+    rec.r2_key = rec.original_r2_key;
+    rec.mime_type = rec.original_mime ?? rec.mime_type;
+    rec.size_bytes = rec.original_size ?? rec.size_bytes;
+  }
   const rangeHeader = c.req.header('range');
   const obj = await c.env.MEDIA.get(rec.r2_key, rangeHeader ? { range: c.req.raw.headers } : undefined);
   if (!obj) return c.notFound();

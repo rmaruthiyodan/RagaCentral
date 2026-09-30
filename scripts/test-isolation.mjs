@@ -2181,6 +2181,45 @@ async function main() {
     check("  …but not on the teacher's recording", !own.text.includes(`data-edit-audio="${A.recordingId}"`), 'edit offered on a shared take');
     r = await edit(ta, selfRecId);
     checkStatus("teacher A can edit their student's practice take", r, 200);
+
+    /* The pre-edit copy: kept on the first edit, never more than two files,
+       and one of them chosen to stay. */
+    const orig = (id) => d1one(`SELECT r2_key, original_r2_key, original_duration, duration_sec FROM recordings WHERE id='${id}'`)[0];
+    const a1 = orig(A.recordingId);
+    check('the first edit keeps the original as a second copy', a1.original_r2_key === beforeA.r2_key, JSON.stringify(a1));
+    r = await edit(ta, A.recordingId, { dur: '1.2' });
+    const a2 = orig(A.recordingId);
+    check('  …a second edit replaces only the edit, not the original',
+      a2.original_r2_key === beforeA.r2_key && a2.r2_key !== a1.r2_key, JSON.stringify(a2));
+    const oplay = await GET(ta, `/media/${A.recordingId}?original=1`, { binary: true });
+    checkStatus('  …and the original can still be played', oplay, 200);
+    const song2 = await GET(ta, `/t/song/${A.sectionId}`);
+    check('  …with the page saying there are two copies to choose between',
+      song2.text.includes('Edited — two copies for now') && song2.text.includes(`action="/recordings/${A.recordingId}/original"`), 'no notice');
+    if (a2.original_duration) {
+      r = await edit(ta, A.recordingId, { dur: String(a2.original_duration + 2) });
+      checkStatus('  …an edit may run a couple of seconds long, for a reverb tail', r, 200);
+      r = await edit(ta, A.recordingId, { dur: String(a2.original_duration + 6) });
+      checkStatus('  …but not longer than that', r, 400);
+    }
+
+    await POST(tb, `/recordings/${A.recordingId}/original`, { action: 'restore' });
+    check("teacher B can't restore A's original", orig(A.recordingId).original_r2_key === beforeA.r2_key, 'changed from B');
+    await POST(sa, `/recordings/${A.recordingId}/original`, { action: 'keep' });
+    check("  …nor can a student settle the teacher's recording", orig(A.recordingId).original_r2_key === beforeA.r2_key, 'changed by student');
+    r = await POST(ta, `/recordings/${A.recordingId}/original`, { action: 'restore', back: `/t/song/${A.sectionId}` });
+    const a3 = orig(A.recordingId);
+    check('teacher A restores the original — one copy again, the original',
+      a3.r2_key === beforeA.r2_key && !a3.original_r2_key && a3.duration_sec === beforeA.duration_sec, JSON.stringify(a3));
+    checkStatus('  …and plays it', await GET(ta, `/media/${A.recordingId}`, { binary: true }), 200);
+    checkStatus('  …with no second copy left to play', await GET(ta, `/media/${A.recordingId}?original=1`), 404);
+
+    const s1 = orig(selfRecId);
+    check("the student's take has two copies after its edits", !!s1.original_r2_key, JSON.stringify(s1));
+    checkStatus("a classmate can't play the original of someone's practice take", await GET(sa2, `/media/${selfRecId}?original=1`), 403);
+    await POST(sa, `/recordings/${selfRecId}/original`, { action: 'keep', back: `/me/${A.sectionId}` });
+    const s2 = orig(selfRecId);
+    check('the student keeps their edited take — the original copy is gone', s2.r2_key === s1.r2_key && !s2.original_r2_key, JSON.stringify(s2));
   }
 
   /* ================================================================
