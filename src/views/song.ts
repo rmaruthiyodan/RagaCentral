@@ -13,6 +13,7 @@ import { page, avatar, titleWithScript, disclosure, discloseAll } from './layout
 import type { Visiting } from './layout';
 import { esc, escConfirm, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import { spoken } from './sessions';
+import { recorderPanel } from './recorder';
 import type { User, Group, Section, Recording, Note } from '../types';
 import { t, setLang } from '../i18n';
 
@@ -671,44 +672,7 @@ ${
 </div>
 
 <div data-panel="record">
-  <div class="recorder" data-student="" data-section="${esc(section.id)}" data-part-input="1">
-    <div class="rec-stage">
-      <span class="rec-dot" data-dot></span>
-      <span class="rec-time" data-timer>0:00</span>
-      <div class="level" data-level-wrap hidden><div class="level-fill" data-level></div></div>
-    </div>
-    <div class="btn-row" style="margin-top:16px">
-      <button class="btn btn-primary" type="button" data-start>${t('Start recording')}</button>
-      <button class="btn" type="button" data-stop disabled>${t('Stop')}</button>
-      <label style="display:flex;align-items:center;gap:7px;margin:0 0 0 6px;font-size:13.5px;font-weight:500;color:var(--ink-2)">
-        <input type="checkbox" data-video style="width:auto"> ${t('Record video instead')}
-      </label>
-    </div>
-    <p class="rec-status" data-status>${t('Audio is saved as MP3 so it plays on every phone, including older iPhones.')}</p>
-    <div data-preview hidden style="margin-top:14px;padding-top:16px;border-top:1px solid var(--line)">
-      <div data-player></div>
-      <div class="field-row" style="margin-top:12px">
-        <div class="field">
-          <label for="rec-title">${t('Name this take')} <span class="req">${t('— required')}</span></label>
-          <input id="rec-title" type="text" data-title placeholder="${esc(t('Pallavi, slow'))}" required>
-        </div>
-        <div class="field">
-          <label for="rec-part">${t('Part of the song')}</label>
-          <input id="rec-part" type="text" data-part list="song-parts" placeholder="Pallavi">
-        </div>
-      </div>
-      <div class="field">
-        <label for="rec-desc">${t('Description')} <span class="opt">${t('— optional, a few lines')}</span></label>
-        <textarea id="rec-desc" rows="2" data-desc
-          placeholder="${esc(t('Second sangati, slowly. Hold the gamaka longer than written.'))}"></textarea>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" type="button" data-save>${t('Save recording')}</button>
-        <button class="btn btn-quiet" type="button" data-discard>${t('Discard')}</button>
-      </div>
-      <div class="progress" data-progress><div class="progress-fill" data-progress-fill></div></div>
-    </div>
-  </div>
+  ${recorderPanel({ studentId: '', sectionId: section.id, full: true })}
 </div>
 
 <div data-panel="upload" hidden>

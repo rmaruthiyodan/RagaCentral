@@ -551,23 +551,7 @@ video{background:#000;max-height:420px}
 
 /* ---------- recorder ---------- */
 .recorder{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:20px 22px}
-.rec-stage{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.rec-dot{
-  width:13px;height:13px;border-radius:50%;background:var(--line-strong);flex:none;
-}
-.rec-dot.live{background:var(--bad);animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.rec-time{
-  font-family:var(--f-mono);font-size:1.65rem;font-weight:500;
-  font-variant-numeric:tabular-nums;letter-spacing:-.01em;
-}
-.level{
-  flex:1;min-width:150px;height:26px;background:var(--surface-2);
-  border:1px solid var(--line);border-radius:3px;overflow:hidden;position:relative;
-}
-.level-fill{height:100%;width:0;background:var(--good);transition:width .06s linear}
-.level-fill.hot{background:var(--warn)}
-.level-fill.clip{background:var(--bad)}
 .rec-status{font-size:13.5px;color:var(--ink-3);margin-top:12px;min-height:20px}
 .progress{height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden;margin-top:12px;display:none}
 .progress.on{display:block}
@@ -1722,4 +1706,121 @@ a.who-name:hover{border-bottom-color:var(--ink-3)}
   .sa-row .row-main{min-width:0}
   .sa-row .row-actions{flex:none}
   .sa-row .row-actions .btn{padding-left:8px;padding-right:8px}
+}
+
+/* ============================================================
+   The recorder — one big button (views/recorder.ts, recorder.js)
+   Red for recording whatever the palette: it is the one colour
+   everybody already reads as "this is recording".
+   ============================================================ */
+.recorder.rx{--rx-red:#D93025;--rx-red-soft:#FBE9E7;border-radius:10px;padding:0;overflow:hidden}
+:root[data-theme="dark"] .recorder.rx{--rx-red:#F0584B;--rx-red-soft:#3A1C19}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .recorder.rx{--rx-red:#F0584B;--rx-red-soft:#3A1C19}}
+.rx-stage{padding:22px 22px 20px;text-align:center}
+.rx-top{display:flex;justify-content:center;min-height:38px;margin-bottom:14px}
+.rx-kind{display:inline-flex;border:1px solid var(--line-strong);border-radius:999px;padding:3px;background:var(--surface-2)}
+.rx-kind label{margin:0;cursor:pointer}
+.rx-kind input{position:absolute;opacity:0;width:1px;height:1px}
+.rx-kind span{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-3);border-radius:999px;padding:6px 14px}
+.rx-kind svg{width:16px;height:16px}
+.rx-kind input:checked + span{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.rx-kind input:focus-visible + span{outline:2px solid var(--brass);outline-offset:1px}
+.rx-live{display:inline-flex;align-items:center;gap:7px;font-family:var(--f-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--rx-red);background:var(--rx-red-soft);border-radius:999px;padding:5px 11px;align-self:center}
+.rx-live i{width:8px;height:8px;border-radius:50%;background:var(--rx-red);animation:pulse 1.4s ease-in-out infinite}
+.rx-live.paused i{animation:none;opacity:.45}
+.rx-cam{display:block;width:100%;max-width:420px;aspect-ratio:16/9;object-fit:cover;margin:0 auto 14px;border-radius:8px;background:#000;transform:scaleX(-1)}
+.rx-time{font-family:var(--f-mono);font-size:2.6rem;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+.rx-time small{font-size:.42em;color:var(--ink-3);font-weight:400;margin-left:6px}
+.rx-wave{display:block;width:100%;max-width:720px;height:64px;margin:16px auto 18px}
+.rx-ctrls{display:flex;align-items:center;justify-content:center;gap:34px}
+.rx-big{width:84px;height:84px;border-radius:50%;border:4px solid var(--surface);padding:0;cursor:pointer;
+  background:var(--rx-red);box-shadow:0 0 0 2px var(--rx-red),0 6px 18px rgba(217,48,37,.28);display:grid;place-items:center;
+  transition:transform .12s ease,background .15s ease}
+.rx-big:active{transform:scale(.95)}
+.rx-big:focus-visible{outline:3px solid var(--brass);outline-offset:4px}
+.rx-big span{display:block;width:0;height:0;border-radius:6px;background:var(--rx-red);transition:width .15s ease,height .15s ease}
+.rx-big.stop{background:var(--surface);box-shadow:0 0 0 3px var(--rx-red),0 6px 18px rgba(217,48,37,.22)}
+.rx-big.stop span{width:30px;height:30px}
+.rx-big[disabled]{opacity:.5;cursor:progress}
+.rx-side{display:flex;flex-direction:column;align-items:center;gap:6px;font:inherit;font-size:12.5px;color:var(--ink-3);font-weight:600;
+  background:none;border:0;cursor:pointer;padding:0;min-width:56px}
+.rx-side[hidden]{display:flex;visibility:hidden}
+.rx-c{width:52px;height:52px;border-radius:50%;border:1px solid var(--line-strong);background:var(--surface);display:grid;place-items:center;color:var(--ink-2)}
+.rx-c svg{width:18px;height:18px}
+.rx-side:hover .rx-c{border-color:var(--ink-3);color:var(--ink)}
+.rx-side:focus-visible .rx-c{outline:2px solid var(--brass);outline-offset:2px}
+.rx-label{margin-top:12px;font-weight:600;font-size:14.5px}
+.rx-hint{margin:4px auto 0;max-width:520px;min-height:20px}
+
+/* ---------- after Stop: cut, name, save ---------- */
+.rx-done{padding:20px 22px;border-top:1px solid var(--line)}
+.rx-stage[hidden] + .rx-done{border-top:0}
+.rx-edit-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:14px}
+.rx-edit-head h3{margin:0;font-size:16px}
+.rx-edit-head .muted{font-size:13px;color:var(--ink-3);max-width:560px}
+.rx-box{position:relative;height:110px;border-radius:8px;background:var(--surface-2);margin-top:48px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.rx-box:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.rx-box canvas{position:absolute;left:0;top:10px;width:100%;height:90px}
+.rx-segs{position:absolute;inset:0;border-radius:8px;overflow:hidden}
+.rx-seg{position:absolute;top:0;bottom:0}
+.rx-seg + .rx-seg{border-left:2px solid var(--surface)}
+.rx-seg.cut{background:repeating-linear-gradient(135deg,rgba(217,48,37,.13) 0 8px,rgba(217,48,37,.04) 8px 16px)}
+.rx-seg.sel{box-shadow:inset 0 0 0 2px var(--peacock);border-radius:3px}
+.rx-tag{position:absolute;left:5px;top:5px;font-family:var(--f-mono);font-size:10.5px;font-weight:600;border-radius:4px;padding:1px 6px;
+  background:var(--surface);color:var(--ink-2);pointer-events:none}
+.rx-seg.cut .rx-tag{color:var(--rx-red);text-decoration:line-through}
+.rx-split{position:absolute;top:0;bottom:0;width:18px;margin-left:-9px;cursor:ew-resize;z-index:2}
+.rx-split::after{content:"";position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--ink-3);opacity:.5}
+.rx-split:hover::after,.rx-split.drag::after{opacity:1;background:var(--peacock)}
+.rx-head{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--ink);z-index:3;pointer-events:none}
+.rx-head::before{content:"";position:absolute;top:-1px;left:-5px;border:6px solid transparent;border-top:8px solid var(--ink)}
+.rx-pop{border:1px solid rgba(255,255,255,.1);position:absolute;z-index:4;top:-46px;transform:translateX(-50%);background:#15181C;color:#fff;border-radius:8px;display:flex;gap:2px;padding:4px;
+  box-shadow:0 6px 18px rgba(0,0,0,.25);white-space:nowrap}
+.rx-pop[hidden]{display:none}
+.rx-pop::after{content:"";position:absolute;left:var(--arrow,50%);bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:#15181C}
+.rx-pop button{font:inherit;font-size:12.5px;font-weight:600;color:#fff;background:none;border:0;padding:6px 10px;border-radius:5px;display:flex;align-items:center;gap:6px;cursor:pointer}
+.rx-pop button:hover{background:#2A2E35}
+.rx-pop button.d{color:#FF8A80}
+.rx-pop button.k{color:#8FD6A6}
+.rx-pop svg{width:15px;height:15px}
+.rx-scale{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:10.5px;color:var(--ink-3);margin-top:6px}
+.rx-list{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:14px}
+.rx-li{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;border-bottom:1px solid var(--line);font-size:14px}
+.rx-li:last-child{border-bottom:0}
+.rx-li.sel{background:var(--surface-2)}
+.rx-sw{width:10px;height:28px;border-radius:3px;background:var(--peacock);flex:none}
+.rx-li.cut .rx-sw{background:repeating-linear-gradient(135deg,var(--rx-red) 0 3px,var(--rx-red-soft) 3px 6px)}
+.rx-li .txt{flex:1;min-width:0;font-variant-numeric:tabular-nums;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rx-li.cut .txt{color:var(--ink-3);text-decoration:line-through}
+.rx-li .txt b{font-family:var(--f-mono);font-weight:600;margin-right:6px}
+.rx-lplay{width:34px;height:34px;border-radius:50%;border:1px solid var(--line-strong);background:var(--surface);display:grid;place-items:center;color:var(--ink-2);cursor:pointer;flex:none;padding:0}
+.rx-lplay svg{width:14px;height:14px}
+.rx-lplay.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.rx-tog{display:inline-flex;border:1px solid var(--line-strong);border-radius:999px;overflow:hidden;font-size:12px;font-weight:600;flex:none}
+.rx-tog button{font:inherit;border:0;background:none;padding:6px 11px;color:var(--ink-3);cursor:pointer;min-width:64px}
+.rx-tog button + button{min-width:84px}
+.rx-tog button.on{background:var(--peacock);color:#fff}
+.rx-tog button.on.x{background:var(--rx-red)}
+.rx-tools{margin-top:14px}
+.rx-ib{display:inline-flex;align-items:center;gap:7px}
+.rx-ib svg{width:16px;height:16px}
+.rx-fields{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.rx-edit[hidden] + [data-player] + .rx-fields{margin-top:14px}
+[data-player] audio,[data-player] video{width:100%;margin-top:4px}
+[data-player]:empty{display:none}
+@media (max-width:560px){
+  .rx-stage{padding:20px 16px 18px}
+  .rx-ctrls{gap:26px}
+  .rx-done{padding:16px 12px}
+  .rx-li{gap:8px;padding:8px 8px 8px 10px;font-size:13px}
+  /* No room for a play button per row here; tapping the row selects the
+     part, and the bar above the waveform plays it. */
+  .rx-lplay{display:none}
+  .rx-tog button{min-width:0;padding:6px 9px}
+  .rx-tog button + button{min-width:74px}
+  .rx-tools{flex-wrap:nowrap}
+  .rx-tools .btn-primary{flex:1;justify-content:center;min-width:0}
+  .rx-tools .btn-quiet{padding-left:10px;padding-right:10px}
+  .rx-tools .btn-quiet span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 }
