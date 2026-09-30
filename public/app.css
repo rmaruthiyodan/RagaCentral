@@ -1713,9 +1713,12 @@ a.who-name:hover{border-bottom-color:var(--ink-3)}
    Red for recording whatever the palette: it is the one colour
    everybody already reads as "this is recording".
    ============================================================ */
-.recorder.rx{--rx-red:#D93025;--rx-red-soft:#FBE9E7;border-radius:10px;padding:0;overflow:hidden}
-:root[data-theme="dark"] .recorder.rx{--rx-red:#F0584B;--rx-red-soft:#3A1C19}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .recorder.rx{--rx-red:#F0584B;--rx-red-soft:#3A1C19}}
+.recorder.rx,.rx-edit-host{--rx-red:#D93025;--rx-red-soft:#FBE9E7}
+:root[data-theme="dark"] .recorder.rx,:root[data-theme="dark"] .rx-edit-host{--rx-red:#F0584B;--rx-red-soft:#3A1C19}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .recorder.rx,:root:not([data-theme="light"]) .rx-edit-host{--rx-red:#F0584B;--rx-red-soft:#3A1C19}
+}
+.recorder.rx{border-radius:10px;padding:0;overflow:hidden}
 .rx-stage{padding:22px 22px 20px;text-align:center}
 .rx-top{display:flex;justify-content:center;min-height:38px;margin-bottom:14px}
 .rx-kind{display:inline-flex;border:1px solid var(--line-strong);border-radius:999px;padding:3px;background:var(--surface-2)}
@@ -1753,9 +1756,14 @@ a.who-name:hover{border-bottom-color:var(--ink-3)}
 .rx-label{margin-top:12px;font-weight:600;font-size:14.5px}
 .rx-hint{margin:4px auto 0;max-width:520px;min-height:20px}
 
-/* ---------- after Stop: cut, name, save ---------- */
+/* ---------- after Stop: name, save ---------- */
 .rx-done{padding:20px 22px;border-top:1px solid var(--line)}
 .rx-stage[hidden] + .rx-done{border-top:0}
+.rx-done .rx-fields{margin-top:14px;padding-top:0;border-top:0}
+/* ---------- Edit audio: cutting parts out of a saved recording ---------- */
+.rx-edit-host{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.rx-edit-host[hidden]{display:none}
+.rx-edit-actions{margin-top:16px}
 .rx-edit-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:14px}
 .rx-edit-head h3{margin:0;font-size:16px}
 .rx-edit-head .muted{font-size:13px;color:var(--ink-3);max-width:560px}
@@ -1806,7 +1814,6 @@ a.who-name:hover{border-bottom-color:var(--ink-3)}
 .rx-ib{display:inline-flex;align-items:center;gap:7px}
 .rx-ib svg{width:16px;height:16px}
 .rx-fields{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
-.rx-edit[hidden] + [data-player] + .rx-fields{margin-top:14px}
 [data-player] audio,[data-player] video{width:100%;margin-top:4px}
 [data-player]:empty{display:none}
 @media (max-width:560px){

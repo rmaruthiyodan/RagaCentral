@@ -647,6 +647,7 @@ async function auditAdmin(c: Context<AppEnv, any, any>, next: () => Promise<void
 app.use('/t/*', auditAdmin);
 app.use('/notes/*', auditAdmin);
 app.use('/api/recordings', auditAdmin);
+app.use('/api/recordings/*', auditAdmin);
 
 /** A short readable line for the log, from the path alone. */
 function describeChange(c: Context<AppEnv, any, any>): string {
@@ -3762,6 +3763,65 @@ app.post('/api/recordings', requireUserJson, async (c) => {
   if (visibility === 'chosen') await setShares(c.env, pid(c), 'recording', id, 'chosen', shareIds);
 
   return c.json({ ok: true, id });
+});
+
+/**
+ * Replace a recording's audio with an edited version — parts cut out in the
+ * browser (public/audio-edit.js). A teacher may edit any audio recording in
+ * their practice; a student only their own practice takes, the same ones
+ * nobody else can hear. It can only get shorter: this is for cutting, not
+ * for swapping in a different take under an old name and date.
+ *
+ * The new file goes in under a new key and the row is pointed at it before
+ * the old file is deleted, so a failure part-way leaves the recording
+ * playable either way. The player's URL carries a fingerprint of the key
+ * (views/recorder.ts mediaSrc), so nobody keeps hearing the cached original.
+ */
+app.post('/api/recordings/:id/audio', requireUserJson, async (c) => {
+  const user = c.get('user');
+  const rec = await c.env.DB.prepare('SELECT * FROM recordings WHERE id = ?1 AND project_id = ?2')
+    .bind(c.req.param('id'), pid(c))
+    .first<Recording>();
+  if (!rec) return c.json({ error: 'That recording is not in this practice.' }, 404);
+  const mine = rec.visibility === 'self' && rec.student_id === user.id;
+  if (!acting(c).isTeacher && !mine) return c.json({ error: 'Only your own practice takes can be edited.' }, 403);
+  if (rec.kind !== 'audio') return c.json({ error: 'Only audio recordings can be edited.' }, 400);
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: 'That file was too large to upload in one go.' }, 413);
+  }
+  const file = form.get('file');
+  if (!(file instanceof File) || file.size === 0) return c.json({ error: 'The edited recording is missing.' }, 400);
+  if (file.size > MAX_UPLOAD) return c.json({ error: 'That file is too large.' }, 413);
+  const mime = uploadType(file.type, file.name, 'media');
+  if (!mime || !mime.startsWith('audio/'))
+    return c.json({ error: 'An edited recording has to be audio.' }, 415);
+  const durationRaw = Number(form.get('duration_sec'));
+  const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
+  if (duration === null) return c.json({ error: 'The edited recording has no length.' }, 400);
+  if (duration > MAX_RECORDING_SEC || (rec.duration_sec && duration > rec.duration_sec + 1))
+    return c.json({ error: 'An edit can only make a recording shorter.' }, 400);
+
+  const key = `rec/${rec.student_id}/${rec.section_id}/${rec.id}-${slugify(rec.title ?? 'recording')}-e${Date.now().toString(36)}.${extFor(mime)}`;
+  await c.env.MEDIA.put(key, file.stream(), {
+    httpMetadata: { contentType: mime, cacheControl: 'private, max-age=31536000' },
+  });
+  const r = await c.env.DB.prepare(
+    `UPDATE recordings SET r2_key = ?1, mime_type = ?2, size_bytes = ?3, duration_sec = ?4
+      WHERE id = ?5 AND project_id = ?6 AND r2_key = ?7`,
+  )
+    .bind(key, mime, file.size, duration, rec.id, pid(c), rec.r2_key)
+    .run();
+  if (!r.meta?.changes) {
+    // Deleted, or edited by someone else, while this one was uploading.
+    await c.env.MEDIA.delete(key);
+    return c.json({ error: 'This recording changed while you were editing it. Reload and try again.' }, 409);
+  }
+  await c.env.MEDIA.delete(rec.r2_key);
+  return c.json({ ok: true });
 });
 
 /**

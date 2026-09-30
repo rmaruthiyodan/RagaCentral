@@ -1,5 +1,6 @@
 /* ==================================================================
- * The recorder — one big button, then an editor to cut parts out.
+ * The recorder — one big button — and the editor for cutting parts
+ * out of a recording once it has been saved.
  *
  * Used on the song page (teacher) and on a student's page for a song
  * (teacher or student). public/recorder.js does the work; this is only
@@ -50,20 +51,9 @@ export function recorderPanel(o: RecorderOpts): string {
     pausedHint: t('Paused — tap Resume to carry on, or the square to finish'),
     idleHint: t('Saved as MP3 so it plays on every phone · up to %s minutes', 6),
     throwAway: t('Throw this take away?'),
-    keep: t('Keep'),
-    remove: t('Remove'),
-    removed: t('Removed'),
-    play: t('Play'),
-    pauseShort: t('Stop'),
-    playResult: t('Play the result · %s'),
-    stopPlaying: t('Stop playing'),
-    split: t('Split'),
-    keepAll: t('Keep at least one part — or Discard the whole take.'),
-    tooShort: t('Too close to the edge of a part to split there.'),
-    partOf: t('Part %s'),
-    videoNoCut: t('Cutting parts out works on audio takes. This video is saved as it is.'),
-    noCut: t('This take could not be opened for cutting, so it is saved as recorded.'),
-    encoding: t('Preparing the MP3…'),
+    readyHint: t('Take ready — listen back, name it and save. To cut parts out, use Edit audio on the recording once it is saved.'),
+    videoHint: t('Video ready — name it and save.'),
+    noMp3: t('Could not convert this take to MP3, so it is saved in the browser’s own format.'),
   };
 
   return `<div class="recorder rx" data-student="${esc(o.studentId)}" data-section="${esc(o.sectionId)}"
@@ -91,29 +81,6 @@ export function recorderPanel(o: RecorderOpts): string {
   </div>
 
   <div class="rx-done" data-preview hidden>
-    <div class="rx-edit" data-editor hidden>
-      <div class="rx-edit-head">
-        <h3>${t('Cut out any part')}</h3>
-        <span class="muted">${t('Tap the waveform to move the playhead, Split there, then remove the pieces you don’t want. Drag a split line to fine-tune it.')}</span>
-      </div>
-      <div class="rx-box" data-box tabindex="0" aria-label="${esc(t('Waveform — tap to move the playhead'))}">
-        <canvas data-ewave aria-hidden="true"></canvas>
-        <div class="rx-segs" data-segs></div>
-        <div class="rx-head" data-head></div>
-        <div class="rx-pop" data-pop hidden>
-          <button type="button" data-pop-play>${ICON.play}<span>${t('Play')}</span></button>
-          <button type="button" data-pop-split>${ICON.cut}<span>${t('Split')}</span></button>
-          <button type="button" class="d" data-pop-toggle>${ICON.trash}<span>${t('Remove')}</span></button>
-        </div>
-      </div>
-      <div class="rx-scale" data-scale></div>
-      <div class="rx-list" data-list></div>
-      <div class="btn-row rx-tools">
-        <button class="btn btn-primary rx-ib" type="button" data-play-all>${ICON.play}<span data-play-all-text></span></button>
-        <button class="btn btn-quiet rx-ib" type="button" data-undo disabled>${ICON.undo}<span>${t('Undo')}</span></button>
-        <button class="btn btn-quiet rx-ib" type="button" data-redo disabled>${ICON.redo}<span>${t('Redo')}</span></button>
-      </div>
-    </div>
     <div data-player></div>
     <div class="rx-fields">
       ${
@@ -147,4 +114,81 @@ export function recorderPanel(o: RecorderOpts): string {
     </div>
   </div>
 </div>`;
+}
+
+/**
+ * The editor, once per page, as a <template>: audio-edit.js copies it
+ * under whichever recording's "Edit audio" was pressed.
+ */
+export function audioEditorTemplate(): string {
+  const strings = {
+    keep: t('Keep'),
+    remove: t('Remove'),
+    removed: t('Removed'),
+    play: t('Play'),
+    pauseShort: t('Stop'),
+    playResult: t('Play the result · %s'),
+    stopPlaying: t('Stop playing'),
+    split: t('Split'),
+    keepAll: t('Keep at least one part — or Discard the whole take.'),
+    tooShort: t('Too close to the edge of a part to split there.'),
+    partOf: t('Part %s'),
+    loading: t('Opening the recording…'),
+    cantOpen: t('This recording could not be opened for editing in this browser.'),
+    nothingCut: t('Nothing is removed yet. Split the recording, then mark a part Remove.'),
+    replaceConfirm: t('Replace this recording with the shortened version? The removed parts cannot be brought back.'),
+    encoding: t('Preparing the MP3…'),
+    saving: t('Saving…'),
+    savedMsg: t('Recording shortened.'),
+    saveFailed: t('Could not save the edited recording. Please try again.'),
+  };
+  return `<template id="rx-edit-tpl" data-strings="${esc(JSON.stringify(strings))}">
+  <div class="rx-edit" data-editor hidden>
+    <div class="rx-edit-head">
+      <h3>${t('Cut out any part')}</h3>
+      <span class="muted">${t('Tap the waveform to move the playhead, Split there, then remove the pieces you don’t want. Drag a split line to fine-tune it.')}</span>
+    </div>
+    <div class="rx-box" data-box tabindex="0" aria-label="${esc(t('Waveform — tap to move the playhead'))}">
+      <canvas data-ewave aria-hidden="true"></canvas>
+      <div class="rx-segs" data-segs></div>
+      <div class="rx-head" data-head></div>
+      <div class="rx-pop" data-pop hidden>
+        <button type="button" data-pop-play>${ICON.play}<span>${t('Play')}</span></button>
+        <button type="button" data-pop-split>${ICON.cut}<span>${t('Split')}</span></button>
+        <button type="button" class="d" data-pop-toggle>${ICON.trash}<span>${t('Remove')}</span></button>
+      </div>
+    </div>
+    <div class="rx-scale" data-scale></div>
+    <div class="rx-list" data-list></div>
+    <div class="btn-row rx-tools">
+      <button class="btn rx-ib" type="button" data-play-all>${ICON.play}<span data-play-all-text></span></button>
+      <button class="btn btn-quiet rx-ib" type="button" data-undo disabled>${ICON.undo}<span>${t('Undo')}</span></button>
+      <button class="btn btn-quiet rx-ib" type="button" data-redo disabled>${ICON.redo}<span>${t('Redo')}</span></button>
+    </div>
+  </div>
+  <div class="btn-row rx-edit-actions">
+    <button class="btn btn-primary" type="button" data-edit-save>${t('Save changes')}</button>
+    <button class="btn btn-quiet" type="button" data-edit-cancel>${t('Cancel')}</button>
+  </div>
+  <p class="rec-status" data-edit-status></p>
+  <div class="progress" data-progress><div class="progress-fill" data-progress-fill></div></div>
+</template>`;
+}
+
+/** The button that opens it, for an audio recording this person may edit. */
+export function editAudioButton(r: { id: string; r2_key: string }): string {
+  return `<button type="button" class="btn btn-sm" data-edit-audio="${esc(r.id)}" data-src="${esc(mediaSrc(r))}"
+    aria-expanded="false">${t('Edit audio')}</button>`;
+}
+
+/**
+ * Where a recording plays from. The file behind /media/:id changes when it
+ * is edited, and the browser keeps /media/:id for an hour — so the URL
+ * carries a short fingerprint of the stored key, and an edited recording
+ * gets a new one.
+ */
+export function mediaSrc(r: { id: string; r2_key: string }): string {
+  let h = 5381;
+  for (let i = 0; i < r.r2_key.length; i++) h = ((h * 33) ^ r.r2_key.charCodeAt(i)) >>> 0;
+  return `/media/${r.id}?v=${h.toString(36)}`;
 }

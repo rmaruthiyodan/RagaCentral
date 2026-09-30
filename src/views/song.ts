@@ -13,7 +13,7 @@ import { page, avatar, titleWithScript, disclosure, discloseAll } from './layout
 import type { Visiting } from './layout';
 import { esc, escConfirm, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import { spoken } from './sessions';
-import { recorderPanel } from './recorder';
+import { recorderPanel, audioEditorTemplate, editAudioButton, mediaSrc } from './recorder';
 import type { User, Group, Section, Recording, Note } from '../types';
 import { t, setLang } from '../i18n';
 
@@ -296,8 +296,8 @@ function recordingBlock(
 ): string {
   const media =
     r.kind === 'video'
-      ? `<video controls preload="metadata" playsinline src="/media/${esc(r.id)}"></video>`
-      : `<audio controls preload="metadata" src="/media/${esc(r.id)}"></audio>`;
+      ? `<video controls preload="metadata" playsinline src="${esc(mediaSrc(r))}"></video>`
+      : `<audio controls preload="metadata" src="${esc(mediaSrc(r))}"></audio>`;
   const p = `r${r.id}-`;
   const noteCount = o.notes.length;
 
@@ -357,9 +357,11 @@ function recordingBlock(
         <span class="loop-state" data-loop-state></span>
       </div>
       <div class="ctrl-group" style="margin-left:auto">
+        ${r.kind === 'audio' ? editAudioButton(r) : ''}
         <a class="btn btn-sm" href="/media/${esc(r.id)}?download=1">${t('Download')}</a>
       </div>
     </div>
+    ${r.kind === 'audio' ? `<div class="rx-edit-host" data-edit-host="${esc(r.id)}" hidden></div>` : ''}
 
     <div class="rec-notes">
       <div class="rec-notes-head">${t('Notes on this recording')}${
@@ -673,6 +675,7 @@ ${
 
 <div data-panel="record">
   ${recorderPanel({ studentId: '', sectionId: section.id, full: true })}
+  ${audioEditorTemplate()}
 </div>
 
 <div data-panel="upload" hidden>
@@ -768,8 +771,8 @@ ${
       nav: 'catalogue',
       visiting: d.visiting ?? null,
       scripts: d.dictate
-        ? ['/player.js', '/recorder.js', '/dictate.js']
-        : ['/player.js', '/recorder.js'],
+        ? ['/player.js', '/audio-edit.js', '/recorder.js', '/dictate.js']
+        : ['/player.js', '/audio-edit.js', '/recorder.js'],
     },
   );
 }

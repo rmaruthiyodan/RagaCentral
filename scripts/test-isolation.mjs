@@ -2130,6 +2130,60 @@ async function main() {
   }
 
   /* ================================================================
+   * Editing a recording's audio: a teacher any audio in their practice,
+   * a student only their own practice takes — and only ever shorter
+   * ================================================================ */
+  {
+    console.log('\n--- editing recordings ---');
+    const edit = (jar, id, { type = 'audio/mpeg', name = 'edited.mp3', dur = '1.5' } = {}) => {
+      const fd = new FormData();
+      fd.set('file', new File([audioBytes(`edit-${id}-${name}`)], name, { type }));
+      fd.set('duration_sec', dur);
+      return req(jar, 'POST', `/api/recordings/${id}/audio`, { multipart: fd });
+    };
+    const row = (id) => d1one(`SELECT r2_key, size_bytes, duration_sec, mime_type FROM recordings WHERE id='${id}'`)[0];
+
+    const beforeA = row(A.recordingId);
+    let r = await edit(tb, A.recordingId);
+    checkStatus("teacher B can't edit A's recording", r, 404);
+    r = await edit(sa, A.recordingId);
+    checkStatus("a student can't edit the teacher's recording", r, 403);
+    check('  …which is untouched', row(A.recordingId)?.r2_key === beforeA?.r2_key, 'key changed');
+
+    r = await edit(ta, A.recordingId, { type: 'text/html', name: 'x.html' });
+    checkStatus('an edit that is not audio is refused', r, 415);
+    r = await edit(ta, A.recordingId, { dur: String((beforeA?.duration_sec ?? 360) + 30) });
+    checkStatus('an edit can only make a recording shorter', r, 400);
+
+    r = await edit(ta, A.recordingId);
+    if (checkStatus('teacher A cuts their own song recording', r, 200)) {
+      const after = row(A.recordingId);
+      check('  …which now points at a new MP3 file', after.r2_key !== beforeA.r2_key && after.mime_type === 'audio/mpeg' && after.duration_sec === 1.5,
+        JSON.stringify(after));
+      const play = await GET(ta, `/media/${A.recordingId}`, { binary: true });
+      checkStatus('  …and still plays', play, 200);
+      const song = await GET(ta, `/t/song/${A.sectionId}`);
+      check('  …from a new address, so no browser plays the old copy',
+        song.text.includes(`/media/${A.recordingId}?v=`) && song.text.includes(`data-edit-audio="${A.recordingId}"`), 'no fingerprinted src / edit button');
+    }
+
+    const beforeSelf = row(selfRecId);
+    r = await edit(sa2, selfRecId);
+    checkStatus("a classmate can't edit someone else's practice take", r, 403);
+    r = await edit(tb, selfRecId);
+    checkStatus('  …nor can a teacher from another practice', r, 404);
+    r = await edit(sa, selfRecId);
+    checkStatus('a student cuts their own practice take', r, 200);
+    check('  …and it is replaced', row(selfRecId)?.r2_key !== beforeSelf?.r2_key, 'key unchanged');
+    const own = await GET(sa, `/me/${A.sectionId}`);
+    check('  …with Edit audio offered on their own take',
+      own.text.includes(`data-edit-audio="${selfRecId}"`), 'no edit button on own take');
+    check("  …but not on the teacher's recording", !own.text.includes(`data-edit-audio="${A.recordingId}"`), 'edit offered on a shared take');
+    r = await edit(ta, selfRecId);
+    checkStatus("teacher A can edit their student's practice take", r, 200);
+  }
+
+  /* ================================================================
    * Hardening: what an upload may be, where a form may send you, and
    * the headers every response carries
    * ================================================================ */

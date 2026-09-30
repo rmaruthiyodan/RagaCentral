@@ -4,7 +4,7 @@ import {
 import type { Visiting } from './layout';
 import { resumeCard, lessonLog, spoken } from './sessions';
 import { zoneOptions } from './schedule';
-import { recorderPanel } from './recorder';
+import { recorderPanel, audioEditorTemplate, editAudioButton, mediaSrc } from './recorder';
 import { prettyIst, prettyIstDate, WEEKDAYS, inZone, type Occurrence } from '../tz';
 import { esc, escConfirm, fmtBytes, fmtDuration, fmtDate, relativeDate } from '../util';
 import type { User, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow, ProjectPerson } from '../types';
@@ -948,8 +948,13 @@ export function songPage(opts: {
     const { idx, total: partTotal } = partIndexMap.get(r.id) ?? { idx: 0, total: 1 };
     const media =
       r.kind === 'video'
-        ? `<video controls preload="metadata" playsinline src="/media/${esc(r.id)}"></video>`
-        : `<audio controls preload="metadata" src="/media/${esc(r.id)}"></audio>`;
+        ? `<video controls preload="metadata" playsinline src="${esc(mediaSrc(r))}"></video>`
+        : `<audio controls preload="metadata" src="${esc(mediaSrc(r))}"></audio>`;
+    /* A teacher may cut any audio recording; a student only their own
+       practice takes. The server holds to the same rule. */
+    const mayEdit =
+      r.kind === 'audio' &&
+      (isTeacher || (r.visibility === 'self' && r.student_id === opts.viewer.id));
     const attached = notesFor(r.id);
     // The top recording opens, so there's always something to press play on.
     // `total` is the size of whichever list this recording belongs to — the
@@ -1024,6 +1029,7 @@ export function songPage(opts: {
       <span class="loop-state" data-loop-state></span>
     </div>
     <div class="ctrl-group" style="margin-left:auto">
+      ${mayEdit ? editAudioButton(r) : ''}
       <a class="btn btn-sm" href="/media/${esc(r.id)}?download=1">${t('Download')}</a>
       ${
         isTeacher
@@ -1047,6 +1053,7 @@ export function songPage(opts: {
       }
     </div>
   </div>
+  ${mayEdit ? `<div class="rx-edit-host" data-edit-host="${esc(r.id)}" hidden></div>` : ''}
   ${attached.length ? `<div style="margin-top:13px">${attached.map(renderNote).join('')}</div>` : ''}
   ${
     isTeacher
@@ -1250,6 +1257,7 @@ ${
 }
 
 ${recorderBlock}
+${audioEditorTemplate()}
 
 ${
   isTeacher
@@ -1291,8 +1299,8 @@ ${
       // which only a teacher ever sees on this page.
       scripts:
         isTeacher && dictate
-          ? ['/player.js', '/recorder.js', '/dictate.js']
-          : ['/player.js', '/recorder.js'],
+          ? ['/player.js', '/audio-edit.js', '/recorder.js', '/dictate.js']
+          : ['/player.js', '/audio-edit.js', '/recorder.js'],
     },
   );
 }
