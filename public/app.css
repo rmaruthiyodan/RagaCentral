@@ -1683,3 +1683,19 @@ a.who-name:hover{border-bottom-color:var(--ink-3)}
 .err-msg{margin-top:6px;font-size:14px;color:var(--ink);word-break:break-word}
 .err-stack summary{cursor:pointer;font-size:12.5px;color:var(--ink-3);margin-top:6px}
 .err-stack pre{white-space:pre-wrap;word-break:break-all;font-size:11.5px;background:var(--surface-2);padding:10px;border-radius:4px;max-height:320px;overflow:auto}
+
+/* Catalogue helpers */
+.cat-tools{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:flex-start;margin-top:4px}
+.cat-tools .inline-edit{margin-top:8px;border-top:none;padding-top:0}
+.cat-tools .inline-edit[open]{flex:1 1 100%}
+.cat-row .row-title a{color:inherit;text-decoration:none;border-bottom:1px solid var(--line-strong)}
+.cat-row .row-title a:hover{border-bottom-color:var(--brass)}
+.cat-del > summary::before{content:"×"}
+.cat-del[open] > summary::before{content:"−"}
+.cat-group-del{margin-top:12px}
+.cat-group-del .inline-edit{border-top:none;margin-top:0;padding-top:0}
+.cat-tools .pill,.cat-group-del .pill{margin-top:10px}
+.inline-form{display:inline;margin:0 0 0 6px}
+.del-reason{font-size:13.5px;color:var(--ink-2);font-style:italic;margin-top:4px}
+.p-bad-text{color:var(--bad)}
+.sh-pills{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end}

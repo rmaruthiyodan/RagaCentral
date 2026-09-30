@@ -1976,6 +1976,111 @@ async function main() {
   }
 
   /* ================================================================
+   * Catalogue helpers
+   *
+   * A student the teacher trusts with the song list: sees every song,
+   * adds groups and songs, corrects details — inside their own practice
+   * only — and can only ASK for a deletion, which the teacher decides.
+   * ================================================================ */
+  {
+    console.log('\n--- catalogue helpers ---');
+    const helper = new Jar('helper');
+    await GET(helper, `/dev/login?email=${encodeURIComponent(N.studentA)}`);
+    await POST(helper, '/profiles/switch', { to: A.studentId });
+    const unlisted = `Unlisted${RUN}`;
+    await POST(ta, '/t/sections', { title: unlisted, raga: 'Mohanam', taala: '', composer: '' });
+    const unlistedId = d1one(`SELECT id FROM sections WHERE project_id='${A.id}' AND title='${unlisted}'`)[0]?.id;
+
+    let r = await GET(helper, '/me/catalogue');
+    check('an ordinary student has no catalogue page', r.status === 302 && r.location === '/me', `${r.status} ${r.location}`);
+    await POST(helper, '/me/catalogue/sections', { title: `Sneaky${RUN}` });
+    check('  …and cannot add a song through its form', d1one(`SELECT COUNT(*) AS n FROM sections WHERE title='Sneaky${RUN}'`)[0].n === 0, 'a song was added');
+
+    await POST(tb, `/t/students/${A.studentId}/curator`, { on: '1' });
+    check("teacher B cannot make A's student a catalogue helper",
+      !d1one(`SELECT can_curate FROM project_members WHERE user_id='${A.studentId}' AND project_id='${A.id}'`)[0]?.can_curate,
+      'the flag was set from project B');
+
+    r = await POST(ta, `/t/students/${A.studentId}/curator`, { on: '1' });
+    checkStatus('teacher A makes their student a catalogue helper', r, 302);
+    check('  …and it is recorded on the membership',
+      d1one(`SELECT can_curate FROM project_members WHERE user_id='${A.studentId}' AND project_id='${A.id}'`)[0]?.can_curate === 1,
+      'can_curate is not 1');
+    const settingsPage = await GET(ta, `/t/s/${A.studentId}/settings`);
+    check('  …and the student page says so', settingsPage.text.includes('Stop being a catalogue helper'), snippet(settingsPage.text));
+
+    r = await GET(helper, '/me/catalogue');
+    if (checkStatus('the helper opens the whole catalogue', r, 200)) {
+      check('  …including songs that are not on their own list', r.text.includes(unlisted), `${unlisted} missing`);
+      check('  …and nothing from another practice', !r.text.includes(N.songB), `${N.songB} leaked`);
+    }
+    const home = await GET(helper, '/me');
+    check('  …reached from a Catalogue tab on their own pages', home.text.includes('href="/me/catalogue"'), 'no tab');
+    const peek = await GET(helper, `/me/${unlistedId}`);
+    checkStatus("  …but a song that is not theirs still doesn't open (no recordings, no notes)", peek, 404);
+
+    await POST(helper, '/me/catalogue/groups', { name: `HelperGroup${RUN}` });
+    const hg = d1one(`SELECT id, created_by FROM groups WHERE project_id='${A.id}' AND name='HelperGroup${RUN}'`)[0];
+    check('the helper adds a group, credited to them', hg?.created_by === A.studentId, JSON.stringify(hg));
+    await POST(helper, '/me/catalogue/sections', { title: `HelperSong${RUN}`, raga: 'Kalyani', group_id: B.groupId });
+    const hs = d1one(`SELECT id, group_id, created_by, project_id FROM sections WHERE title='HelperSong${RUN}'`)[0];
+    check('  …and a song, in their own practice', hs?.project_id === A.id && hs?.created_by === A.studentId, JSON.stringify(hs));
+    check("  …where naming another practice's group files it under no group", hs?.group_id === null, `group_id=${hs?.group_id}`);
+    const tcat = await GET(ta, '/t/catalogue');
+    check("  …and the teacher's catalogue shows who added it", tcat.text.includes(`added by ${N.studentAName}`), 'no "added by"');
+
+    await POST(helper, `/me/catalogue/sections/${unlistedId}`, { title: `${unlisted}-fixed`, raga: 'Mohanam' });
+    check('the helper corrects a song\'s details',
+      d1one(`SELECT title FROM sections WHERE id='${unlistedId}'`)[0]?.title === `${unlisted}-fixed`, 'title unchanged');
+    await POST(helper, `/me/catalogue/sections/${B.sectionId}`, { title: `HIJACKED${RUN}` });
+    check("  …but not another practice's song",
+      d1one(`SELECT title FROM sections WHERE id='${B.sectionId}'`)[0]?.title === N.songB, "B's song was renamed");
+
+    await POST(helper, '/me/catalogue/delete-request', { kind: 'section', target_id: B.sectionId, reason: 'x' });
+    check("asking to delete another practice's song writes nothing",
+      d1one(`SELECT COUNT(*) AS n FROM deletion_requests WHERE target_id='${B.sectionId}'`)[0].n === 0, 'a request was written');
+    r = await POST(helper, '/me/catalogue/delete-request', { kind: 'section', target_id: unlistedId, reason: 'Added twice' });
+    checkStatus('the helper asks for a song to be deleted', r, 302);
+    await POST(helper, '/me/catalogue/delete-request', { kind: 'section', target_id: unlistedId });
+    check('  …which waits, once, however often they ask',
+      d1one(`SELECT COUNT(*) AS n FROM deletion_requests WHERE target_id='${unlistedId}' AND status='pending'`)[0].n === 1, 'not exactly one pending request');
+    check('  …and the song is still there', d1one(`SELECT COUNT(*) AS n FROM sections WHERE id='${unlistedId}'`)[0].n === 1, 'the song is gone');
+    const reqId = d1one(`SELECT id FROM deletion_requests WHERE target_id='${unlistedId}'`)[0]?.id;
+
+    const apA2 = await GET(ta, '/t/approvals');
+    check("teacher A sees the request on Approvals", apA2.text.includes(`${unlisted}-fixed`) && apA2.text.includes('Added twice'), snippet(apA2.text));
+    const apB2 = await GET(tb, '/t/approvals');
+    check('  …teacher B does not', !apB2.text.includes(`${unlisted}-fixed`), 'visible to B');
+    await POST(tb, `/t/deletions/${reqId}`, { action: 'approve' });
+    check("  …and cannot approve it from project B", d1one(`SELECT COUNT(*) AS n FROM sections WHERE id='${unlistedId}'`)[0].n === 1, 'B deleted A\'s song');
+    await POST(helper, `/t/deletions/${reqId}`, { action: 'approve' });
+    check('  …nor can the helper approve their own request', d1one(`SELECT COUNT(*) AS n FROM sections WHERE id='${unlistedId}'`)[0].n === 1, 'the helper deleted it');
+
+    r = await POST(ta, `/t/deletions/${reqId}`, { action: 'decline' });
+    checkStatus('teacher A keeps the song', r, 302);
+    check('  …which stays, and the request is closed',
+      d1one(`SELECT COUNT(*) AS n FROM sections WHERE id='${unlistedId}'`)[0].n === 1 &&
+        d1one(`SELECT status FROM deletion_requests WHERE id='${reqId}'`)[0]?.status === 'declined', 'not declined');
+
+    await POST(helper, '/me/catalogue/delete-request', { kind: 'group', target_id: hg?.id });
+    const greq = d1one(`SELECT id FROM deletion_requests WHERE target_id='${hg?.id}' AND status='pending'`)[0]?.id;
+    r = await POST(ta, `/t/deletions/${greq}`, { action: 'approve' });
+    checkStatus('teacher A approves deleting the group', r, 302);
+    check('  …and only then is it gone',
+      d1one(`SELECT COUNT(*) AS n FROM groups WHERE id='${hg?.id}'`)[0].n === 0 &&
+        d1one(`SELECT status FROM deletion_requests WHERE id='${greq}'`)[0]?.status === 'approved', 'group still there or request open');
+
+    await POST(helper, '/me/catalogue/delete-request', { kind: 'section', target_id: hs?.id });
+    const sreq = d1one(`SELECT id FROM deletion_requests WHERE target_id='${hs?.id}' AND status='pending'`)[0]?.id;
+    await POST(ta, `/t/deletions/${sreq}`, { action: 'approve' });
+    check('teacher A approves deleting a song, and it goes', d1one(`SELECT COUNT(*) AS n FROM sections WHERE id='${hs?.id}'`)[0].n === 0, 'song still there');
+
+    await POST(ta, `/t/students/${A.studentId}/curator`, { on: '0' });
+    r = await GET(helper, '/me/catalogue');
+    check('once the teacher turns it off, the catalogue page is gone again', r.status === 302 && r.location === '/me', `${r.status} ${r.location}`);
+  }
+
+  /* ================================================================
    * Hardening: what an upload may be, where a form may send you, and
    * the headers every response carries
    * ================================================================ */

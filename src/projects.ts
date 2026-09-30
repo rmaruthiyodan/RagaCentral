@@ -83,6 +83,8 @@ export interface Membership {
   approved_at: string | null;
   approved_by: string | null;
   joined_at: string;
+  /** 1 when this student helps keep the song catalogue. */
+  can_curate?: number;
 }
 
 /** A membership with the project it is in, for menus and landing pages. */

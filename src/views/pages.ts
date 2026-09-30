@@ -449,12 +449,66 @@ ${rows}
   );
 }
 
+/** A catalogue helper's request to delete a song or group, for the teacher. */
+export interface DeletionRequestRow {
+  id: string;
+  kind: 'section' | 'group' | string;
+  target_id: string;
+  target_title: string;
+  reason: string | null;
+  requested_at: string;
+  requested_by_name: string;
+  /** Recordings under the song, or songs in the group. */
+  weight: number;
+  /** Students currently learning the song. */
+  learners: number;
+}
+
+function deletionBlock(list: DeletionRequestRow[]): string {
+  if (!list.length) return '';
+  const row = (d: DeletionRequestRow) => {
+    const isSong = d.kind === 'section';
+    const loses = isSong
+      ? [
+          d.weight ? (d.weight === 1 ? t('%s recording', d.weight) : t('%s recordings', d.weight)) : '',
+          d.learners ? (d.learners === 1 ? t('%s student is learning it', d.learners) : t('%s students are learning it', d.learners)) : '',
+        ].filter(Boolean).join(' · ')
+      : d.weight ? (d.weight === 1 ? t('%s song in it', d.weight) : t('%s songs in it', d.weight)) : '';
+    return `<div class="row">
+      <div class="row-main">
+        <div class="row-title">${isSong ? t('Delete the song %s', `<a href="/t/song/${esc(d.target_id)}">${esc(d.target_title)}</a>`) : t('Delete the group %s', `<strong>${esc(d.target_title)}</strong>`)}</div>
+        <div class="row-meta">
+          <span>${t('asked by %s', esc(d.requested_by_name))}</span>
+          <span>${esc(relativeDate(d.requested_at))}</span>
+          ${loses ? `<span class="${isSong && d.weight ? 'p-bad-text' : ''}">${esc(loses)}</span>` : ''}
+        </div>
+        ${d.reason ? `<div class="del-reason">“${esc(d.reason)}”</div>` : ''}
+      </div>
+      <div class="row-actions">
+        <form method="post" action="/t/deletions/${esc(d.id)}" style="display:flex;gap:6px;flex-wrap:wrap"
+              onsubmit="return event.submitter && event.submitter.value !== 'approve' || confirm('${escConfirm(
+                isSong
+                  ? t('Delete %s for good? Its recordings and notes go with it.', `"${d.target_title}"`)
+                  : t('Delete the group %s? Its songs stay, ungrouped.', `"${d.target_title}"`),
+              )}')">
+          <button class="btn btn-sm btn-danger" name="action" value="approve">${t('Delete it')}</button>
+          <button class="btn btn-sm" name="action" value="decline">${t('Keep it')}</button>
+        </form>
+      </div>
+    </div>`;
+  };
+  return `<div class="section-head"><div><h2>${t('Asked to be deleted')}</h2>
+    <p class="lede">${t('Catalogue helpers can add and edit songs, but nothing they ask to delete goes until you say so.')}</p></div></div>
+  <div class="rows" style="margin-bottom:26px">${list.map(row).join('')}</div>`;
+}
+
 export function teacherApprovals(
   user: User,
   pending: User[],
   siteName: string,
   msg?: string,
   visiting?: Visiting | null,
+  deletions: DeletionRequestRow[] = [],
 ): string {
   setLang(user.lang);
   const rows = pending.length
@@ -485,6 +539,8 @@ export function teacherApprovals(
   <h1>${t('Approvals')}</h1>
   <p class="lede">${t('Nobody sees a single recording until you approve them here.')}</p>
 </div>
+${deletionBlock(deletions)}
+${deletions.length ? `<div class="section-head"><h2>${t('People waiting to be let in')}</h2></div>` : ''}
 ${rows}
 
 <div class="section-head"><h2>${t('Invite someone by email')}</h2></div>
@@ -508,17 +564,20 @@ ${rows}
  * Teacher — song catalogue
  * ================================================================== */
 
+type CatalogueRow = Section & { assigned_count: number; added_by_student?: string | null; delete_asked?: number };
+
 export function teacherCatalogue(
   user: User,
   groups: Group[],
-  sections: (Section & { assigned_count: number })[],
+  sections: CatalogueRow[],
   siteName: string,
   msg?: string,
   q = '',
   visiting?: Visiting | null,
+  deletionsWaiting = 0,
 ): string {
   setLang(user.lang);
-  const byGroup = new Map<string, (Section & { assigned_count: number })[]>();
+  const byGroup = new Map<string, CatalogueRow[]>();
   for (const s of sections) {
     const k = s.group_id ?? '__none';
     if (!byGroup.has(k)) byGroup.set(k, []);
@@ -557,11 +616,14 @@ export function teacherCatalogue(
           .map(
             (s, i) => `<div class="row">
         <div class="row-main">
-          <div class="row-title">${inlineTitle(s.title, s.title_ml)}</div>
+          <div class="row-title">${inlineTitle(s.title, s.title_ml)}${
+            s.delete_asked ? ` <a class="pill p-warn" href="/t/approvals">${t('deletion asked for')}</a>` : ''
+          }</div>
           <div class="row-meta">
             ${s.raga ? `<span>${t('Raga %s', esc(s.raga))}</span>` : ''}
             ${s.taala ? `<span>${t('Taala %s', esc(s.taala))}</span>` : ''}
             ${s.composer ? `<span>${esc(s.composer)}</span>` : ''}
+            ${s.added_by_student ? `<span>${t('added by %s', esc(s.added_by_student))}</span>` : ''}
             <span class="num">${
               s.assigned_count === 1
                 ? t('%s student', s.assigned_count)
@@ -622,6 +684,15 @@ export function teacherCatalogue(
   </p>
 </div>
 
+${
+  deletionsWaiting
+    ? `<div class="flash" style="border-left-color:var(--brass);background:var(--brass-soft);color:var(--brass-ink)">${
+        deletionsWaiting === 1
+          ? t('A catalogue helper has asked for something to be deleted.')
+          : t('Catalogue helpers have asked for %s things to be deleted.', deletionsWaiting)
+      } · <a href="/t/approvals" style="color:inherit;font-weight:600">${t('Review')}</a></div>`
+    : ''
+}
 ${searchBox('/t/catalogue', q, t('Title, Malayalam, raga, taala or composer…'))}
 
 ${

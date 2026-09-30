@@ -42,3 +42,4 @@ CREATE INDEX IF NOT EXISTS idx_slots_proj  ON class_slots(project_id, student_id
 CREATE INDEX IF NOT EXISTS idx_adminlog    ON admin_log(project_id, at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_backup_runs_started ON backup_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_delreq_proj ON deletion_requests(project_id, status, requested_at);

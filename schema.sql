@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS project_members (
   approved_at TEXT,
   approved_by TEXT REFERENCES users(id),
   joined_at   TEXT NOT NULL,
+  -- A student the teacher trusts to help keep the song catalogue: they see
+  -- every song, add groups and songs and correct their details. Deleting
+  -- stays the teacher's call (deletion_requests).
+  can_curate  INTEGER NOT NULL DEFAULT 0,
   UNIQUE(project_id, user_id)
 );
 
@@ -97,7 +101,8 @@ CREATE TABLE IF NOT EXISTS groups (
   name        TEXT NOT NULL,
   name_ml     TEXT,                                -- Malayalam script, optional
   sort_order  INTEGER NOT NULL DEFAULT 0,
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+  created_by  TEXT                                 -- who added it; a catalogue helper's name is shown
 );
 
 -- A song. Shared across all students; who learns it is decided in `assignments`.
@@ -114,7 +119,8 @@ CREATE TABLE IF NOT EXISTS sections (
   taala       TEXT,
   composer    TEXT,
   sort_order  INTEGER NOT NULL DEFAULT 0,
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+  created_by  TEXT                                 -- who added it; a catalogue helper's name is shown
 );
 
 -- Which songs a given student is currently working on.
@@ -327,4 +333,23 @@ CREATE TABLE IF NOT EXISTS error_log (
   user_id  TEXT,
   message  TEXT,
   stack    TEXT
+);
+
+-- A catalogue helper asking for a song or a group to be deleted. Nothing
+-- is removed until the teacher approves it: a song's deletion takes its
+-- recordings and notes with it, which is not a student's decision to make.
+-- target_title is kept so the request still reads sensibly if the song is
+-- renamed (or deleted by the teacher directly) in the meantime.
+CREATE TABLE IF NOT EXISTS deletion_requests (
+  id            TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  kind          TEXT NOT NULL,                   -- section | group
+  target_id     TEXT NOT NULL,
+  target_title  TEXT NOT NULL,
+  reason        TEXT,
+  requested_by  TEXT NOT NULL REFERENCES users(id),
+  requested_at  TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending', -- pending | approved | declined
+  decided_by    TEXT REFERENCES users(id),
+  decided_at    TEXT
 );

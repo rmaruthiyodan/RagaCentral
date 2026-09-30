@@ -41,6 +41,7 @@ const SCOPED = [
   'notes',
   'sessions',
   'class_slots',
+  'deletion_requests',
 ];
 
 /* Ordinary app code. auth.ts and projects.ts are deliberately absent:

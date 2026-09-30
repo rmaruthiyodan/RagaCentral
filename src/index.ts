@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { Env, Vars, AppEnv, User, ProjectPerson, Group, Section, Recording, Note, SessionRow, ClassSlot, AssignedRow } from './types';
 import { SEP } from './views/sessions';
 import * as Sched from './views/schedule';
@@ -595,7 +595,8 @@ app.get('/dev/login', async (c) => {
 const MEMBER_COLS = `u.id, u.google_sub, u.email, u.name, u.avatar_url, u.created_at,
         u.time_zone, u.location, u.phone, u.palette, u.theme_mode, u.lang, u.is_admin,
         m.role AS role, m.status AS status, m.status_note AS status_note,
-        m.status_changed_at AS status_changed_at, m.approved_at AS approved_at`;
+        m.status_changed_at AS status_changed_at, m.approved_at AS approved_at,
+        m.can_curate AS can_curate`;
 
 /**
  * Is this song in the project we are acting in?
@@ -1351,6 +1352,23 @@ app.post('/t/students', requireTeacher, async (c) => {
   );
 });
 
+/** Make a student a catalogue helper here, or stop. */
+app.post('/t/students/:id/curator', requireTeacher, async (c) => {
+  const on = String((await c.req.formData()).get('on') ?? '') === '1' ? 1 : 0;
+  const r = await c.env.DB.prepare(
+    `UPDATE project_members SET can_curate = ?1
+      WHERE user_id = ?2 AND project_id = ?3 AND role = 'student'`,
+  )
+    .bind(on, c.req.param('id'), pid(c))
+    .run();
+  return c.redirect(
+    withMsg(`/t/s/${c.req.param('id')}/settings`,
+      !r.meta?.changes ? 'Not changed.'
+        : on ? 'Now a catalogue helper: they can see every song, and add and edit songs and groups. Deletions come to you on Approvals.'
+          : 'No longer a catalogue helper.'),
+  );
+});
+
 app.post('/t/students/:id/status', requireTeacher, async (c) => {
   const f = await c.req.formData();
   const status = String(f.get('status') ?? '');
@@ -1416,7 +1434,62 @@ app.get('/t/approvals', requireTeacher, async (c) => {
     .bind(pid(c))
     .all<User>();
   return c.html(
-    V.teacherApprovals(c.get('user'), pending.results ?? [], site(c), c.req.query('msg'), visiting(c)),
+    V.teacherApprovals(c.get('user'), pending.results ?? [], site(c), c.req.query('msg'), visiting(c),
+      await pendingDeletions(c.env, pid(c))),
+  );
+});
+
+/**
+ * Deletions a catalogue helper has asked for and nobody has decided yet —
+ * only for songs and groups that still exist. With how much would go.
+ */
+async function pendingDeletions(env: Env, projectId: string): Promise<V.DeletionRequestRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT d.id, d.kind, d.target_id, d.target_title, d.reason, d.requested_at, u.name AS requested_by_name,
+            CASE d.kind
+              WHEN 'section' THEN (SELECT COUNT(*) FROM recordings r WHERE r.section_id = d.target_id AND r.project_id = ?1)
+              ELSE (SELECT COUNT(*) FROM sections s WHERE s.group_id = d.target_id AND s.project_id = ?1) END AS weight,
+            CASE d.kind
+              WHEN 'section' THEN (SELECT COUNT(*) FROM assignments a WHERE a.section_id = d.target_id AND a.project_id = ?1 AND a.archived_at IS NULL)
+              ELSE 0 END AS learners
+       FROM deletion_requests d JOIN users u ON u.id = d.requested_by
+      WHERE d.project_id = ?1 AND d.status = 'pending'
+        AND ((d.kind = 'section' AND EXISTS (SELECT 1 FROM sections s WHERE s.id = d.target_id AND s.project_id = ?1))
+          OR (d.kind = 'group' AND EXISTS (SELECT 1 FROM groups g WHERE g.id = d.target_id AND g.project_id = ?1)))
+      ORDER BY d.requested_at`,
+  )
+    .bind(projectId)
+    .all<V.DeletionRequestRow>();
+  return r.results ?? [];
+}
+
+/** The teacher's answer to a deletion request. */
+app.post('/t/deletions/:id', requireTeacher, async (c) => {
+  const approve = String((await c.req.formData()).get('action')) === 'approve';
+  const req = await c.env.DB.prepare(
+    `SELECT * FROM deletion_requests WHERE id = ? AND project_id = ? AND status = 'pending'`,
+  )
+    .bind(c.req.param('id'), pid(c))
+    .first<{ id: string; kind: string; target_id: string; target_title: string }>();
+  if (!req) return c.redirect(withMsg('/t/approvals', 'That request has already been answered.'));
+
+  if (approve) {
+    if (req.kind === 'section') await deleteSection(c.env, pid(c), req.target_id);
+    else {
+      await c.env.DB.prepare('DELETE FROM groups WHERE id = ? AND project_id = ?').bind(req.target_id, pid(c)).run();
+      await settleRequestsFor(c.env, pid(c), 'group', req.target_id);
+    }
+  }
+  await c.env.DB.prepare(
+    `UPDATE deletion_requests SET status = ?1, decided_by = ?2, decided_at = ?3 WHERE id = ?4 AND project_id = ?5`,
+  )
+    .bind(approve ? 'approved' : 'declined', c.get('user').id, now(), req.id, pid(c))
+    .run();
+  return c.redirect(
+    withMsg('/t/approvals',
+      approve
+        ? req.kind === 'section' ? `"${req.target_title}" deleted, with its recordings and notes.` : `Group "${req.target_title}" deleted. Its songs are now ungrouped.`
+        : `Kept "${req.target_title}".`),
   );
 });
 
@@ -1514,7 +1587,11 @@ app.get('/t/catalogue', requireTeacher, async (c) => {
   // One LIKE across every field a teacher might remember a song by. SQLite's
   // LIKE is case-insensitive for ASCII, and Malayalam has no case, so the
   // same clause serves both scripts.
-  const base = `SELECT s.*, (SELECT COUNT(*) FROM assignments a WHERE a.section_id = s.id AND a.archived_at IS NULL AND a.project_id = ?1) AS assigned_count
+  const base = `SELECT s.*, (SELECT COUNT(*) FROM assignments a WHERE a.section_id = s.id AND a.archived_at IS NULL AND a.project_id = ?1) AS assigned_count,
+       (SELECT u.name FROM users u JOIN project_members pm ON pm.user_id = u.id AND pm.project_id = ?1 AND pm.role = 'student'
+         WHERE u.id = s.created_by) AS added_by_student,
+       EXISTS (SELECT 1 FROM deletion_requests d WHERE d.project_id = ?1 AND d.kind = 'section'
+                 AND d.target_id = s.id AND d.status = 'pending') AS delete_asked
      FROM sections s WHERE s.project_id = ?1`;
   const order = ' ORDER BY s.sort_order, s.title COLLATE NOCASE';
   const sections = q
@@ -1530,7 +1607,7 @@ app.get('/t/catalogue', requireTeacher, async (c) => {
   return c.html(
     V.teacherCatalogue(
       c.get('user'), groups.results ?? [], sections.results ?? [], site(c), c.req.query('msg'), q,
-      visiting(c),
+      visiting(c), (await pendingDeletions(c.env, pid(c))).length,
     ),
   );
 });
@@ -1544,7 +1621,7 @@ app.post('/t/sections/:id', requireTeacher, async (c) => {
   await c.env.DB.prepare(
     `UPDATE sections SET group_id=?, title=?, title_ml=?, raga=?, taala=?, composer=? WHERE id=? AND project_id=?`,
   )
-    .bind(str('group_id'), title, str('title_ml'), str('raga'), str('taala'), str('composer'), c.req.param('id'), pid(c))
+    .bind(await groupHere(c.env, pid(c), f.get('group_id')), title, str('title_ml'), str('raga'), str('taala'), str('composer'), c.req.param('id'), pid(c))
     .run();
   const back = safeBack(f.get('back'), '/t/catalogue');
   return c.redirect(withMsg(back, `"${title}" updated.`));
@@ -1695,9 +1772,9 @@ app.post('/t/groups', requireTeacher, async (c) => {
     .bind(pid(c))
     .first<{ m: number }>();
   await c.env.DB.prepare(
-    'INSERT INTO groups (project_id, id, name, name_ml, sort_order, created_at) VALUES (?,?,?,?,?,?)',
+    'INSERT INTO groups (project_id, id, name, name_ml, sort_order, created_at, created_by) VALUES (?,?,?,?,?,?,?)',
   )
-    .bind(pid(c), newId('g'), name, String(f.get('name_ml') ?? '').trim() || null, (max?.m ?? 0) + 10, now())
+    .bind(pid(c), newId('g'), name, String(f.get('name_ml') ?? '').trim() || null, (max?.m ?? 0) + 10, now(), c.get('user').id)
     .run();
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent(`Group "${name}" added.`));
 });
@@ -1706,6 +1783,7 @@ app.post('/t/groups/:id/delete', requireTeacher, async (c) => {
   await c.env.DB.prepare('DELETE FROM groups WHERE id = ? AND project_id = ?')
     .bind(c.req.param('id'), pid(c))
     .run();
+  await settleRequestsFor(c.env, pid(c), 'group', c.req.param('id'));
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent('Group deleted. Its songs are now ungrouped.'));
 });
 
@@ -1718,10 +1796,10 @@ app.post('/t/sections', requireTeacher, async (c) => {
     .first<{ m: number }>();
   const str = (k: string) => String(f.get(k) ?? '').trim() || null;
   await c.env.DB.prepare(
-    `INSERT INTO sections (project_id, id, group_id, title, title_ml, raga, taala, composer, sort_order, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO sections (project_id, id, group_id, title, title_ml, raga, taala, composer, sort_order, created_at, created_by)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
   )
-    .bind(pid(c), newId('s'), str('group_id'), title, str('title_ml'), str('raga'), str('taala'), str('composer'), (max?.m ?? 0) + 10, now())
+    .bind(pid(c), newId('s'), await groupHere(c.env, pid(c), f.get('group_id')), title, str('title_ml'), str('raga'), str('taala'), str('composer'), (max?.m ?? 0) + 10, now(), c.get('user').id)
     .run();
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent(`"${title}" added to the catalogue.`));
 });
@@ -1967,21 +2045,36 @@ app.post('/t/sections/:id/move', requireTeacher, async (c) => {
   return c.redirect('/t/catalogue');
 });
 
-app.post('/t/sections/:id/delete', requireTeacher, async (c) => {
-  const id = c.req.param('id');
-  const db = c.env.DB;
+/** Delete a song, its recordings' and notes' files, and (by cascade) their rows. */
+async function deleteSection(env: Env, projectId: string, id: string): Promise<void> {
+  const db = env.DB;
   // Remove the media from R2 first — an orphaned object costs storage forever.
   const recs = await db
     .prepare('SELECT r2_key FROM recordings WHERE section_id = ? AND project_id = ?')
-    .bind(id, pid(c))
+    .bind(id, projectId)
     .all<{ r2_key: string }>();
   const imgs = await db
     .prepare('SELECT image_key FROM notes WHERE section_id = ? AND project_id = ? AND image_key IS NOT NULL')
-    .bind(id, pid(c))
+    .bind(id, projectId)
     .all<{ image_key: string }>();
   const keys = [...(recs.results ?? []).map((r) => r.r2_key), ...(imgs.results ?? []).map((i) => i.image_key)];
-  if (keys.length) await c.env.MEDIA.delete(keys);
-  await db.prepare('DELETE FROM sections WHERE id = ? AND project_id = ?').bind(id, pid(c)).run();
+  if (keys.length) await env.MEDIA.delete(keys);
+  await db.prepare('DELETE FROM sections WHERE id = ? AND project_id = ?').bind(id, projectId).run();
+  await settleRequestsFor(env, projectId, 'section', id);
+}
+
+/** A song or group that is gone has nothing left to ask about. */
+async function settleRequestsFor(env: Env, projectId: string, kind: string, targetId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE deletion_requests SET status = 'approved', decided_at = ?1
+      WHERE project_id = ?2 AND kind = ?3 AND target_id = ?4 AND status = 'pending'`,
+  )
+    .bind(now(), projectId, kind, targetId)
+    .run();
+}
+
+app.post('/t/sections/:id/delete', requireTeacher, async (c) => {
+  await deleteSection(c.env, pid(c), c.req.param('id'));
   return c.redirect('/t/catalogue?msg=' + encodeURIComponent('Song deleted, along with its recordings.'));
 });
 
@@ -2766,11 +2859,13 @@ async function meCounts(env: Env, projectId: string, userId: string): Promise<Me
        (SELECT COUNT(*) FROM assignments
          WHERE project_id = ?1 AND student_id = ?2) AS songs,
        (SELECT COUNT(*) FROM sessions
-         WHERE project_id = ?1 AND student_id = ?2) AS lessons`,
+         WHERE project_id = ?1 AND student_id = ?2) AS lessons,
+       (SELECT can_curate FROM project_members
+         WHERE project_id = ?1 AND user_id = ?2 AND role = 'student' AND status = 'active') AS curator`,
   )
     .bind(projectId, userId)
     .first<Me.MeCounts>();
-  return row ?? { songs: 0, lessons: 0 };
+  return row ?? { songs: 0, lessons: 0, curator: 0 };
 }
 
 app.get('/me', requireUser, async (c) => {
@@ -2867,6 +2962,162 @@ app.get('/me/settings', requireUser, async (c) => {
       c.req.query('msg'),
     ),
   );
+});
+
+/* ------------------------------------------------------------------ *
+ * Catalogue helpers
+ *
+ * A student the teacher has trusted with the song list (project_members
+ * .can_curate). They see every song and group, add new ones and correct
+ * their details — never recordings or notes of songs that are not theirs,
+ * which stay exactly as private as before. Deleting is the one thing
+ * they cannot do: they ask, and the teacher decides on the Approvals page,
+ * because a song's deletion takes every recording and note filed under it.
+ *
+ * These routes sit before /me/:secid, which would otherwise take
+ * "catalogue" for a song id.
+ * ------------------------------------------------------------------ */
+
+const requireCurator: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const a = acting(c);
+  if (a.isTeacher) return c.redirect('/t/catalogue');
+  const m = a.membership;
+  if (!m || m.role !== 'student' || m.status !== 'active' || !m.can_curate) return c.redirect('/me');
+  await next();
+};
+
+/** The whole catalogue, with what a helper needs beside each song. */
+app.get('/me/catalogue', requireUser, requireCurator, async (c) => {
+  const db = c.env.DB;
+  const me = c.get('user');
+  const q = (c.req.query('q') ?? '').trim();
+  const groups = await db
+    .prepare('SELECT * FROM groups WHERE project_id = ?1 ORDER BY sort_order, name COLLATE NOCASE')
+    .bind(pid(c))
+    .all<Group>();
+  const base = `SELECT s.*,
+       EXISTS (SELECT 1 FROM assignments a WHERE a.project_id = ?1 AND a.section_id = s.id
+                 AND a.student_id = ?2 AND a.archived_at IS NULL) AS mine
+     FROM sections s WHERE s.project_id = ?1`;
+  const order = ' ORDER BY s.sort_order, s.title COLLATE NOCASE';
+  const sections = q
+    ? await db
+        .prepare(`${base} AND (s.title LIKE ?3 OR s.title_ml LIKE ?3 OR s.raga LIKE ?3
+             OR s.taala LIKE ?3 OR s.composer LIKE ?3)${order}`)
+        .bind(pid(c), me.id, `%${q}%`)
+        .all<Me.CatalogueSong>()
+    : await db.prepare(base + order).bind(pid(c), me.id).all<Me.CatalogueSong>();
+  const pending = await db
+    .prepare(
+      `SELECT id, kind, target_id, requested_by FROM deletion_requests
+        WHERE project_id = ?1 AND status = 'pending'`,
+    )
+    .bind(pid(c))
+    .all<Me.PendingDeletion>();
+  const { upcoming } = await meContext(c);
+  return c.html(
+    Me.catalogueTab(
+      me, await meCounts(c.env, pid(c), me.id), site(c), upcoming[0],
+      groups.results ?? [], sections.results ?? [], pending.results ?? [], q, c.req.query('msg'),
+    ),
+  );
+});
+
+app.post('/me/catalogue/groups', requireUser, requireCurator, async (c) => {
+  const f = await c.req.formData();
+  const name = String(f.get('name') ?? '').trim().slice(0, 120);
+  if (!name) return c.redirect('/me/catalogue');
+  const max = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) AS m FROM groups WHERE project_id = ?')
+    .bind(pid(c))
+    .first<{ m: number }>();
+  await c.env.DB.prepare(
+    'INSERT INTO groups (project_id, id, name, name_ml, sort_order, created_at, created_by) VALUES (?,?,?,?,?,?,?)',
+  )
+    .bind(pid(c), newId('g'), name, String(f.get('name_ml') ?? '').trim().slice(0, 120) || null,
+      (max?.m ?? 0) + 10, now(), c.get('user').id)
+    .run();
+  return c.redirect(withMsg('/me/catalogue', `Group "${name}" added.`));
+});
+
+/** A group id from a form, if it really is one of this practice's groups. */
+async function groupHere(env: Env, projectId: string, raw: unknown): Promise<string | null> {
+  const id = String(raw ?? '').trim();
+  if (!id) return null;
+  const g = await env.DB.prepare('SELECT id FROM groups WHERE id = ? AND project_id = ?').bind(id, projectId).first();
+  return g ? id : null;
+}
+
+app.post('/me/catalogue/sections', requireUser, requireCurator, async (c) => {
+  const f = await c.req.formData();
+  const title = String(f.get('title') ?? '').trim().slice(0, 200);
+  if (!title) return c.redirect('/me/catalogue');
+  const str = (k: string) => String(f.get(k) ?? '').trim().slice(0, 200) || null;
+  const max = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) AS m FROM sections WHERE project_id = ?')
+    .bind(pid(c))
+    .first<{ m: number }>();
+  await c.env.DB.prepare(
+    `INSERT INTO sections (project_id, id, group_id, title, title_ml, raga, taala, composer, sort_order, created_at, created_by)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+  )
+    .bind(pid(c), newId('s'), await groupHere(c.env, pid(c), f.get('group_id')), title, str('title_ml'),
+      str('raga'), str('taala'), str('composer'), (max?.m ?? 0) + 10, now(), c.get('user').id)
+    .run();
+  return c.redirect(withMsg('/me/catalogue', `"${title}" added to the catalogue.`));
+});
+
+/** Correct a song's details. Same fields as the teacher's form; no deleting. */
+app.post('/me/catalogue/sections/:id', requireUser, requireCurator, async (c) => {
+  const f = await c.req.formData();
+  const title = String(f.get('title') ?? '').trim().slice(0, 200);
+  if (!title) return c.redirect('/me/catalogue');
+  const str = (k: string) => String(f.get(k) ?? '').trim().slice(0, 200) || null;
+  const r = await c.env.DB.prepare(
+    `UPDATE sections SET group_id=?, title=?, title_ml=?, raga=?, taala=?, composer=? WHERE id=? AND project_id=?`,
+  )
+    .bind(await groupHere(c.env, pid(c), f.get('group_id')), title, str('title_ml'), str('raga'), str('taala'),
+      str('composer'), c.req.param('id'), pid(c))
+    .run();
+  return c.redirect(withMsg('/me/catalogue', r.meta?.changes ? `"${title}" updated.` : 'That song is not in this catalogue.'));
+});
+
+/** Ask the teacher to delete a song or a group. Nothing is deleted here. */
+app.post('/me/catalogue/delete-request', requireUser, requireCurator, async (c) => {
+  const f = await c.req.formData();
+  const kind = String(f.get('kind')) === 'group' ? 'group' : 'section';
+  const targetId = String(f.get('target_id') ?? '');
+  const target = await c.env.DB.prepare(
+    kind === 'group'
+      ? 'SELECT name AS title FROM groups WHERE id = ? AND project_id = ?'
+      : 'SELECT title FROM sections WHERE id = ? AND project_id = ?',
+  )
+    .bind(targetId, pid(c))
+    .first<{ title: string }>();
+  if (!target) return c.redirect(withMsg('/me/catalogue', 'That is not in this catalogue.'));
+  const already = await c.env.DB.prepare(
+    `SELECT 1 FROM deletion_requests WHERE project_id = ? AND kind = ? AND target_id = ? AND status = 'pending'`,
+  )
+    .bind(pid(c), kind, targetId)
+    .first();
+  if (already) return c.redirect(withMsg('/me/catalogue', `Deleting "${target.title}" is already waiting for your teacher.`));
+  await c.env.DB.prepare(
+    `INSERT INTO deletion_requests (id, project_id, kind, target_id, target_title, reason, requested_by, requested_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(newId('dr'), pid(c), kind, targetId, target.title,
+      String(f.get('reason') ?? '').trim().slice(0, 300) || null, c.get('user').id, now())
+    .run();
+  return c.redirect(withMsg('/me/catalogue', `Asked your teacher to delete "${target.title}". It stays until they approve.`));
+});
+
+/** Take back a request you made, while it is still waiting. */
+app.post('/me/catalogue/delete-request/:id/withdraw', requireUser, requireCurator, async (c) => {
+  await c.env.DB.prepare(
+    `UPDATE deletion_requests SET status = 'declined', decided_by = ?1, decided_at = ?2
+      WHERE id = ?3 AND project_id = ?4 AND requested_by = ?1 AND status = 'pending'`,
+  )
+    .bind(c.get('user').id, now(), c.req.param('id'), pid(c))
+    .run();
+  return c.redirect(withMsg('/me/catalogue', 'Request withdrawn.'));
 });
 
 app.get('/me/:secid', requireUser, async (c) => {

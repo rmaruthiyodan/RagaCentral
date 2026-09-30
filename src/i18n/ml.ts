@@ -910,4 +910,50 @@ export const ML: Record<string, string> = {
   'Nothing has gone wrong.': 'ഒന്നും തെറ്റിയിട്ടില്ല.',
   'When the site answers someone with “Something went wrong”, it gives them a short reference. Find it here to see what actually failed.':
     'സൈറ്റ് ആർക്കെങ്കിലും “Something went wrong” എന്ന് മറുപടി നൽകുമ്പോൾ ഒരു ചെറിയ റഫറൻസും നൽകുന്നു. എന്താണ് പരാജയപ്പെട്ടതെന്ന് കാണാൻ അത് ഇവിടെ തിരയുക.',
+
+  /* ---------------------------------------------------------------- *
+   * Catalogue helpers
+   * ---------------------------------------------------------------- */
+  '%s song in it': 'അതിൽ %s പാട്ട്',
+  '%s songs in it': 'അതിൽ %s പാട്ടുകൾ',
+  '%s student is learning it': '%s വിദ്യാർത്ഥി ഇത് പഠിക്കുന്നു',
+  '%s students are learning it': '%s വിദ്യാർത്ഥികൾ ഇത് പഠിക്കുന്നു',
+  'A catalogue helper has asked for something to be deleted.': 'പാട്ടുപട്ടികയിലെ ഒരു സഹായി ഒന്ന് മായ്ക്കാൻ അപേക്ഷിച്ചിട്ടുണ്ട്.',
+  'Add the first one above.': 'ആദ്യത്തേത് മുകളിൽ ചേർക്കുക.',
+  'Added twice by mistake': 'അബദ്ധത്തിൽ രണ്ടുതവണ ചേർത്തു',
+  'Ask to delete this group': 'ഈ ഗ്രൂപ്പ് മായ്ക്കാൻ അപേക്ഷിക്കുക',
+  'Ask to delete this song': 'ഈ പാട്ട് മായ്ക്കാൻ അപേക്ഷിക്കുക',
+  'Asked to be deleted': 'മായ്ക്കാൻ അപേക്ഷിച്ചവ',
+  Catalogue: 'പാട്ടുപട്ടിക',
+  'Catalogue helper': 'പാട്ടുപട്ടിക സഹായി',
+  'Catalogue helpers can add and edit songs, but nothing they ask to delete goes until you say so.':
+    'പാട്ടുപട്ടിക സഹായികൾക്ക് പാട്ടുകൾ ചേർക്കാനും തിരുത്താനും കഴിയും, പക്ഷേ അവർ മായ്ക്കാൻ അപേക്ഷിക്കുന്നതൊന്നും നിങ്ങൾ സമ്മതിക്കാതെ പോകില്ല.',
+  'Catalogue helpers have asked for %s things to be deleted.': 'പാട്ടുപട്ടിക സഹായികൾ %s എണ്ണം മായ്ക്കാൻ അപേക്ഷിച്ചിട്ടുണ്ട്.',
+  'Delete %s for good? Its recordings and notes go with it.': '%s എന്നേക്കുമായി മായ്ക്കണോ? അതിന്റെ റെക്കോർഡിംഗുകളും കുറിപ്പുകളും കൂടെ പോകും.',
+  'Delete it': 'മായ്ക്കുക',
+  'Delete the group %s': '%s എന്ന ഗ്രൂപ്പ് മായ്ക്കുക',
+  'Delete the group %s? Its songs stay, ungrouped.': '%s എന്ന ഗ്രൂപ്പ് മായ്ക്കണോ? അതിലെ പാട്ടുകൾ ഗ്രൂപ്പില്ലാതെ നിലനിൽക്കും.',
+  'Delete the song %s': '%s എന്ന പാട്ട് മായ്ക്കുക',
+  'Deletion asked for': 'മായ്ക്കാൻ അപേക്ഷിച്ചു',
+  'Edit details': 'വിശദാംശങ്ങൾ തിരുത്തുക',
+  'For a senior student who helps you keep the song list. They see every song and group, can add new ones and correct their details. They never see other students’ recordings or notes, and anything they ask to delete waits for you on Approvals.':
+    'പാട്ടുപട്ടിക പരിപാലിക്കാൻ സഹായിക്കുന്ന മുതിർന്ന വിദ്യാർത്ഥിക്ക്. അവർക്ക് എല്ലാ പാട്ടുകളും ഗ്രൂപ്പുകളും കാണാം, പുതിയവ ചേർക്കാം, വിശദാംശങ്ങൾ തിരുത്താം. മറ്റു വിദ്യാർത്ഥികളുടെ റെക്കോർഡിംഗുകളോ കുറിപ്പുകളോ അവർ ഒരിക്കലും കാണില്ല, അവർ മായ്ക്കാൻ അപേക്ഷിക്കുന്നതെല്ലാം അംഗീകാരങ്ങളിൽ നിങ്ങൾക്കായി കാത്തിരിക്കും.',
+  'Make them a catalogue helper': 'പാട്ടുപട്ടിക സഹായിയാക്കുക',
+  'People waiting to be let in': 'ചേർക്കാനായി കാത്തിരിക്കുന്നവർ',
+  'Send to my teacher': 'ഗുരുവിന് അയയ്ക്കുക',
+  'Song catalogue': 'പാട്ടുപട്ടിക',
+  'Stop being a catalogue helper': 'പാട്ടുപട്ടിക സഹായി സ്ഥാനം നീക്കുക',
+  Why: 'എന്തുകൊണ്ട്',
+  Withdraw: 'പിൻവലിക്കുക',
+  'Your teacher decides. Deleting a song also deletes every recording and note filed under it.':
+    'ഗുരുവാണ് തീരുമാനിക്കുന്നത്. ഒരു പാട്ട് മായ്ച്ചാൽ അതിനു കീഴിലുള്ള എല്ലാ റെക്കോർഡിംഗുകളും കുറിപ്പുകളും മായും.',
+  'Your teacher decides. The songs in it stay; they just lose their group.':
+    'ഗുരുവാണ് തീരുമാനിക്കുന്നത്. അതിലെ പാട്ടുകൾ നിലനിൽക്കും; അവയ്ക്ക് ഗ്രൂപ്പ് ഇല്ലാതാകും എന്നു മാത്രം.',
+  'Your teacher has asked you to help keep the song list. You can add groups and songs and correct their details. Deleting anything goes to your teacher to approve first.':
+    'പാട്ടുപട്ടിക പരിപാലിക്കാൻ സഹായിക്കാൻ ഗുരു നിങ്ങളോട് ആവശ്യപ്പെട്ടിരിക്കുന്നു. നിങ്ങൾക്ക് ഗ്രൂപ്പുകളും പാട്ടുകളും ചേർക്കാം, വിശദാംശങ്ങൾ തിരുത്താം. എന്തെങ്കിലും മായ്ക്കണമെങ്കിൽ ആദ്യം ഗുരുവിന്റെ അംഗീകാരം വേണം.',
+  'added by %s': '%s ചേർത്തത്',
+  'asked by %s': '%s അപേക്ഷിച്ചത്',
+  'deletion asked for': 'മായ്ക്കാൻ അപേക്ഷിച്ചു',
+  on: 'ഓൺ',
+  'on your list': 'നിങ്ങളുടെ പട്ടികയിൽ',
 };

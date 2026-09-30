@@ -81,6 +81,8 @@ export interface ProjectPerson extends User {
   status_note: string | null;
   status_changed_at: string | null;
   approved_at: string | null;
+  /** 1 when the teacher has made them a catalogue helper here. */
+  can_curate?: number;
 }
 
 export interface Group {
