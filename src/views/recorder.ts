@@ -162,6 +162,7 @@ export function audioEditorTemplate(): string {
     noisePicked: t('The stretch you picked'),
     saveFailed: t('Could not save the edited recording. Please try again.'),
     offline: t('Could not reach the site to save. Check the connection and try again.'),
+    reference: t('reference %s'),
   };
   /** A row of choices where a dropdown would hide them — fades, hum, the room. */
   const seg = (k: string, opts: [string, string][]) =>

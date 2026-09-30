@@ -845,7 +845,11 @@
       })
       .catch(function (err) {
         console.error(err);
-        if (current === me) say(L('cantOpen'));
+        if (current !== me) return;
+        say(L('cantOpen') + ' (' + describe(err) + ')');
+        report('edit-audio open', err).then(function (ref) {
+          if (ref && current === me) say(L('cantOpen') + ' (' + describe(err) + ') — ' + L('reference', ref));
+        });
       });
 
     saveBtn.addEventListener('click', function () {
@@ -886,9 +890,36 @@
           bar.classList.remove('on');
           saveBtn.disabled = false;
           cancelBtn.disabled = false;
-          say(err && err.message ? err.message : L('saveFailed'));
+          if (err && err.fromServer) { say(err.message); return; }
+          // Something failed here in the browser: say what, and log it for the admin.
+          var what = describe(err);
+          say(L('saveFailed') + ' (' + what + ')');
+          report('edit-audio save', err).then(function (ref) {
+            if (ref) say(L('saveFailed') + ' (' + what + ') — ' + L('reference', ref));
+          });
         });
     });
+  }
+
+  function describe(err) {
+    if (!err) return 'unknown error';
+    if (typeof err === 'string') return err.slice(0, 160);
+    return ((err.name && err.name !== 'Error' ? err.name + ': ' : '') + (err.message || String(err))).slice(0, 160);
+  }
+
+  /* Tell the server what broke in the browser; resolves to the reference. */
+  function report(where, err) {
+    try {
+      return fetch('/api/client-error', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ where: where, message: describe(err), stack: (err && err.stack) || '' }),
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { return j && j.ref; })
+        .catch(function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
   }
 
   /* What the server said went wrong: its JSON error, or a short plain-text
@@ -914,9 +945,11 @@
       };
       xhr.onload = function () {
         if (xhr.status >= 200 && xhr.status < 300) return resolve();
-        reject(new Error(serverSaid(xhr) || L('saveFailed')));
+        var e = new Error(serverSaid(xhr) || (L('saveFailed') + ' (HTTP ' + xhr.status + ')'));
+        e.fromServer = true;
+        reject(e);
       };
-      xhr.onerror = function () { reject(new Error(L('offline'))); };
+      xhr.onerror = function () { var e = new Error(L('offline')); e.fromServer = true; reject(e); };
       xhr.send(formData);
     });
   }

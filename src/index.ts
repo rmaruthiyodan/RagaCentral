@@ -3906,6 +3906,42 @@ app.post('/recordings/:id/original', requireUser, async (c) => {
 });
 
 /**
+ * A failure inside the browser — decoding, the sound tools, the MP3
+ * encoder — never reaches the server on its own, so the page sends a short
+ * report here and it lands in the same error log as the server's own
+ * (/admin/errors), with a reference the page shows to the person. A few a
+ * day per person at most.
+ */
+app.post('/api/client-error', requireUserJson, async (c) => {
+  const user = c.get('user');
+  if (!(await spend(c.env, user.id, 'client_error', 30))) return c.json({ ok: false }, 429);
+  let body: Record<string, unknown> = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ ok: false }, 400);
+  }
+  const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const clip = (v: unknown, n: number) => String(v ?? '').slice(0, n);
+  const write = () =>
+    c.env.DB.prepare(
+      /* unscoped: the app's own error record, read only by an admin */
+      'INSERT INTO error_log (id, at, method, path, user_id, message, stack) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(ref, now(), 'JS', clip(body.where, 200), user.id, clip(body.message, 600),
+        `${clip(body.stack, 2400)}\n\n${clip(c.req.header('user-agent'), 300)}`)
+      .run();
+  try {
+    await write();
+  } catch (w) {
+    if (!/no such table/i.test(String(w))) throw w;
+    await c.env.DB.prepare(ERROR_LOG_DDL).run();
+    await write();
+  }
+  return c.json({ ok: true, ref });
+});
+
+/**
  * Move a recording up or down within its song by swapping sort_order with the
  * neighbour. Plain form posts, so it works without JavaScript.
  */

@@ -130,6 +130,9 @@ async function req(jar, method, url, opts = {}) {
     headers['content-type'] = 'application/x-www-form-urlencoded';
   } else if (opts.multipart) {
     body = opts.multipart;
+  } else if (opts.json) {
+    body = JSON.stringify(opts.json);
+    headers['content-type'] = 'application/json';
   }
 
   /* `wrangler dev` reloads the worker when anything under .wrangler
@@ -2231,6 +2234,11 @@ async function main() {
     checkStatus('an edit still saves when the new columns are missing', r, 200);
     check('  …and puts the columns back on the way', origCols() === 4, `${origCols()} columns`);
     check('  …keeping the original as usual', !!orig(A.recordingId)?.original_r2_key, JSON.stringify(orig(A.recordingId)));
+    /* A failure in the browser is reported, and lands in the admin's error log. */
+    const rep = await req(ta, 'POST', '/api/client-error', { json: { where: 'edit-audio save', message: `Probe${RUN}`, stack: 'x' } });
+    const repRef = (() => { try { return JSON.parse(rep.text).ref; } catch { return null; } })();
+    check('a browser-side failure is logged with a reference',
+      rep.status === 200 && !!repRef && d1one(`SELECT method FROM error_log WHERE id='${repRef}'`)[0]?.method === 'JS', `${rep.status} ${rep.text}`);
   }
 
   /* ================================================================
