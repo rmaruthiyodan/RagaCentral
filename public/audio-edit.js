@@ -891,6 +891,19 @@
     });
   }
 
+  /* What the server said went wrong: its JSON error, or a short plain-text
+     page (which carries the error reference an admin can look up). */
+  function serverSaid(xhr) {
+    try {
+      var j = JSON.parse(xhr.responseText);
+      if (j && j.error) return j.error;
+    } catch (e) {
+      var text = (xhr.responseText || '').trim();
+      if (text && text.length < 400 && text.charAt(0) !== '<') return text.replace(/\s+/g, ' ');
+    }
+    return '';
+  }
+
   /* XHR rather than fetch, purely because it reports upload progress. */
   function send(url, formData, onProgress) {
     return new Promise(function (resolve, reject) {
@@ -901,11 +914,9 @@
       };
       xhr.onload = function () {
         if (xhr.status >= 200 && xhr.status < 300) return resolve();
-        var msg = L('saveFailed');
-        try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) {}
-        reject(new Error(msg));
+        reject(new Error(serverSaid(xhr) || L('saveFailed')));
       };
-      xhr.onerror = function () { reject(new Error(L('saveFailed'))); };
+      xhr.onerror = function () { reject(new Error(L('offline'))); };
       xhr.send(formData);
     });
   }

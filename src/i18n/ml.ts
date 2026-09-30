@@ -1106,4 +1106,5 @@ export const ML: Record<string, string> = {
   'Start from a preset, then fine-tune if you like': 'ഒരു മുൻക്രമീകരണത്തിൽ തുടങ്ങി, വേണമെങ്കിൽ സൂക്ഷ്മമായി ക്രമീകരിക്കുക',
   'Stronger noise and echo reduction for a busy home': 'തിരക്കുള്ള വീടിന് കൂടുതൽ ശബ്ദ, പ്രതിധ്വനി കുറവ്',
   'Temple reverb %s': 'ക്ഷേത്ര റിവേർബ് %s',
+  'Could not reach the site to save. Check the connection and try again.': 'സേവ് ചെയ്യാൻ സൈറ്റിലെത്താനായില്ല. കണക്ഷൻ പരിശോധിച്ച് വീണ്ടും ശ്രമിക്കുക.',
 };

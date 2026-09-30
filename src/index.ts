@@ -2056,7 +2056,8 @@ async function deleteSection(env: Env, projectId: string, id: string): Promise<v
   const db = env.DB;
   // Remove the media from R2 first — an orphaned object costs storage forever.
   const recs = await db
-    .prepare('SELECT r2_key, original_r2_key FROM recordings WHERE section_id = ? AND project_id = ?')
+    // SELECT *, not the column by name: a database a release behind has no original_r2_key yet.
+    .prepare('SELECT * FROM recordings WHERE section_id = ? AND project_id = ?')
     .bind(id, projectId)
     .all<{ r2_key: string; original_r2_key: string | null }>();
   const imgs = await db
@@ -3825,7 +3826,7 @@ app.post('/api/recordings/:id/audio', requireUserJson, async (c) => {
   /* The first edit keeps what it replaces as the original; a later edit
      replaces only the previous edit, so there are never more than two. */
   const first = !rec.original_r2_key;
-  const r = await c.env.DB.prepare(
+  const swap = () => c.env.DB.prepare(
     `UPDATE recordings SET r2_key = ?1, mime_type = ?2, size_bytes = ?3, duration_sec = ?4,
             original_mime = CASE WHEN original_r2_key IS NULL THEN ?8 ELSE original_mime END,
             original_size = CASE WHEN original_r2_key IS NULL THEN ?9 ELSE original_size END,
@@ -3835,6 +3836,20 @@ app.post('/api/recordings/:id/audio', requireUserJson, async (c) => {
   )
     .bind(key, mime, file.size, duration, rec.id, pid(c), rec.r2_key, rec.mime_type, rec.size_bytes, rec.duration_sec)
     .run();
+  let r;
+  try {
+    r = await swap();
+  } catch (e) {
+    /* The columns that hold the original arrived with this feature. If the
+       deploy's schema step didn't add them, add them now and carry on,
+       rather than failing every save until someone runs an ALTER by hand. */
+    if (!/no such column: original_/i.test(String(e))) {
+      await c.env.MEDIA.delete(key);
+      throw e;
+    }
+    await ensureOriginalColumns(c.env);
+    r = await swap();
+  }
   if (!r.meta?.changes) {
     // Deleted, or edited by someone else, while this one was uploading.
     await c.env.MEDIA.delete(key);
@@ -3843,6 +3858,17 @@ app.post('/api/recordings/:id/audio', requireUserJson, async (c) => {
   if (!first) await c.env.MEDIA.delete(rec.r2_key);
   return c.json({ ok: true, kept_original: true });
 });
+
+/** Add recordings.original_* if they're missing (see schema.sql). Safe to run twice. */
+async function ensureOriginalColumns(env: Env): Promise<void> {
+  for (const col of ['original_r2_key TEXT', 'original_mime TEXT', 'original_size INTEGER', 'original_duration REAL']) {
+    try {
+      await env.DB.prepare(`ALTER TABLE recordings ADD COLUMN ${col}`).run();
+    } catch (e) {
+      if (!/duplicate column/i.test(String(e))) throw e;
+    }
+  }
+}
 
 /**
  * An edited recording carries two files until someone chooses: keep the
@@ -4659,10 +4685,10 @@ app.onError(async (err, c) => {
   } catch (w) {
     console.error('could not record the error', w);
   }
-  return c.text(
-    `Something went wrong. Please try again.\n\nIf it keeps happening, tell the site admin this reference: ${ref}`,
-    500,
-  );
+  const msg = `Something went wrong. Please try again. If it keeps happening, tell the site admin this reference: ${ref}`;
+  // A script reading /api/* expects JSON with an error to show; give it one, reference included.
+  if (path.startsWith('/api/')) return c.json({ error: msg, ref }, 500);
+  return c.text(msg.replace('again. If', 'again.\n\nIf'), 500);
 });
 
 export default app;

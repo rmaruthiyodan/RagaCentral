@@ -488,7 +488,11 @@
       xhr.onload = function () {
         if (xhr.status >= 200 && xhr.status < 300) return resolve();
         var msg = 'Upload failed.';
-        try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) {}
+        try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) {
+          // Not JSON — a plain error page. Its first line is still worth showing.
+          var text = (xhr.responseText || '').trim();
+          if (text && text.length < 400 && text.charAt(0) !== '<') msg = text.replace(/\s+/g, ' ');
+        }
         reject(new Error(msg));
       };
       xhr.onerror = function () { reject(new Error('Network error while uploading.')); };

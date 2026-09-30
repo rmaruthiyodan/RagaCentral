@@ -2220,6 +2220,17 @@ async function main() {
     await POST(sa, `/recordings/${selfRecId}/original`, { action: 'keep', back: `/me/${A.sectionId}` });
     const s2 = orig(selfRecId);
     check('the student keeps their edited take — the original copy is gone', s2.r2_key === s1.r2_key && !s2.original_r2_key, JSON.stringify(s2));
+
+    /* A database a release behind: the deploy's schema step didn't add the
+       columns. The save adds them itself rather than failing. */
+    const origCols = () => d1one(`SELECT COUNT(*) AS n FROM pragma_table_info('recordings') WHERE name LIKE 'original_%'`)[0].n;
+    for (const col of ['original_r2_key', 'original_mime', 'original_size', 'original_duration'])
+      d1one(`ALTER TABLE recordings DROP COLUMN ${col}`);
+    check('(the edit columns are gone, as on a database a release behind)', origCols() === 0, `still ${origCols()}`);
+    r = await edit(ta, A.recordingId, { dur: '1.0' });
+    checkStatus('an edit still saves when the new columns are missing', r, 200);
+    check('  …and puts the columns back on the way', origCols() === 4, `${origCols()} columns`);
+    check('  …keeping the original as usual', !!orig(A.recordingId)?.original_r2_key, JSON.stringify(orig(A.recordingId)));
   }
 
   /* ================================================================
