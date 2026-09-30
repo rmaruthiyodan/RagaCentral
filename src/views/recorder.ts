@@ -143,15 +143,37 @@ export function audioEditorTemplate(): string {
     playChanged: t('Play with changes · %s'),
     applying: t('Applying the changes… %s%'),
     fxFailed: t('The sound changes could not be applied in this browser.'),
-    partVolume: t('Volume of part %s'),
     off: t('Off'),
     noiseAuto: t('Automatic — the quietest moments'),
+    nOn: t('%s on'),
+    showAll: t('Show all controls'),
+    hideAll: t('Hide controls'),
+    noChanges: t('No sound changes yet'),
+    chipEven: t('Even volume'),
+    chipFadeIn: t('Fade in %s'),
+    chipFadeOut: t('Fade out %s'),
+    chipNoise: t('Noise %s'),
+    chipEcho: t('Echo %s'),
+    chipRumble: t('Rumble'),
+    chipHum: t('Hum %s Hz'),
+    chipRoom: t('Room reverb %s'),
+    chipHall: t('Hall reverb %s'),
+    chipTemple: t('Temple reverb %s'),
     noisePicked: t('The stretch you picked'),
     saveFailed: t('Could not save the edited recording. Please try again.'),
   };
-  const fade = (k: string) => `<select data-fx="${k}">
-            <option value="0">${t('None')}</option><option value="0.5">0.5 s</option>
-            <option value="1">1 s</option><option value="2">2 s</option><option value="3">3 s</option></select>`;
+  /** A row of choices where a dropdown would hide them — fades, hum, the room. */
+  const seg = (k: string, opts: [string, string][]) =>
+    `<div class="fx-seg" role="group" data-fx-seg="${k}">${opts
+      .map(([v, label]) => `<button type="button" data-v="${esc(v)}" aria-pressed="false">${label}</button>`)
+      .join('')}</div>`;
+  /** One tool: a switch, its name, what it's for in three words, and its value. */
+  const head = (o: { id: string; label: string; sub: string; toggle?: string; val?: string }) => `
+          <div class="fx-row-head">
+            ${o.toggle ? `<label class="fx-switch"><input type="checkbox" data-fx-toggle="${o.toggle}" aria-label="${esc(o.label)}"><span></span></label>` : ''}
+            <label class="fx-name" for="${o.id}">${o.label}<small>${o.sub}</small></label>
+            ${o.val ? `<output class="fx-val" ${o.val}></output>` : ''}
+          </div>`;
   return `<template id="rx-edit-tpl" data-strings="${esc(JSON.stringify(strings))}">
   <div class="rx-edit" data-editor hidden>
     <div class="rx-edit-head">
@@ -180,64 +202,95 @@ export function audioEditorTemplate(): string {
       </span>
     </div>
 
-    <details class="rx-adv">
-      <summary>${t('Advanced — volume, clean-up, reverb')} <span class="pill p-info" data-fx-on hidden>${t('on')}</span></summary>
+    <details class="rx-adv" open>
+      <summary>
+        <span class="fx-sum-t">${t('Sound')}</span>
+        <span class="fx-sum-s">${t('Start from a preset, then fine-tune if you like')}</span>
+        <span class="fx-on" data-fx-on hidden>${t('on')}</span>
+      </summary>
       <div class="rx-adv-body" data-fx-panel>
-        <section class="rx-fx">
+        <div class="fx-presets" role="group" aria-label="${esc(t('Presets'))}">
+          ${[
+            ['none', t('As recorded'), t('No sound changes')],
+            ['clean', t('Clean voice'), t('Less background noise and rumble, even volume')],
+            ['quiet', t('Quiet room'), t('Stronger noise and echo reduction for a busy home')],
+            ['concert', t('Concert feel'), t('Even volume with a touch of hall reverb')],
+          ]
+            .map(
+              ([k, name, what]) =>
+                `<button type="button" class="fx-preset" data-fx-preset="${k}" aria-pressed="false"><b>${name}</b><span>${what}</span></button>`,
+            )
+            .join('')}
+        </div>
+        <div class="fx-fine">
+          <span class="fx-fine-t">${t('Fine-tune')}</span>
+          <span class="fx-chips" data-fx-chips></span>
+          <button type="button" class="fx-more" data-fx-more aria-expanded="false"></button>
+        </div>
+        <div class="fx-all" data-fx-all hidden>
+        <section class="fx-mod">
           <h4>${t('Volume')}</h4>
-          <div class="rx-fx-row">
-            <label for="fx-gain" data-fx-part>${t('Volume of part %s', 'A')}</label>
-            <span class="rx-fx-val" data-fx-gain-val>0 dB</span>
+          <div class="fx-row">
+            <div class="fx-row-head">
+              <span class="fx-part" data-fx-part>A</span>
+              <label class="fx-name" for="fx-gain">${t('Selected part')}<small>${t('Pick a part on the waveform')}</small></label>
+              <output class="fx-val" data-fx-gain-val>0 dB</output>
+              <button type="button" class="fx-icon" data-fx-gain-reset title="${esc(t('Reset this part'))}" aria-label="${esc(t('Reset this part'))}">${ICON.undo}</button>
+            </div>
+            <input id="fx-gain" class="fx-range fx-center" type="range" min="-12" max="12" step="1" value="0" data-fx-gain>
+            <div class="fx-scale"><span>−12</span><span>0</span><span>+12 dB</span></div>
           </div>
-          <input id="fx-gain" type="range" min="-12" max="12" step="1" value="0" data-fx-gain>
-          <p class="hint">${t('Select a part on the waveform first — then make just that part louder or softer.')}
-            <button type="button" class="linkish" data-fx-gain-reset>${t('Reset this part')}</button></p>
-          <label class="rx-check"><input type="checkbox" data-fx="normalize">
-            <span>${t('Even out the volume')}<small>${t('Brings the whole take to a steady, standard level.')}</small></span></label>
-          <div class="rx-fx-pair">
-            <label>${t('Fade in')} ${fade('fadeIn')}</label>
-            <label>${t('Fade out')} ${fade('fadeOut')}</label>
+          <div class="fx-row">
+            ${head({ id: 'fx-norm', label: t('Even out the volume'), sub: t('A steady, standard level'), toggle: 'normalize' })}
+          </div>
+          <div class="fx-row">
+            <div class="fx-row-head"><span class="fx-name">${t('Fade in')}</span></div>
+            ${seg('fadeIn', [['0', t('Off')], ['0.5', '0.5s'], ['1', '1s'], ['2', '2s'], ['3', '3s']])}
+          </div>
+          <div class="fx-row">
+            <div class="fx-row-head"><span class="fx-name">${t('Fade out')}</span></div>
+            ${seg('fadeOut', [['0', t('Off')], ['0.5', '0.5s'], ['1', '1s'], ['2', '2s'], ['3', '3s']])}
           </div>
         </section>
 
-        <section class="rx-fx">
+        <section class="fx-mod">
           <h4>${t('Clean up')}</h4>
-          <div class="rx-fx-row"><label for="fx-noise">${t('Reduce background noise')}</label><span class="rx-fx-val" data-fx-val="noise"></span></div>
-          <input id="fx-noise" type="range" min="0" max="100" step="5" value="0" data-fx="noise">
-          <label class="rx-sub">${t('Learn the noise from')}
-            <select data-fx="noiseFrom"><option value="auto">${t('Automatic — the quietest moments')}</option></select></label>
-          <p class="hint">${t('Best on steady noise — a fan, fridge or pressure cooker. For the most accurate result, pick a part where nobody is singing.')}</p>
-          <div class="rx-fx-row"><label for="fx-echo">${t('Reduce room echo')}</label><span class="rx-fx-val" data-fx-val="echo"></span></div>
-          <input id="fx-echo" type="range" min="0" max="100" step="5" value="0" data-fx="echo">
-          <p class="hint">${t('Lowers the echo — and kitchen or children’s noise — in the pauses between phrases. Sound during a phrase can’t be separated from the singing.')}</p>
-          <label class="rx-check"><input type="checkbox" data-fx="rumble">
-            <span>${t('Remove rumble')}<small>${t('Traffic, fans, a bumped table — the deep sounds with no music in them.')}</small></span></label>
-          <label class="rx-sub">${t('Reduce electrical hum')}
-            <select data-fx="hum">
-              <option value="0">${t('Off')}</option>
-              <option value="50">${t('50 Hz — India, UK, Gulf, Australia')}</option>
-              <option value="60">${t('60 Hz — USA, Canada')}</option>
-            </select></label>
+          <div class="fx-row" data-fx-row="noise">
+            ${head({ id: 'fx-noise', label: t('Background noise'), sub: t('Fans, fridges, cookers'), toggle: 'noise', val: 'data-fx-val="noise"' })}
+            <input id="fx-noise" class="fx-range" type="range" min="5" max="100" step="5" value="40" data-fx="noise">
+            <label class="fx-from">${t('Learn from')}
+              <select data-fx="noiseFrom"><option value="auto">${t('Automatic — the quietest moments')}</option></select></label>
+          </div>
+          <div class="fx-row" data-fx-row="echo">
+            ${head({ id: 'fx-echo', label: t('Room echo'), sub: t('Quietens the pauses'), toggle: 'echo', val: 'data-fx-val="echo"' })}
+            <input id="fx-echo" class="fx-range" type="range" min="5" max="100" step="5" value="30" data-fx="echo">
+          </div>
+          <div class="fx-row">
+            ${head({ id: 'fx-rumble', label: t('Rumble'), sub: t('Traffic, fans, bumps'), toggle: 'rumble' })}
+          </div>
+          <div class="fx-row">
+            <div class="fx-row-head"><span class="fx-name">${t('Electrical hum')}<small>${t('50 Hz in India, UK, Gulf · 60 Hz in the USA')}</small></span></div>
+            ${seg('hum', [['0', t('Off')], ['50', '50 Hz'], ['60', '60 Hz']])}
+          </div>
         </section>
 
-        <section class="rx-fx">
+        <section class="fx-mod">
           <h4>${t('Reverb')}</h4>
-          <label class="rx-sub">${t('Room')}
-            <select data-fx="reverb">
-              <option value="none">${t('None')}</option>
-              <option value="room">${t('Small room')}</option>
-              <option value="hall">${t('Concert hall')}</option>
-              <option value="temple">${t('Temple — long and stony')}</option>
-            </select></label>
-          <div class="rx-fx-row"><label for="fx-rv">${t('Amount')}</label><span class="rx-fx-val" data-fx-val="reverbAmt"></span></div>
-          <input id="fx-rv" type="range" min="0" max="100" step="5" value="30" data-fx="reverbAmt">
-          <p class="hint">${t('Adds a sense of space. A little goes a long way on a reference take.')}</p>
+          <div class="fx-row">
+            <div class="fx-row-head"><span class="fx-name">${t('Space')}<small>${t('A sense of space around the voice')}</small></span></div>
+            ${seg('reverb', [['none', t('None')], ['room', t('Room')], ['hall', t('Hall')], ['temple', t('Temple')]])}
+          </div>
+          <div class="fx-row" data-fx-row="reverbAmt">
+            ${head({ id: 'fx-rv', label: t('Amount'), sub: t('A little goes a long way'), val: 'data-fx-val="reverbAmt"' })}
+            <input id="fx-rv" class="fx-range" type="range" min="5" max="100" step="5" value="30" data-fx="reverbAmt">
+          </div>
         </section>
 
-        <p class="rx-adv-foot">
-          <span class="muted">${t('Use Original / With changes above to compare. Nothing is changed until you save.')}</span>
-          <button type="button" class="btn btn-sm btn-quiet" data-fx-reset>${t('Reset all sound changes')}</button>
-        </p>
+        <div class="fx-foot">
+          <span class="muted">${t('Steady noise and pauses clean up well; a voice or clatter during singing can’t be separated from it. Nothing changes until you save.')}</span>
+          <button type="button" class="btn btn-sm btn-quiet" data-fx-reset>${t('Reset all')}</button>
+        </div>
+        </div>
       </div>
     </details>
   </div>

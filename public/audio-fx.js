@@ -350,5 +350,31 @@
     });
   }
 
-  window.SrutiFx = { defaults: defaults, isActive: isActive, render: render };
+  /* One-tap starting points. Each sets only the clean-up, loudness and
+     reverb settings; fades, hum and per-part volume stay as they were. */
+  var PRESET_KEYS = ['normalize', 'rumble', 'noise', 'echo', 'reverb', 'reverbAmt'];
+  var PRESETS = {
+    none: { normalize: false, rumble: false, noise: 0, echo: 0, reverb: 'none', reverbAmt: 30 },
+    clean: { normalize: true, rumble: true, noise: 30, echo: 0, reverb: 'none', reverbAmt: 30 },
+    quiet: { normalize: true, rumble: true, noise: 55, echo: 40, reverb: 'none', reverbAmt: 30 },
+    concert: { normalize: true, rumble: true, noise: 0, echo: 0, reverb: 'hall', reverbAmt: 25 },
+  };
+  function applyPreset(S, key) {
+    var p = PRESETS[key];
+    if (p) PRESET_KEYS.forEach(function (k) { S[k] = p[k]; });
+    return S;
+  }
+  /** Which preset the settings match, or null when they've been fine-tuned. */
+  function whichPreset(S) {
+    for (var key in PRESETS) {
+      var p = PRESETS[key], same = PRESET_KEYS.every(function (k) {
+        if (k === 'reverbAmt' && p.reverb === 'none') return true;
+        return S[k] === p[k];
+      });
+      if (same) return key;
+    }
+    return null;
+  }
+
+  window.SrutiFx = { defaults: defaults, isActive: isActive, render: render, applyPreset: applyPreset, whichPreset: whichPreset };
 })();

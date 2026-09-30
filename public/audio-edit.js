@@ -331,25 +331,42 @@
     function renderFx() {
       if (!fxEl || !S) return;
       var s = segs[sel], on = fxActive();
-      var partLabel = fxEl.querySelector('[data-fx-part]');
-      var gain = fxEl.querySelector('[data-fx-gain]');
-      if (partLabel) partLabel.textContent = L('partVolume', name(sel));
-      if (gain && s && !gainEditing) gain.value = String(s.g || 0);
-      if (gain) gain.disabled = !s || s.cut;
-      var gv = fxEl.querySelector('[data-fx-gain-val]');
+      var q = function (sel2) { return fxEl.querySelector(sel2); };
+      var part = q('[data-fx-part]');
+      if (part) part.textContent = name(sel);
+      var gain = q('[data-fx-gain]');
+      if (gain) {
+        if (s && !gainEditing) gain.value = String(s.g || 0);
+        gain.disabled = !s || s.cut;
+      }
+      var gv = q('[data-fx-gain-val]');
       if (gv && s) gv.textContent = s.cut ? L('removed') : gainText(s.g || 0);
-      Array.prototype.forEach.call(fxEl.querySelectorAll('[data-fx]'), function (c) {
-        var k = c.getAttribute('data-fx');
-        if (k === 'noiseFrom') return;
-        if (c.type === 'checkbox') c.checked = !!S[k]; else if (document.activeElement !== c) c.value = String(S[k]);
+      var gr = q('[data-fx-gain-reset]');
+      if (gr) gr.disabled = !s || !s.g;
+      // Switches: noise and echo are on when their strength is above zero.
+      Array.prototype.forEach.call(fxEl.querySelectorAll('[data-fx-toggle]'), function (c) {
+        var k = c.getAttribute('data-fx-toggle');
+        c.checked = typeof S[k] === 'number' ? S[k] > 0 : !!S[k];
       });
-      Array.prototype.forEach.call(fxEl.querySelectorAll('[data-fx-val]'), function (v) {
-        var k = v.getAttribute('data-fx-val'), n = S[k];
-        v.textContent = n ? n + '%' : L('off');
+      ['noise', 'echo', 'reverbAmt'].forEach(function (k) {
+        var r = q('[data-fx="' + k + '"]'), row = q('[data-fx-row="' + k + '"]');
+        var off = k === 'reverbAmt' ? S.reverb === 'none' : !(S[k] > 0);
+        if (r) {
+          r.disabled = off;
+          if (!off && document.activeElement !== r) r.value = String(S[k]);
+        }
+        if (row) row.classList.toggle('is-off', off);
+        var v = q('[data-fx-val="' + k + '"]');
+        if (v) v.textContent = off ? L('off') : S[k] + '%';
       });
-      var amt = fxEl.querySelector('[data-fx="reverbAmt"]');
-      if (amt) amt.disabled = S.reverb === 'none';
-      var nf = fxEl.querySelector('[data-fx="noiseFrom"]');
+      Array.prototype.forEach.call(fxEl.querySelectorAll('[data-fx-seg]'), function (g) {
+        var k = g.getAttribute('data-fx-seg');
+        Array.prototype.forEach.call(g.querySelectorAll('button'), function (b) {
+          b.setAttribute('aria-pressed', String(String(S[k]) === b.getAttribute('data-v')));
+        });
+      });
+      Array.prototype.forEach.call(fxEl.querySelectorAll('.fx-range'), paintRange);
+      var nf = q('[data-fx="noiseFrom"]');
       if (nf && document.activeElement !== nf) {
         var picked = -1;
         if (S.noiseFrom !== 'auto') segs.forEach(function (x, i) { if (x.s === S.noiseFrom.s && x.e === S.noiseFrom.e) picked = i; });
@@ -359,14 +376,78 @@
           }).join('') +
           (S.noiseFrom !== 'auto' && picked < 0 ? '<option value="kept" selected>' + esc(L('noisePicked')) + '</option>' : '');
       }
-      if (nf) nf.disabled = !S.noise;
+      if (nf) nf.disabled = !(S.noise > 0);
       var wrap = el.querySelector('[data-ab-wrap]');
       if (wrap) wrap.hidden = !on;
       Array.prototype.forEach.call(el.querySelectorAll('[data-ab]'), function (b) {
         b.setAttribute('aria-pressed', String(b.getAttribute('data-ab') === ab));
       });
       var badge = el.querySelector('[data-fx-on]');
-      if (badge) badge.hidden = !on;
+      if (badge) {
+        var n = countOn();
+        badge.hidden = !n;
+        badge.textContent = L('nOn', n);
+      }
+      // Presets: the one the settings match is pressed; none when fine-tuned.
+      var which = Fx.whichPreset ? Fx.whichPreset(S) : null;
+      Array.prototype.forEach.call(fxEl.querySelectorAll('[data-fx-preset]'), function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-fx-preset') === which));
+      });
+      var chips = q('[data-fx-chips]');
+      if (chips) {
+        var list = chipList();
+        chips.innerHTML = list.length
+          ? list.map(function (c) { return '<span class="fx-chip">' + esc(c) + '</span>'; }).join('')
+          : '<span class="fx-chip-none">' + esc(L('noChanges')) + '</span>';
+      }
+      var all = q('[data-fx-all]'), more = q('[data-fx-more]');
+      if (all) all.hidden = !showAll;
+      if (more) {
+        more.textContent = showAll ? L('hideAll') : L('showAll');
+        more.setAttribute('aria-expanded', String(showAll));
+      }
+    }
+
+    /* What's switched on, in a few words each — the summary under the presets. */
+    function chipList() {
+      var out = [];
+      segs.forEach(function (x, i) { if (!x.cut && x.g) out.push(L('partOf', name(i)) + ' ' + gainText(x.g)); });
+      if (S.normalize) out.push(L('chipEven'));
+      if (S.fadeIn) out.push(L('chipFadeIn', S.fadeIn + 's'));
+      if (S.fadeOut) out.push(L('chipFadeOut', S.fadeOut + 's'));
+      if (S.noise > 0) out.push(L('chipNoise', S.noise + '%'));
+      if (S.echo > 0) out.push(L('chipEcho', S.echo + '%'));
+      if (S.rumble) out.push(L('chipRumble'));
+      if (S.hum) out.push(L('chipHum', S.hum));
+      if (S.reverb !== 'none') {
+        var key = { room: 'chipRoom', hall: 'chipHall', temple: 'chipTemple' }[S.reverb];
+        out.push(L(key, S.reverbAmt + '%'));
+      }
+      return out;
+    }
+
+    /* How many tools are doing something — shown on the closed panel. */
+    function countOn() {
+      var n = 0;
+      if (segs.some(function (x) { return !x.cut && x.g; })) n++;
+      ['normalize', 'fadeIn', 'fadeOut', 'rumble', 'hum'].forEach(function (k) { if (S[k]) n++; });
+      if (S.noise > 0) n++;
+      if (S.echo > 0) n++;
+      if (S.reverb !== 'none') n++;
+      return n;
+    }
+
+    /* The filled part of a slider: from the left, or from the middle for
+       the part volume, which goes both ways. */
+    function paintRange(r) {
+      var min = Number(r.min), max = Number(r.max), v = Number(r.value);
+      var p = ((v - min) / (max - min)) * 100;
+      if (r.classList.contains('fx-center')) {
+        var a = Math.min(50, p), b = Math.max(50, p);
+        r.style.setProperty('--a', a + '%'); r.style.setProperty('--b', b + '%');
+      } else {
+        r.style.setProperty('--a', '0%'); r.style.setProperty('--b', p + '%');
+      }
     }
 
     function fxChanged() {
@@ -375,6 +456,8 @@
       render();
     }
 
+    var lastStrength = { noise: 40, echo: 30 };
+    var showAll = false;
     if (fxEl) {
       fxEl.addEventListener('input', function (e) {
         var c = e.target;
@@ -383,6 +466,16 @@
           if (!s || s.cut) return;
           if (!gainEditing) { remember(); gainEditing = true; }
           s.g = Number(c.value) || 0;
+          paintRange(c);
+          fxChanged();
+          return;
+        }
+        if (c.hasAttribute('data-fx-toggle')) {
+          var t = c.getAttribute('data-fx-toggle');
+          if (t === 'noise' || t === 'echo') {
+            if (c.checked) S[t] = lastStrength[t];
+            else { if (S[t] > 0) lastStrength[t] = S[t]; S[t] = 0; }
+          } else S[t] = c.checked;
           fxChanged();
           return;
         }
@@ -391,16 +484,32 @@
         if (k === 'noiseFrom') {
           if (c.value === 'auto') S.noiseFrom = 'auto';
           else if (c.value !== 'kept') { var x = segs[Number(c.value)]; S.noiseFrom = { s: x.s, e: x.e }; }
-        } else if (c.type === 'checkbox') S[k] = c.checked;
-        else if (k === 'reverb') S[k] = c.value;
-        else S[k] = Number(c.value) || 0;
+        } else {
+          S[k] = Number(c.value) || 0;
+          if (k === 'noise' || k === 'echo') lastStrength[k] = S[k];
+          paintRange(c);
+        }
         fxChanged();
       });
       fxEl.addEventListener('change', function (e) {
         if (e.target.hasAttribute('data-fx-gain')) { gainEditing = false; render(); }
       });
       fxEl.addEventListener('click', function (e) {
-        if (e.target.closest('[data-fx-gain-reset]')) {
+        var pr = e.target.closest('[data-fx-preset]');
+        if (pr) {
+          Fx.applyPreset(S, pr.getAttribute('data-fx-preset'));
+          if (S.noise > 0) lastStrength.noise = S.noise;
+          if (S.echo > 0) lastStrength.echo = S.echo;
+          fxChanged();
+          return;
+        }
+        if (e.target.closest('[data-fx-more]')) { showAll = !showAll; renderFx(); return; }
+        var sb = e.target.closest('[data-fx-seg] button');
+        if (sb) {
+          var k = sb.parentNode.getAttribute('data-fx-seg'), v = sb.getAttribute('data-v');
+          S[k] = k === 'reverb' ? v : Number(v);
+          fxChanged();
+        } else if (e.target.closest('[data-fx-gain-reset]')) {
           var s = segs[sel];
           if (s && s.g) { remember(); s.g = 0; fxChanged(); }
         } else if (e.target.closest('[data-fx-reset]')) {
